@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, and relation triggers.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, relation triggers, and direct object dependencies.
 
 ## Routine catalog
 
@@ -13,6 +13,10 @@ The DDL is reconstructed by PostgreSQL and may not preserve original comments, w
 ## Trigger catalog
 
 One `pg_trigger` query returns non-internal triggers for loaded table, partition, and view kinds. QueryX derives timing/events/orientation from `tgtype`, UPDATE columns from `tgattr`, preserves every `tgenabled` mode, and extracts optional conditions from standardized `pg_get_triggerdef` DDL.
+
+## Dependency catalog
+
+Foreign-key and trigger-owner edges are normalized from the same metadata snapshot. Trigger-function edges use `pg_trigger.tgfoid`, so overloaded routine navigation resolves by OID instead of name. A batched `pg_rewrite`/`pg_depend` query reports direct view references to visible tables and views. The frontend receives only normalized edge kinds and never branches on PostgreSQL catalogs.
 
 ## Connection behavior
 
@@ -50,7 +54,7 @@ export QUERYX_TEST_POSTGRES_PASSWORD=local-test-only
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_driver
 ```
 
-Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates isolated schemas to verify composite foreign keys plus overloaded functions, default arguments, TABLE returns, procedures, opaque IDs, and reconstructed DDL. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
+Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates isolated schemas to verify composite foreign keys, overloaded functions, default arguments, TABLE returns, procedures, triggers, direct view references, dependency direction, opaque IDs, and reconstructed DDL. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
 
 ## Known limitations
 

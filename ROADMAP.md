@@ -57,7 +57,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Composite foreign keys with outgoing/incoming relationship navigation
 - [x] PostgreSQL functions/procedures with overload-safe selection and read-only DDL inspection
 - [x] PostgreSQL/SQLite relation triggers with status, events, owner navigation, and read-only DDL
-- [ ] Object dependencies, PostgreSQL event triggers, aggregates/window functions, and editable DDL
+- [x] Direct object dependencies with Depends on / Used by navigation and overload-safe PostgreSQL trigger-function edges
+- [ ] PostgreSQL event triggers, aggregates/window functions, and editable DDL
 - [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
 
 Release gates:

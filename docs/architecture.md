@@ -57,7 +57,7 @@ The next integration steps are:
 2. Store saved profile secrets in the OS keychain.
 3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
-5. Expand the metadata contract from current indexes, views, foreign keys, routines, and relation triggers to dependencies, event triggers, aggregates/window functions, and editable DDL.
+5. Expand the metadata contract from current indexes, views, foreign keys, routines, relation triggers, and dependency edges to event triggers, aggregates/window functions, and editable DDL.
 
 ## Related decisions
 
@@ -65,3 +65,4 @@ The next integration steps are:
 - [ADR-0003: Use a driver-owned PostgreSQL cancellation control plane](decisions/ADR-0003-postgres-query-cancellation.md)
 - [ADR-0006: Add overload-safe routine metadata](decisions/ADR-0006-overload-safe-routine-metadata.md)
 - [ADR-0007: Model relation triggers as top-level metadata](decisions/ADR-0007-driver-neutral-trigger-metadata.md)
+- [ADR-0008: Return a driver-owned object dependency snapshot](decisions/ADR-0008-driver-owned-dependency-snapshot.md)

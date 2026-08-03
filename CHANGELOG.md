@@ -26,6 +26,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Bidirectional foreign-key Inspector with composite column pairing, referential actions, and live PostgreSQL contract coverage.
 - Overload-safe PostgreSQL function/procedure Explorer, read-only database-rendered DDL Inspector, routine completion, and SQLite's explicit empty routine contract.
 - Driver-neutral PostgreSQL/SQLite Trigger Explorer with activation modes, timing/events, owner navigation, conditions, and read-only DDL.
+- Driver-owned direct dependency graph with indexed Depends on / Used by navigation for foreign keys, view references, trigger functions, and trigger owners.
 
 ## [0.1.0] — 2026-08-03
 

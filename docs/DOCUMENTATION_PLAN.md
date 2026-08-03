@@ -17,6 +17,7 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 - `docs/metadata-explorer.md` — schemas, tables, views, columns, indexes, foreign keys, routines
 - `docs/routine-inspector.md` — overload identity, database-rendered DDL, safety boundary
 - `docs/trigger-inspector.md` — trigger activation, ownership, database-rendered DDL
+- `docs/dependency-inspector.md` — direct dependency direction, navigation, identity, driver limits
 - `docs/export.md` — CSV/JSON/Excel/SQL export와 대용량 데이터 주의사항
 - `docs/safe-mode.md` — 위험 쿼리 감지, transaction, estimated affected rows
 - `docs/workspaces.md` — `queries/`, favorites, history, settings 관리

@@ -52,6 +52,7 @@ for (const required of [
   "docs/metadata-explorer.md",
   "docs/routine-inspector.md",
   "docs/trigger-inspector.md",
+  "docs/dependency-inspector.md",
   "docs/results.md",
   "docs/troubleshooting.md",
   "docs/postgres-driver.md",
@@ -106,6 +107,7 @@ const workspaceFiles = [
   "packages/shared/src/index.ts",
   "packages/core/src/inMemoryDriver.ts",
   "packages/core/src/foreignKeyIndex.ts",
+  "packages/core/src/dependencyIndex.ts",
   "packages/core/src/csvExport.ts",
 ];
 for (const file of workspaceFiles)
