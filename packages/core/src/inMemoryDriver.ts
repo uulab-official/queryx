@@ -337,6 +337,18 @@ export class InMemoryDriver implements DatabaseDriver {
       };
       signal?.addEventListener("abort", cancel, { once: true });
     });
+    if (/^\s*EXPLAIN\b/i.test(sql)) {
+      return {
+        columns: [{ name: "QUERY PLAN", type: "text", nullable: false }],
+        rows: [
+          { "QUERY PLAN": "Seq Scan on orders  (cost=0.00..24.80 rows=10)" },
+          { "QUERY PLAN": "  Filter: (status = 'paid')" },
+        ],
+        executionTime: 12,
+        affectedRows: 0,
+        warnings: ["Estimated plan only; the statement was not executed"],
+      };
+    }
     const safety = inspectQuerySafety(sql);
     return {
       columns: [

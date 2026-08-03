@@ -9,7 +9,7 @@ import type {
 import { createRuntimeDriver } from "./nativeDriver";
 
 type ResultView = "table" | "json";
-export type RunMode = "normal" | "transaction" | "execute-anyway";
+export type RunMode = "normal" | "transaction" | "execute-anyway" | "explain";
 export type ExecutionStatus =
   | "idle"
   | "running"
@@ -57,6 +57,7 @@ interface QueryState {
   isRunning: boolean;
   executionStatus: ExecutionStatus;
   canCancel: boolean;
+  canExplain: boolean;
   toast: string | null;
   history: QueryHistoryEntry[];
   driver: DatabaseDriver;
@@ -212,6 +213,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     isRunning: false,
     executionStatus: "idle",
     canCancel: driver.capabilities().has("cancel"),
+    canExplain: driver.capabilities().has("explain"),
     toast: null,
     history: readHistory(),
     driver,
@@ -292,11 +294,13 @@ export const useQueryStore = create<QueryState>((set, get) => {
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
           label:
-            executedSql
-              .split("\n")
-              .find((line) => line.trim() && !line.trim().startsWith("--"))
-              ?.trim()
-              .slice(0, 32) ?? "Untitled query",
+            mode === "explain"
+              ? "Explain plan"
+              : (executedSql
+                  .split("\n")
+                  .find((line) => line.trim() && !line.trim().startsWith("--"))
+                  ?.trim()
+                  .slice(0, 32) ?? "Untitled query"),
           sql: executedSql,
           executedAt: new Date().toISOString(),
           status: "success",
@@ -306,7 +310,10 @@ export const useQueryStore = create<QueryState>((set, get) => {
           result,
           executionStatus: "success",
           connectionStatus: "connected",
-          toast: "Query completed successfully",
+          toast:
+            mode === "explain"
+              ? "Explain plan completed; the statement was not executed"
+              : "Query completed successfully",
         });
         window.setTimeout(() => set({ toast: null }), 2200);
       } catch (error) {
@@ -314,7 +321,11 @@ export const useQueryStore = create<QueryState>((set, get) => {
           error instanceof DOMException && error.name === "AbortError";
         get().addHistory({
           id: crypto.randomUUID(),
-          label: wasCancelled ? "Query cancelled" : "Query failed",
+          label: wasCancelled
+            ? "Query cancelled"
+            : mode === "explain"
+              ? "Explain failed"
+              : "Query failed",
           sql: sqlOverride?.trim() || get().sql,
           executedAt: new Date().toISOString(),
           status: wasCancelled ? "cancelled" : "error",
@@ -347,6 +358,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         set({
           metadata,
           canCancel: get().driver.capabilities().has("cancel"),
+          canExplain: get().driver.capabilities().has("explain"),
           selectedObject:
             selected && objectStillExists(metadata, selected)
               ? selected
@@ -385,6 +397,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           driver: nextDriver,
           driverKind: nextDriver.kind,
           canCancel: nextDriver.capabilities().has("cancel"),
+          canExplain: nextDriver.capabilities().has("explain"),
           connectionName: config.name,
           connectionStatus: "connected",
           connectionError: null,

@@ -58,6 +58,7 @@ The next integration steps are:
 3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to schema-aware DDL diffing and migration history. The current safe editor handoff is documented in [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
+6. Add structured plan trees and explicit `EXPLAIN ANALYZE` controls on top of the current non-executing Explain slice documented in [ADR-0012](decisions/ADR-0012-non-executing-explain-slice.md).
 
 ## Related decisions
 
@@ -69,3 +70,4 @@ The next integration steps are:
 - [ADR-0008: Return a driver-owned object dependency snapshot](decisions/ADR-0008-driver-owned-dependency-snapshot.md)
 - [ADR-0009: Model event triggers as database-scoped objects](decisions/ADR-0009-database-scoped-event-triggers.md)
 - [ADR-0011: Use a safe editor handoff for DDL changes](decisions/ADR-0011-safe-ddl-editor-handoff.md)
+- [ADR-0012: Reuse the execution path for non-executing EXPLAIN plans](decisions/ADR-0012-non-executing-explain-slice.md)

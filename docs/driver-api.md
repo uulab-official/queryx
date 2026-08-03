@@ -23,6 +23,7 @@ interface DatabaseDriver {
 - `transaction()` must not silently commit a failed workflow.
 - `disconnect()` releases the connection and any driver-owned resources.
 - `capabilities()` describes optional behavior instead of making the UI infer support from vendor names.
+- Drivers advertising `explain` must accept a vendor-compatible non-executing `EXPLAIN` statement through `execute()`. The UI never generates `EXPLAIN ANALYZE` in the baseline plan action.
 
 ## Result contract
 

@@ -9,6 +9,8 @@ The SQLite implementation is exposed through generic commands:
 - `connect_database` — selects the SQLite factory, opens `:memory:` or a file, and returns an opaque connection ID
 - `execute_query` — executes a read or write statement and returns the common result model
 - `execute_query_transaction` — executes one statement inside a native transaction
+
+SQLite advertises `explain`. QueryX wraps one active SQL statement with SQLite's `EXPLAIN` and renders the virtual-machine plan rows in the normal result grid. The action is non-executing and does not use `EXPLAIN ANALYZE`.
 - `database_metadata` — returns schemas, tables, views, columns, indexes, foreign keys, triggers, FK/trigger-owner dependencies, and explicit empty PostgreSQL-routine/event-trigger arrays for Explorer/Inspector
 - `disconnect_database` — closes and removes the connection from managed state
 

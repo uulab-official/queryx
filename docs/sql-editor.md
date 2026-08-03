@@ -14,6 +14,8 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 4. On a driver with cancellation support, choose **Cancel** or press Escape while a query is running.
 5. Close the active tab with Cmd/Ctrl+W or its close button. QueryX confirms before discarding modified SQL and always keeps at least one editable tab open.
 
+Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
+
 ## DDL handoff
 
 From a relation, trigger, event-trigger, or function/procedure Inspector, choose **Edit in SQL** to open the reconstructed definition in a new tab. The handoff never executes automatically. Review and modify the statement like any other query, then choose **Run in Transaction** to execute the complete document through the native transaction path. A failed statement rolls back the transaction and keeps the SQL tab available for correction.
@@ -29,6 +31,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation
 - Run in Transaction — execute the complete active document in one native transaction
+- Explain — show a non-executing plan for the active document
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available
 
 ## Safety and privacy
@@ -47,6 +50,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs are session state and are not restored after restart yet.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
+- Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
 
 ## Related
 

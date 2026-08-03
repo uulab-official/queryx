@@ -4,6 +4,8 @@
 
 The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and direct object dependencies.
 
+PostgreSQL advertises `explain`. QueryX sends a single `EXPLAIN` statement through the existing execution and cancellation path, so PostgreSQL returns its text plan as normal result rows. The baseline action does not add `ANALYZE` and therefore does not execute the target statement.
+
 ## Routine catalog
 
 One batched `pg_proc` query loads visible functions, procedures, aggregates, and window functions. QueryX uses routine OIDs only as opaque identities for the active metadata snapshot, identity arguments to distinguish overloads in the UI, and `pg_get_function_result` for return shapes. A `pg_aggregate` left join provides aggregate mode (`normal`, `ordered-set`, or `hypothetical-set`) and direct-argument count. `pg_get_functiondef` is limited to ordinary functions and procedures; aggregate and window entries intentionally have no executable DDL panel.

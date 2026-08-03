@@ -10,6 +10,7 @@ import {
 import {
   buildDependencyIndex,
   buildForeignKeyIndex,
+  buildExplainQuery,
   inspectQuerySafety,
   serializeRowsToCsv,
 } from "@queryx/core";
@@ -71,6 +72,7 @@ function App() {
     isRunning,
     executionStatus,
     canCancel,
+    canExplain,
     toast,
     history,
     driverKind,
@@ -123,6 +125,19 @@ function App() {
     }
     setPendingSafety(null);
     void runQuery(mode, executableSql);
+  };
+  const handleExplain = () => {
+    if (!canExplain) {
+      notify("Explain plans are not supported by this connection");
+      return;
+    }
+    const explain = buildExplainQuery(sql);
+    if (!explain.ok) {
+      notify(explain.error.message);
+      return;
+    }
+    setPendingSafety(null);
+    void runQuery("explain", explain.query.sql);
   };
   const requestCloseQuery = (id: string) => {
     const tab = tabs.find((candidate) => candidate.id === id);
@@ -890,8 +905,12 @@ function App() {
                 <button
                   type="button"
                   className="toolbar-button"
-                  onClick={() =>
-                    notify("Explain plan is available for connected drivers")
+                  onClick={handleExplain}
+                  disabled={isRunning || !canExplain}
+                  title={
+                    canExplain
+                      ? "Show a non-executing plan for the active SQL document"
+                      : "Explain plans are not supported by this connection"
                   }
                 >
                   Explain

@@ -17,3 +17,9 @@ export type {
 export { InMemoryDriver } from "./inMemoryDriver";
 export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
+export { buildExplainQuery } from "./explain";
+export type {
+  ExplainQuery,
+  ExplainQueryError,
+  ExplainQueryResult,
+} from "./explain";

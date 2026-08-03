@@ -73,6 +73,24 @@ describe("InMemoryDriver", () => {
     expect(result.warnings).toEqual(["No WHERE clause detected"]);
   });
 
+  it("returns a deterministic non-executing plan", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+
+    const result = await driver.execute("EXPLAIN SELECT * FROM orders");
+
+    expect(result.columns[0]?.name).toBe("QUERY PLAN");
+    expect(result.rows[0]?.["QUERY PLAN"]).toContain("Seq Scan");
+    expect(result.affectedRows).toBe(0);
+    expect(result.warnings).toEqual([
+      "Estimated plan only; the statement was not executed",
+    ]);
+  });
+
   it("honors an already-aborted signal", async () => {
     const driver = new InMemoryDriver();
     await driver.connect({
