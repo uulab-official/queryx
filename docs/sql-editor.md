@@ -11,7 +11,8 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 1. Open a connection and create a tab with **+ New query** or Cmd/Ctrl+T.
 2. Enter SQL. Use Ctrl+Space to open schema, table, and column suggestions.
 3. Press Cmd/Ctrl+Enter to execute the active selection. With no selection, QueryX executes the full document.
-4. Close the active tab with Cmd/Ctrl+W or its close button. QueryX confirms before discarding modified SQL and always keeps at least one editable tab open.
+4. On a driver with cancellation support, choose **Cancel** or press Escape while a query is running.
+5. Close the active tab with Cmd/Ctrl+W or its close button. QueryX confirms before discarding modified SQL and always keeps at least one editable tab open.
 
 ## Keyboard behavior
 
@@ -22,6 +23,7 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 - Cmd/Ctrl+F while editing — Monaco find
 - Cmd/Ctrl+F outside the editor — focus result filtering
 - Ctrl+Space — show metadata completion
+- Escape — cancel an active query when the driver advertises cancellation
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available
 
 ## Safety and privacy
@@ -39,7 +41,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - SQL formatting is still a lightweight placeholder and needs a dialect-aware formatter.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs are session state and are not restored after restart yet.
-- Native query cancellation is not implemented yet.
+- SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
 
 ## Related
 

@@ -37,6 +37,8 @@ function App() {
     resultView,
     filter,
     isRunning,
+    executionStatus,
+    canCancel,
     toast,
     history,
     driverKind,
@@ -51,6 +53,7 @@ function App() {
     setResultView,
     setSelectedTable,
     runQuery,
+    cancelQuery,
     loadMetadata,
     connectDatabase,
     notify,
@@ -127,6 +130,10 @@ function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
         event.preventDefault();
         requestCloseQuery(activeTabId);
+      }
+      if (event.key === "Escape" && isRunning && canCancel) {
+        event.preventDefault();
+        cancelQuery();
       }
     };
     window.addEventListener("keydown", listener);
@@ -352,7 +359,7 @@ function App() {
                     key={entry.id}
                     name={entry.label}
                     time={relativeTime(entry.executedAt)}
-                    error={entry.status === "error"}
+                    status={entry.status}
                     onClick={() => setSql(entry.sql)}
                   />
                 ))
@@ -360,7 +367,11 @@ function App() {
               <>
                 <Recent name="Daily revenue" time="2 minutes ago" />
                 <Recent name="Active subscriptions" time="Yesterday" />
-                <Recent name="Migration check" time="Yesterday" error />
+                <Recent
+                  name="Migration check"
+                  time="Yesterday"
+                  status="error"
+                />
               </>
             )}
           </div>
@@ -420,12 +431,19 @@ function App() {
             <div className="editor-toolbar">
               <div>
                 <button
-                  className="run-button"
-                  onClick={() => editorRef.current?.runSelectionOrDocument()}
-                  disabled={isRunning}
+                  className={
+                    isRunning && canCancel ? "cancel-button" : "run-button"
+                  }
+                  onClick={() =>
+                    isRunning
+                      ? cancelQuery()
+                      : editorRef.current?.runSelectionOrDocument()
+                  }
+                  disabled={isRunning && !canCancel}
                 >
-                  <span>{isRunning ? "◌" : "▶"}</span>{" "}
-                  {isRunning ? "Running…" : "Run"} <kbd>⌘↵</kbd>
+                  <span>{isRunning ? (canCancel ? "■" : "◌") : "▶"}</span>{" "}
+                  {isRunning ? (canCancel ? "Cancel" : "Running…") : "Run"}{" "}
+                  <kbd>{isRunning && canCancel ? "Esc" : "⌘↵"}</kbd>
                 </button>
                 <button
                   className="toolbar-button"
@@ -517,9 +535,15 @@ function App() {
             <div className="results-toolbar">
               <span className="result-meta">
                 <i />{" "}
-                {result
-                  ? "Query completed successfully"
-                  : "Ready to run a query"}
+                {executionStatus === "running"
+                  ? "Query running…"
+                  : executionStatus === "cancelled"
+                    ? "Query cancelled"
+                    : executionStatus === "error"
+                      ? "Query failed"
+                      : result
+                        ? "Query completed successfully"
+                        : "Ready to run a query"}
                 {result?.warnings.map((warning) => (
                   <span className="result-warning" key={warning}>
                     ⚠ {warning}
@@ -666,14 +690,18 @@ function TreeRow({
 function Recent({
   name,
   time,
-  error = false,
+  status = "success",
   onClick,
-}: { name: string; time: string; error?: boolean; onClick?: () => void }) {
+}: {
+  name: string;
+  time: string;
+  status?: "success" | "error" | "cancelled";
+  onClick?: () => void;
+}) {
+  const icon = status === "error" ? "×" : status === "cancelled" ? "■" : "✓";
   return (
     <button className="recent-query" onClick={onClick}>
-      <span className={`query-status ${error ? "error" : "success"}`}>
-        {error ? "×" : "✓"}
-      </span>
+      <span className={`query-status ${status}`}>{icon}</span>
       <span>
         <strong>{name}</strong>
         <small>{time}</small>

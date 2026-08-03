@@ -16,13 +16,23 @@ pub async fn connect_database(
 }
 
 #[tauri::command]
+pub async fn prepare_query(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+    query_id: String,
+) -> Result<(), AppError> {
+    state.prepare(&connection_id, &query_id).await
+}
+
+#[tauri::command]
 pub async fn execute_query(
     state: State<'_, DriverRegistry>,
     connection_id: String,
+    query_id: String,
     sql: String,
 ) -> Result<QueryResult, AppError> {
     state
-        .execute(&connection_id, &sql, ExecutionMode::Direct)
+        .execute(&connection_id, &query_id, &sql, ExecutionMode::Direct)
         .await
 }
 
@@ -30,11 +40,21 @@ pub async fn execute_query(
 pub async fn execute_query_transaction(
     state: State<'_, DriverRegistry>,
     connection_id: String,
+    query_id: String,
     sql: String,
 ) -> Result<QueryResult, AppError> {
     state
-        .execute(&connection_id, &sql, ExecutionMode::Transaction)
+        .execute(&connection_id, &query_id, &sql, ExecutionMode::Transaction)
         .await
+}
+
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+    query_id: String,
+) -> Result<bool, AppError> {
+    state.cancel(&connection_id, &query_id).await
 }
 
 #[tauri::command]

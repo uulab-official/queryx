@@ -7,6 +7,7 @@ use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     Column, Row, SqlitePool, TypeInfo, ValueRef,
 };
+use uuid::Uuid;
 
 use crate::{
     driver::{DatabaseDriver, ExecutionMode},
@@ -57,8 +58,17 @@ impl DatabaseDriver for SqliteDriver {
         vec![DriverCapability::Transactions, DriverCapability::Explain]
     }
 
-    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError> {
+    async fn execute(
+        &self,
+        _query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+    ) -> Result<QueryResult, AppError> {
         execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
+    }
+
+    async fn cancel(&self, _query_id: Uuid) -> Result<bool, AppError> {
+        Err(AppError::CancellationUnsupported(self.kind().to_string()))
     }
 
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
@@ -255,6 +265,7 @@ mod tests {
             .expect("connect sqlite memory database");
         let result = driver
             .execute(
+                Uuid::new_v4(),
                 "UPDATE orders SET status = 'review' WHERE id = 1",
                 ExecutionMode::Transaction,
             )

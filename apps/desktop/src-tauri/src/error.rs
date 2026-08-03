@@ -10,6 +10,14 @@ pub enum AppError {
     InvalidPostgresConfig(String),
     #[error("driver is not implemented yet: {0}")]
     UnsupportedDriver(String),
+    #[error("invalid query id: {0}")]
+    InvalidQueryId(String),
+    #[error("query cancellation is not supported by the {0} driver")]
+    CancellationUnsupported(String),
+    #[error("query was cancelled")]
+    QueryCancelled,
+    #[error("query id is already active: {0}")]
+    DuplicateQueryId(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

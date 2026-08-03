@@ -80,7 +80,20 @@ export class InMemoryDriver implements DatabaseDriver {
     if (signal?.aborted) {
       throw new DOMException('Query cancelled', 'AbortError');
     }
-    await new Promise((resolve) => setTimeout(resolve, 120));
+    const delay = /\bpg_sleep\s*\(/i.test(sql) ? 30_000 : 120;
+    await new Promise<void>((resolve, reject) => {
+      const complete = () => {
+        signal?.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const timeout = setTimeout(complete, delay);
+      const cancel = () => {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', cancel);
+        reject(new DOMException('Query cancelled', 'AbortError'));
+      };
+      signal?.addEventListener('abort', cancel, { once: true });
+    });
     const safety = inspectQuerySafety(sql);
     return {
       columns: [

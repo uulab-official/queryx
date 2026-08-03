@@ -21,6 +21,7 @@ export class TauriDatabaseDriver implements DatabaseDriver {
   readonly kind: DriverKind;
   private connectionId: string | null = null;
   private transactionMode = false;
+  private driverCapabilities = new Set<DriverCapability>();
 
   constructor(kind: DriverKind) {
     this.kind = kind;
@@ -40,16 +41,68 @@ export class TauriDatabaseDriver implements DatabaseDriver {
       },
     });
     this.connectionId = connection.id;
+    this.driverCapabilities = new Set(connection.capabilities);
   }
 
   async execute(sql: string, signal?: AbortSignal): Promise<QueryResult> {
     if (signal?.aborted)
       throw new DOMException("Query cancelled", "AbortError");
     const connectionId = this.requireConnection();
+    const queryId = crypto.randomUUID();
+    const canCancel = this.driverCapabilities.has("cancel");
     const command = this.transactionMode
       ? "execute_query_transaction"
       : "execute_query";
-    return invoke<QueryResult>(command, { connectionId, sql });
+    if (canCancel) {
+      await invoke("prepare_query", { connectionId, queryId });
+      if (signal?.aborted) {
+        const cancelled = await invoke<boolean>("cancel_query", {
+          connectionId,
+          queryId,
+        });
+        if (cancelled) throw new DOMException("Query cancelled", "AbortError");
+        throw new Error("Database did not confirm query cancellation");
+      }
+    }
+
+    let cancellation: Promise<boolean> | null = null;
+    const cancel = () => {
+      cancellation ??= invoke<boolean>("cancel_query", {
+        connectionId,
+        queryId,
+      });
+    };
+    if (canCancel) signal?.addEventListener("abort", cancel, { once: true });
+
+    try {
+      const result = await invoke<QueryResult>(command, {
+        connectionId,
+        queryId,
+        sql,
+      });
+      if (canCancel && signal?.aborted) {
+        const cancelled = await cancellation;
+        if (cancelled) throw new DOMException("Query cancelled", "AbortError");
+      }
+      return result;
+    } catch (error) {
+      if (canCancel && signal?.aborted) {
+        let cancelled: boolean;
+        try {
+          cancelled = (await cancellation) ?? false;
+        } catch (cancellationError) {
+          const message =
+            cancellationError instanceof Error
+              ? cancellationError.message
+              : String(cancellationError);
+          throw new Error(`Query cancellation failed: ${message}`);
+        }
+        if (cancelled) throw new DOMException("Query cancelled", "AbortError");
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+    }
   }
 
   async metadata(): Promise<DatabaseMetadata> {
@@ -71,10 +124,11 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     if (!this.connectionId) return;
     await invoke("disconnect_database", { connectionId: this.connectionId });
     this.connectionId = null;
+    this.driverCapabilities.clear();
   }
 
   capabilities(): ReadonlySet<DriverCapability> {
-    return new Set(["transactions", "explain"]);
+    return new Set(this.driverCapabilities);
   }
 
   private requireConnection(): string {

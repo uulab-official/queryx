@@ -14,8 +14,10 @@ pub fn run() {
         .manage(DriverRegistry::default())
         .invoke_handler(tauri::generate_handler![
             commands::connect_database,
+            commands::prepare_query,
             commands::execute_query,
             commands::execute_query_transaction,
+            commands::cancel_query,
             commands::database_metadata,
             commands::disconnect_database,
         ])

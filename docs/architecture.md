@@ -45,7 +45,9 @@ The Monaco implementation is loaded through a React lazy boundary. The base appl
 
 ## Native driver selection
 
-The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` with the selected driver kind. The native registry factory is the only vendor-selection boundary. Native connections live behind `Arc<dyn DatabaseDriver>`, so execute, metadata, transaction, and disconnect handlers remain vendor-neutral.
+The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` with the selected driver kind. The native registry factory is the only vendor-selection boundary. Native connections live behind `Arc<dyn DatabaseDriver>`, so prepare, execute, cancel, metadata, transaction, and disconnect handlers remain vendor-neutral.
+
+Each execution receives an opaque UUID. The frontend maps `AbortSignal` to generic prepare, execute, and cancel commands. PostgreSQL keeps a per-connection active-query state machine and uses a separate one-connection control pool to call parameterized `pg_cancel_backend($1)`. The execution connection is retained until an in-flight cancellation request completes, preventing a late signal from targeting a later query that reused the same backend PID. SQLite does not advertise the `cancel` capability.
 
 PostgreSQL passwords cross only the local Tauri IPC boundary and remain in process memory for the current session. They are not placed in Zustand, localStorage, SQLite, logs, or connection summaries.
 
@@ -53,6 +55,11 @@ The next integration steps are:
 
 1. Add a native file picker and saved SQLite connection profiles.
 2. Store saved profile secrets in the OS keychain.
-3. Add cancellation and long-query progress channels.
+3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
 5. Expand the metadata contract to indexes, views, triggers, and DDL.
+
+## Related decisions
+
+- [ADR-0002: Use a driver-neutral native registry](decisions/ADR-0002-native-driver-contract.md)
+- [ADR-0003: Use a driver-owned PostgreSQL cancellation control plane](decisions/ADR-0003-postgres-query-cancellation.md)

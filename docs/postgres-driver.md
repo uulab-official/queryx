@@ -2,11 +2,19 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, columns, estimated row counts, and primary keys.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, columns, estimated row counts, and primary keys.
 
 ## Connection behavior
 
 The connection dialog maps host, port, database, username, optional password, and SSL mode to `PgConnectOptions`. The pool uses the `QueryX` application name, at most five connections, and a ten-second acquisition timeout. Passwords are never returned in `ConnectionSummary`.
+
+## Query cancellation
+
+Every native execution is prepared with a random query UUID before it starts. The driver tracks the UUID through pending, running, cancelling, cancelled, and finished states. Once running, the state contains only the PostgreSQL backend PID; SQL text and credentials are never stored in the cancellation registry.
+
+SQLx 0.8 does not expose PostgreSQL's protocol cancellation token, so QueryX uses a separate lazy one-connection control pool and executes `SELECT pg_cancel_backend($1)` with a bound integer PID. The same database identity is used, keeping PostgreSQL's normal authorization rules in force. The execution connection is not returned to the main pool until a cancellation request has completed, which prevents a delayed signal from cancelling a later query on a reused backend.
+
+The Cancel button and Escape shortcut are shown only when the active driver reports the `cancel` capability. A PostgreSQL role that cannot cancel the target backend will return a cancellation failure instead of silently claiming success.
 
 ## Result mapping
 
@@ -32,11 +40,11 @@ export QUERYX_TEST_POSTGRES_PASSWORD=local-test-only
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_driver
 ```
 
-Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted.
+Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it, and requires completion within three seconds.
 
 ## Known limitations
 
-- Query cancellation is not connected to PostgreSQL cancellation tokens yet.
+- Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
 - Indexes, views, functions, triggers, and DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.

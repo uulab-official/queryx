@@ -10,13 +10,19 @@ import { createRuntimeDriver } from "./nativeDriver";
 
 type ResultView = "table" | "json";
 export type RunMode = "normal" | "transaction" | "execute-anyway";
+export type ExecutionStatus =
+  | "idle"
+  | "running"
+  | "success"
+  | "cancelled"
+  | "error";
 
 export interface QueryHistoryEntry {
   id: string;
   label: string;
   sql: string;
   executedAt: string;
-  status: "success" | "error";
+  status: "success" | "error" | "cancelled";
 }
 
 export interface QueryTab {
@@ -36,6 +42,8 @@ interface QueryState {
   resultView: ResultView;
   filter: string;
   isRunning: boolean;
+  executionStatus: ExecutionStatus;
+  canCancel: boolean;
   toast: string | null;
   history: QueryHistoryEntry[];
   driver: DatabaseDriver;
@@ -51,6 +59,7 @@ interface QueryState {
   setResultView: (view: ResultView) => void;
   setSelectedTable: (table: string) => void;
   runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<void>;
+  cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
@@ -106,6 +115,7 @@ ORDER BY day DESC;`;
 
 export const useQueryStore = create<QueryState>((set, get) => {
   const driver = createRuntimeDriver();
+  let activeQueryController: AbortController | null = null;
   const initialSql =
     driver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
   let driverReady = driver.connect({
@@ -130,6 +140,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
     resultView: "table",
     filter: "",
     isRunning: false,
+    executionStatus: "idle",
+    canCancel: driver.capabilities().has("cancel"),
     toast: null,
     history: readHistory(),
     driver,
@@ -193,11 +205,15 @@ export const useQueryStore = create<QueryState>((set, get) => {
     setResultView: (resultView) => set({ resultView }),
     setSelectedTable: (selectedTable) => set({ selectedTable }),
     runQuery: async (mode = "normal", sqlOverride) => {
-      set({ isRunning: true });
+      if (get().isRunning) return;
+      const controller = new AbortController();
+      activeQueryController = controller;
+      set({ isRunning: true, executionStatus: "running" });
       try {
         await driverReady;
         const executedSql = sqlOverride?.trim() || get().sql;
-        const execute = () => get().driver.execute(executedSql);
+        const execute = () =>
+          get().driver.execute(executedSql, controller.signal);
         const result =
           mode === "transaction"
             ? await get().driver.transaction(execute)
@@ -217,24 +233,40 @@ export const useQueryStore = create<QueryState>((set, get) => {
         get().addHistory(historyEntry);
         set({
           result,
-          isRunning: false,
+          executionStatus: "success",
           connectionStatus: "connected",
           toast: "Query completed successfully",
         });
         window.setTimeout(() => set({ toast: null }), 2200);
       } catch (error) {
+        const wasCancelled =
+          error instanceof DOMException && error.name === "AbortError";
         get().addHistory({
           id: crypto.randomUUID(),
-          label: "Query failed",
+          label: wasCancelled ? "Query cancelled" : "Query failed",
           sql: sqlOverride?.trim() || get().sql,
           executedAt: new Date().toISOString(),
-          status: "error",
+          status: wasCancelled ? "cancelled" : "error",
         });
         set({
-          isRunning: false,
-          toast: error instanceof Error ? error.message : "Query failed",
+          executionStatus: wasCancelled ? "cancelled" : "error",
+          toast: wasCancelled
+            ? "Query cancelled"
+            : error instanceof Error
+              ? error.message
+              : "Query failed",
         });
+      } finally {
+        if (activeQueryController === controller) {
+          activeQueryController = null;
+          set({ isRunning: false });
+        }
       }
+    },
+    cancelQuery: () => {
+      if (!get().isRunning || !get().canCancel) return;
+      activeQueryController?.abort();
+      set({ toast: "Cancelling query…" });
     },
     loadMetadata: async () => {
       try {
@@ -242,6 +274,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         const metadata = await get().driver.metadata();
         set({
           metadata,
+          canCancel: get().driver.capabilities().has("cancel"),
           selectedTable: metadata.tables[0]
             ? `${metadata.tables[0].schema}.${metadata.tables[0].name}`
             : "",
@@ -278,6 +311,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         set({
           driver: nextDriver,
           driverKind: nextDriver.kind,
+          canCancel: nextDriver.capabilities().has("cancel"),
           connectionName: config.name,
           connectionStatus: "connected",
           connectionError: null,
@@ -294,6 +328,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               )
             : get().tabs,
           result: null,
+          executionStatus: "idle",
           toast: `Connected to ${config.name}`,
         });
         window.setTimeout(() => set({ toast: null }), 2200);

@@ -35,10 +35,11 @@ The original dependency-free preview can still be opened directly from `index.ht
 - Dynamic query results for arbitrary columns with table and JSON views
 - Monaco SQL editing with syntax highlighting, schema/table/column completion, multi-tab models, and selected-query execution
 - Run, format, filter, sort, and JSON result interactions
+- PostgreSQL server-side query cancellation from the toolbar or Escape key
 - Schema tree collapse/expand and table switching with column metadata
 - Local-first status messaging and no-network static runtime
 - Connection status, failure feedback, and schema-aware Explorer metadata
 
 ## Project direction
 
-The browser frontend uses an in-memory PostgreSQL-shaped fallback. The Tauri runtime opens a seeded SQLite `:memory:` database by default and can switch to a real PostgreSQL server from the connection dialog. Saved profiles, OS keychain integration, query cancellation, and broader metadata remain on the roadmap.
+The browser frontend uses an in-memory PostgreSQL-shaped fallback. The Tauri runtime opens a seeded SQLite `:memory:` database by default and can switch to a real PostgreSQL server from the connection dialog. PostgreSQL advertises native cancellation; SQLite deliberately does not until an interrupt-safe implementation is available. Saved profiles, OS keychain integration, and broader metadata remain on the roadmap.

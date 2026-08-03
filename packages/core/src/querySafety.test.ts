@@ -76,4 +76,19 @@ describe("InMemoryDriver", () => {
       driver.execute("SELECT 1", controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
   });
+
+  it("cancels an in-flight query", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    const controller = new AbortController();
+    const execution = driver.execute("SELECT pg_sleep(10)", controller.signal);
+
+    controller.abort();
+
+    await expect(execution).rejects.toMatchObject({ name: "AbortError" });
+  });
 });

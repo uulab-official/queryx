@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { InMemoryDriver } from "@queryx/core";
 import { useQueryStore, type QueryTab } from "./store";
 
 const initialTab: QueryTab = {
@@ -14,7 +15,30 @@ describe("query tabs", () => {
       tabs: [initialTab],
       activeTabId: initialTab.id,
       sql: initialTab.sql,
+      isRunning: false,
+      executionStatus: "idle",
+      toast: null,
     });
+  });
+
+  it("cancels an in-flight query through the store", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    useQueryStore.setState({ driver, canCancel: true, sql: "SELECT 1" });
+
+    const execution = useQueryStore.getState().runQuery();
+    await Promise.resolve();
+    useQueryStore.getState().cancelQuery();
+    await execution;
+
+    expect(useQueryStore.getState().isRunning).toBe(false);
+    expect(useQueryStore.getState().executionStatus).toBe("cancelled");
+    expect(useQueryStore.getState().toast).toBe("Query cancelled");
+    expect(useQueryStore.getState().history[0]?.status).toBe("cancelled");
   });
 
   it("preserves each document while switching tabs", () => {

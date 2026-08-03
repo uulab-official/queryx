@@ -17,6 +17,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Dynamic result columns, PostgreSQL type labels, schema-aware Explorer nodes, and unsupported-type warnings.
 - Monaco SQL editor with syntax highlighting, metadata-aware completion, cursor/selection status, and lazy loading.
 - Multi-tab query documents with independent Monaco models, undo history, dirty state, keyboard creation/closing, and selected-SQL execution.
+- Capability-driven PostgreSQL query cancellation with AbortSignal, Escape/toolbar controls, an isolated cancellation pool, and race-condition tests.
 
 ## [0.1.0] — 2026-08-03
 

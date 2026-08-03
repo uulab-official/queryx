@@ -30,6 +30,7 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] 세션 전용 credential 입력을 제공하는 connection dialog
 - [x] 임의 query column을 렌더링하는 dynamic result grid
 - [x] Monaco 기반 SQL editor, 독립 undo 모델을 가진 multi-tab, metadata autocomplete
+- [x] PostgreSQL 서버측 query cancellation과 capability 기반 Cancel UI
 
 ## v0.1 — Local database workflow
 
@@ -49,7 +50,7 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [ ] Query history와 favorites의 SQLite local storage
 - [ ] OS keychain 연동; 비밀번호를 SQLite나 workspace 파일에 저장하지 않음
 - [x] Ctrl/Cmd+Enter 전체/선택 SQL 실행과 오류 상태 처리
-- [ ] 실행 중인 native query 취소
+- [x] 실행 중인 PostgreSQL native query 취소(SQLite는 capability 미노출)
 
 완료 기준:
 

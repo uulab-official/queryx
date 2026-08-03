@@ -58,6 +58,7 @@ pub struct ConnectionSummary {
 pub enum DriverCapability {
     Transactions,
     Explain,
+    Cancel,
 }
 
 #[derive(Debug, Serialize)]

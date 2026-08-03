@@ -369,6 +369,10 @@ button:disabled {
   color: var(--red);
   background: rgba(255, 115, 115, 0.12);
 }
+.query-status.cancelled {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+}
 .storage-note {
   display: flex;
   align-items: center;
@@ -516,6 +520,7 @@ button:disabled {
 }
 .toolbar-button,
 .run-button,
+.cancel-button,
 .result-actions button {
   height: 27px;
   padding: 0 9px;
@@ -529,10 +534,19 @@ button:disabled {
   color: #161b0c;
   font-weight: 750;
 }
+.cancel-button {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+  color: #fee2e2;
+}
+.cancel-button:hover {
+  background: #991b1b;
+}
 .run-button:hover {
   background: #efff9b;
 }
 .run-button kbd,
+.cancel-button kbd,
 .toolbar-button kbd {
   margin-left: 8px;
   color: #77804b;

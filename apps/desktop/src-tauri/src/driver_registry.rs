@@ -45,13 +45,28 @@ impl DriverRegistry {
     pub async fn execute(
         &self,
         connection_id: &str,
+        query_id: &str,
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
+        let query_id = parse_query_id(query_id)?;
         self.connection(connection_id)
             .await?
-            .execute(sql, mode)
+            .execute(query_id, sql, mode)
             .await
+    }
+
+    pub async fn prepare(&self, connection_id: &str, query_id: &str) -> Result<(), AppError> {
+        let query_id = parse_query_id(query_id)?;
+        self.connection(connection_id)
+            .await?
+            .prepare(query_id)
+            .await
+    }
+
+    pub async fn cancel(&self, connection_id: &str, query_id: &str) -> Result<bool, AppError> {
+        let query_id = parse_query_id(query_id)?;
+        self.connection(connection_id).await?.cancel(query_id).await
     }
 
     pub async fn metadata(&self, connection_id: &str) -> Result<DatabaseMetadata, AppError> {
@@ -84,6 +99,10 @@ fn parse_connection_id(connection_id: &str) -> Result<Uuid, AppError> {
     Uuid::parse_str(connection_id).map_err(|_| AppError::ConnectionNotFound(connection_id.into()))
 }
 
+fn parse_query_id(query_id: &str) -> Result<Uuid, AppError> {
+    Uuid::parse_str(query_id).map_err(|_| AppError::InvalidQueryId(query_id.into()))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::Value;
@@ -113,6 +132,7 @@ mod tests {
         let result = registry
             .execute(
                 &connection.id,
+                &Uuid::new_v4().to_string(),
                 "SELECT COUNT(*) AS orders FROM orders",
                 ExecutionMode::Direct,
             )
@@ -124,12 +144,31 @@ mod tests {
             .expect("metadata through generic registry");
 
         assert_eq!(connection.driver, DriverKind::Sqlite);
+        assert!(!connection
+            .capabilities
+            .contains(&crate::models::DriverCapability::Cancel));
         assert_eq!(result.rows[0]["orders"], Value::from(10));
         assert!(metadata.tables.iter().any(|table| table.name == "orders"));
         registry
             .disconnect(&connection.id)
             .await
             .expect("disconnect through generic registry");
+    }
+
+    #[tokio::test]
+    async fn sqlite_reports_cancellation_as_unsupported() {
+        let registry = DriverRegistry::default();
+        let connection = registry
+            .connect(sqlite_config())
+            .await
+            .expect("connect through generic registry");
+
+        let error = registry
+            .cancel(&connection.id, &Uuid::new_v4().to_string())
+            .await
+            .expect_err("SQLite must not advertise fake cancellation");
+
+        assert!(matches!(error, AppError::CancellationUnsupported(_)));
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration, time::Instant};
+use std::{collections::HashMap, sync::Arc, time::Duration, time::Instant};
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
@@ -7,8 +7,10 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use serde_json::Value;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions, PgRow, PgSslMode},
-    Column, PgPool, Postgres, Row, TypeInfo, ValueRef,
+    Column, Connection, PgConnection, PgPool, Postgres, Row, TypeInfo, ValueRef,
 };
+use tokio::sync::{Mutex, Notify, RwLock};
+use uuid::Uuid;
 
 use crate::{
     driver::{DatabaseDriver, ExecutionMode},
@@ -22,6 +24,104 @@ use crate::{
 pub struct PostgresDriver {
     database: String,
     pool: PgPool,
+    cancellation_pool: PgPool,
+    active_queries: RwLock<HashMap<Uuid, Arc<ActiveQuery>>>,
+}
+
+#[derive(Debug)]
+enum ActiveQueryState {
+    Pending,
+    Running(i32),
+    Cancelling,
+    Cancelled,
+    CancellationComplete(bool),
+    Finished,
+}
+
+#[derive(Debug)]
+struct ActiveQuery {
+    state: Mutex<ActiveQueryState>,
+    cancellation_complete: Notify,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CancelAction {
+    BeforeStart,
+    Send(i32),
+    AlreadyRequested,
+    TooLate,
+}
+
+impl ActiveQuery {
+    fn pending() -> Self {
+        Self {
+            state: Mutex::new(ActiveQueryState::Pending),
+            cancellation_complete: Notify::new(),
+        }
+    }
+
+    async fn activate(&self, process_id: i32) -> bool {
+        let mut state = self.state.lock().await;
+        match *state {
+            ActiveQueryState::Pending => {
+                *state = ActiveQueryState::Running(process_id);
+                true
+            }
+            ActiveQueryState::Cancelled => false,
+            _ => false,
+        }
+    }
+
+    async fn request_cancel(&self) -> CancelAction {
+        let mut state = self.state.lock().await;
+        match *state {
+            ActiveQueryState::Pending => {
+                *state = ActiveQueryState::Cancelled;
+                CancelAction::BeforeStart
+            }
+            ActiveQueryState::Running(process_id) => {
+                *state = ActiveQueryState::Cancelling;
+                CancelAction::Send(process_id)
+            }
+            ActiveQueryState::Cancelling
+            | ActiveQueryState::Cancelled
+            | ActiveQueryState::CancellationComplete(true) => CancelAction::AlreadyRequested,
+            ActiveQueryState::CancellationComplete(false) | ActiveQueryState::Finished => {
+                CancelAction::TooLate
+            }
+        }
+    }
+
+    async fn complete_cancellation(&self, cancelled: bool) {
+        *self.state.lock().await = ActiveQueryState::CancellationComplete(cancelled);
+        self.cancellation_complete.notify_waiters();
+    }
+
+    async fn finish_execution(&self) -> bool {
+        loop {
+            let notified = self.cancellation_complete.notified();
+            let mut state = self.state.lock().await;
+            match *state {
+                ActiveQueryState::Pending | ActiveQueryState::Running(_) => {
+                    *state = ActiveQueryState::Finished;
+                    return false;
+                }
+                ActiveQueryState::Cancelled => {
+                    *state = ActiveQueryState::Finished;
+                    return true;
+                }
+                ActiveQueryState::CancellationComplete(cancelled) => {
+                    *state = ActiveQueryState::Finished;
+                    return cancelled;
+                }
+                ActiveQueryState::Finished => return false,
+                ActiveQueryState::Cancelling => {
+                    drop(state);
+                    notified.await;
+                }
+            }
+        }
+    }
 }
 
 impl PostgresDriver {
@@ -45,6 +145,10 @@ impl PostgresDriver {
             options = options.password(password);
         }
 
+        let cancellation_pool = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect_lazy_with(options.clone());
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(Duration::from_secs(10))
@@ -54,7 +158,49 @@ impl PostgresDriver {
         Ok(Self {
             database: database.to_string(),
             pool,
+            cancellation_pool,
+            active_queries: RwLock::new(HashMap::new()),
         })
+    }
+
+    async fn execute_active(
+        &self,
+        active: &ActiveQuery,
+        sql: &str,
+        mode: ExecutionMode,
+    ) -> Result<QueryResult, AppError> {
+        let mut connection = match self.pool.acquire().await {
+            Ok(connection) => connection,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        let process_id = match sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+            .fetch_one(&mut *connection)
+            .await
+        {
+            Ok(process_id) => process_id,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        if !active.activate(process_id).await {
+            active.finish_execution().await;
+            return Err(AppError::QueryCancelled);
+        }
+
+        let result =
+            execute_on_connection(&mut connection, sql, mode == ExecutionMode::Transaction).await;
+        let was_cancelled = active.finish_execution().await;
+        drop(connection);
+
+        if was_cancelled {
+            Err(AppError::QueryCancelled)
+        } else {
+            result
+        }
     }
 }
 
@@ -69,11 +215,68 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     fn capabilities(&self) -> Vec<DriverCapability> {
-        vec![DriverCapability::Transactions, DriverCapability::Explain]
+        vec![
+            DriverCapability::Transactions,
+            DriverCapability::Explain,
+            DriverCapability::Cancel,
+        ]
     }
 
-    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError> {
-        execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
+    async fn prepare(&self, query_id: Uuid) -> Result<(), AppError> {
+        let mut active_queries = self.active_queries.write().await;
+        if active_queries.contains_key(&query_id) {
+            return Err(AppError::DuplicateQueryId(query_id.to_string()));
+        }
+        active_queries.insert(query_id, Arc::new(ActiveQuery::pending()));
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+    ) -> Result<QueryResult, AppError> {
+        let active = self
+            .active_queries
+            .read()
+            .await
+            .get(&query_id)
+            .cloned()
+            .ok_or_else(|| AppError::InvalidQueryId(query_id.to_string()))?;
+        let result = self.execute_active(&active, sql, mode).await;
+        self.active_queries.write().await.remove(&query_id);
+        result
+    }
+
+    async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError> {
+        let Some(active) = self.active_queries.read().await.get(&query_id).cloned() else {
+            return Ok(false);
+        };
+        match active.request_cancel().await {
+            CancelAction::BeforeStart => {
+                self.active_queries.write().await.remove(&query_id);
+                Ok(true)
+            }
+            CancelAction::Send(process_id) => {
+                let cancellation = sqlx::query_scalar::<_, bool>("SELECT pg_cancel_backend($1)")
+                    .bind(process_id)
+                    .fetch_one(&self.cancellation_pool)
+                    .await;
+                match cancellation {
+                    Ok(cancelled) => {
+                        active.complete_cancellation(cancelled).await;
+                        Ok(cancelled)
+                    }
+                    Err(error) => {
+                        active.complete_cancellation(false).await;
+                        Err(error.into())
+                    }
+                }
+            }
+            CancelAction::AlreadyRequested => Ok(true),
+            CancelAction::TooLate => Ok(false),
+        }
     }
 
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
@@ -82,6 +285,7 @@ impl DatabaseDriver for PostgresDriver {
 
     async fn disconnect(&self) -> Result<(), AppError> {
         self.pool.close().await;
+        self.cancellation_pool.close().await;
         Ok(())
     }
 }
@@ -96,8 +300,8 @@ fn required_value<'a>(value: &'a str, field: &str) -> Result<&'a str, AppError> 
     Ok(value)
 }
 
-async fn execute_on_pool(
-    pool: &PgPool,
+async fn execute_on_connection(
+    connection: &mut PgConnection,
     sql: &str,
     in_transaction: bool,
 ) -> Result<QueryResult, AppError> {
@@ -105,13 +309,13 @@ async fn execute_on_pool(
     let is_query = is_row_returning_query(sql);
 
     if in_transaction {
-        let mut transaction = pool.begin().await?;
+        let mut transaction = connection.begin().await?;
         let result = execute_with_executor(&mut *transaction, sql, is_query, started).await?;
         transaction.commit().await?;
         return Ok(result);
     }
 
-    execute_with_executor(pool, sql, is_query, started).await
+    execute_with_executor(connection, sql, is_query, started).await
 }
 
 async fn execute_with_executor<'e, E>(
@@ -403,8 +607,14 @@ mod tests {
         let driver = PostgresDriver::connect(&config)
             .await
             .expect("connect postgres test database");
+        let query_id = Uuid::new_v4();
+        driver
+            .prepare(query_id)
+            .await
+            .expect("prepare postgres contract query");
         let result = driver
             .execute(
+                query_id,
                 "SELECT 1::int4 AS id, 'QueryX'::text AS product",
                 ExecutionMode::Direct,
             )
@@ -416,5 +626,83 @@ mod tests {
         assert_eq!(result.rows[0]["product"], Value::from("QueryX"));
         assert!(metadata.databases.contains(&config.database));
         driver.disconnect().await.expect("disconnect postgres");
+    }
+
+    #[tokio::test]
+    async fn cancels_a_live_postgres_query_when_available() {
+        let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
+            return;
+        };
+        let mut config = postgres_config();
+        config.database = database;
+        config.host = std::env::var("QUERYX_TEST_POSTGRES_HOST").ok();
+        config.port = std::env::var("QUERYX_TEST_POSTGRES_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok());
+        config.username = std::env::var("QUERYX_TEST_POSTGRES_USERNAME").ok();
+        config.password = std::env::var("QUERYX_TEST_POSTGRES_PASSWORD").ok();
+
+        let driver = Arc::new(
+            PostgresDriver::connect(&config)
+                .await
+                .expect("connect postgres cancellation test database"),
+        );
+        let query_id = Uuid::new_v4();
+        driver
+            .prepare(query_id)
+            .await
+            .expect("prepare cancellable query");
+        let execution_driver = Arc::clone(&driver);
+        let execution = tokio::spawn(async move {
+            execution_driver
+                .execute(query_id, "SELECT pg_sleep(10)", ExecutionMode::Direct)
+                .await
+        });
+
+        let active = driver
+            .active_queries
+            .read()
+            .await
+            .get(&query_id)
+            .cloned()
+            .expect("prepared query is tracked");
+        loop {
+            if matches!(*active.state.lock().await, ActiveQueryState::Running(_)) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(driver.cancel(query_id).await.expect("cancel live query"));
+        let error = tokio::time::timeout(Duration::from_secs(3), execution)
+            .await
+            .expect("cancelled query should finish quickly")
+            .expect("query task should not panic")
+            .expect_err("cancelled query should return an error");
+
+        assert!(matches!(error, AppError::QueryCancelled));
+        driver.disconnect().await.expect("disconnect postgres");
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_activation_prevents_execution() {
+        let active = ActiveQuery::pending();
+
+        assert_eq!(active.request_cancel().await, CancelAction::BeforeStart);
+        assert!(!active.activate(42).await);
+        assert!(active.finish_execution().await);
+    }
+
+    #[tokio::test]
+    async fn duplicate_cancellation_is_idempotent() {
+        let active = ActiveQuery::pending();
+
+        assert!(active.activate(42).await);
+        assert_eq!(active.request_cancel().await, CancelAction::Send(42));
+        assert_eq!(
+            active.request_cancel().await,
+            CancelAction::AlreadyRequested
+        );
+        active.complete_cancellation(true).await;
+        assert!(active.finish_execution().await);
     }
 }

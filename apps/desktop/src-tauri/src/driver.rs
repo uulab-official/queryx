@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use uuid::Uuid;
 
 use crate::{
     error::AppError,
@@ -16,7 +17,16 @@ pub trait DatabaseDriver: Send + Sync {
     fn kind(&self) -> DriverKind;
     fn database(&self) -> &str;
     fn capabilities(&self) -> Vec<DriverCapability>;
-    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
+    async fn prepare(&self, _query_id: Uuid) -> Result<(), AppError> {
+        Ok(())
+    }
+    async fn execute(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+    ) -> Result<QueryResult, AppError>;
+    async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
 }

@@ -18,7 +18,7 @@ interface DatabaseDriver {
 
 - `connect()` must be safe to call once during initialization and must fail with an actionable error.
 - `execute()` always returns the shared `QueryResult` shape for successful queries.
-- Cancellation should use `AbortSignal` in the frontend and map to the native cancellation mechanism in Rust.
+- Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
 - `metadata()` returns vendor-neutral databases, schemas, and table/column information.
 - `transaction()` must not silently commit a failed workflow.
 - `disconnect()` releases the connection and any driver-owned resources.
@@ -51,23 +51,29 @@ pub trait DatabaseDriver: Send + Sync {
     fn kind(&self) -> DriverKind;
     fn database(&self) -> &str;
     fn capabilities(&self) -> Vec<DriverCapability>;
-    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
+    async fn prepare(&self, query_id: Uuid) -> Result<(), AppError>;
+    async fn execute(&self, query_id: Uuid, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
+    async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
 }
 ```
 
-`DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; execute, metadata, transaction, and disconnect commands remain driver-neutral.
+`DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; prepare, execute, cancel, metadata, transaction, and disconnect commands remain driver-neutral. The prepare step closes the abort-before-execute race by registering the UUID before the frontend exposes cancellation.
 
 Generic Tauri commands:
 
 - `connect_database`
+- `prepare_query`
 - `execute_query`
 - `execute_query_transaction`
+- `cancel_query`
 - `database_metadata`
 - `disconnect_database`
 
 Every native driver must pass the registry contract suite before it can be exposed in the UI.
+
+Cancellation is capability-driven. PostgreSQL reports `cancel`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
 
 Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md).
 

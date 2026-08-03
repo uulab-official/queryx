@@ -31,7 +31,7 @@ pnpm --filter @queryx/desktop tauri build --no-bundle
 
 `pnpm run verify` checks version alignment and local Markdown links. The same commands run in GitHub Actions.
 
-The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
+The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies both result normalization and real server cancellation of `pg_sleep(10)` within three seconds. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
 
 ## Driver contract checklist
 
@@ -41,6 +41,7 @@ Every driver must test:
 - execute success with normalized columns and rows
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior
+- cancel-before-start, duplicate cancel, completion/cancel races, and unsupported-driver capability behavior
 - metadata for databases, schemas, tables, columns, indexes, and views
 - transaction success, rollback on failure, and disconnect cleanup
 - capability reporting without vendor checks in the UI
