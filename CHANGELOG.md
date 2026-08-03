@@ -8,6 +8,9 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 
 - CI verification harness for version alignment, documentation links, type checks, tests, and production builds.
 - Driver safety inspection for UPDATE/DELETE statements without a WHERE clause.
+- Tauri 2 native desktop shell with a typed frontend-to-Rust command bridge.
+- SQLx SQLite driver for connection lifecycle, query execution, transactions, and table/column metadata.
+- Native SQLite integration tests and a deterministic local demo database.
 
 ## [0.1.0] — 2026-08-03
 

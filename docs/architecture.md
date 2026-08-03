@@ -2,10 +2,11 @@
 
 ## Current implementation
 
-The repository is a pnpm workspace with one app and two shared packages:
+The repository is a pnpm workspace with one app, its native runtime, and two shared packages:
 
 ```text
 apps/desktop/       React + TypeScript + Vite UI
+  src-tauri/        Tauri 2 + Rust + SQLx native runtime
 packages/shared/    driver-neutral types and result contracts
 packages/core/      driver implementations and database orchestration
 ```
@@ -14,7 +15,7 @@ The desktop app uses Zustand for UI state. The current `InMemoryDriver` is a det
 
 ## Runtime boundary
 
-The target runtime is Tauri 2:
+The active native runtime is Tauri 2:
 
 ```text
 React UI
@@ -38,10 +39,10 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 ## Next integration step
 
-Replace `InMemoryDriver` at the Tauri command boundary with a Rust implementation that satisfies the same shared behavior:
+The browser preview keeps `InMemoryDriver`; Tauri selects `TauriSqliteDriver`, which invokes Rust commands and maps their serialized response to the same shared behavior. The next integration steps are:
 
-1. Connect and validate a local SQLite database.
-2. Return the common result model for a read query.
-3. Expose metadata for the Explorer.
-4. Add cancellation and transaction commands.
-5. Add contract tests that run for every driver.
+1. Add a native file picker and saved SQLite connection profiles.
+2. Add cancellation and long-query progress channels.
+3. Extract a Rust driver trait shared by SQLite, PostgreSQL, and MySQL.
+4. Add PostgreSQL with OS-keychain credentials.
+5. Run the same contract test suite for every native driver.

@@ -24,20 +24,21 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] Safe Mode safety analyzer와 사용자 확인 모달 preview
 - [x] localStorage 기반 query history preview
 - [x] 실제 `apps/desktop` production build 검증
-- [ ] Tauri 2와 Rust command bridge
-- [ ] 실제 SQLite/PostgreSQL connection
+- [x] Tauri 2와 Rust command bridge
+- [x] SQLx 기반 실제 SQLite connection과 native integration tests
+- [ ] 실제 PostgreSQL connection
 
 ## v0.1 — Local database workflow
 
 목표: 로컬 환경에서 안전하게 연결하고 SQL을 실행하는 첫 usable release.
 
 - [x] React/TypeScript/Vite workspace 구성
-- [ ] Tauri 2 desktop shell
+- [x] Tauri 2 desktop shell
 - [ ] Rust `DatabaseDriver` 공통 인터페이스 정의
-- [ ] SQLite driver 구현 및 연결 테스트
+- [x] SQLite driver 구현 및 연결 테스트
 - [ ] PostgreSQL driver 구현 및 연결 테스트
 - [ ] MySQL driver 구현 및 연결 테스트
-- [ ] 공통 `QueryResult` 모델(`columns`, `rows`, `executionTime`, `affectedRows`, `warnings`, `error`)
+- [x] 공통 `QueryResult` 모델(`columns`, `rows`, `executionTime`, `affectedRows`, `warnings`, `error`)
 - [ ] Explorer metadata API(`listSchemas`, `listTables`, `listColumns`, `listIndexes`, `listViews`)
 - [ ] Monaco 기반 SQL editor와 multi-tab 상태
 - [ ] AG Grid Community 기반 결과 그리드

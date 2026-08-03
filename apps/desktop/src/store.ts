@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { InMemoryDriver } from '@queryx/core';
-import type { DatabaseMetadata, QueryResult } from '@queryx/shared';
+import type { DatabaseDriver, DatabaseMetadata, DriverKind, QueryResult } from '@queryx/shared';
+import { createRuntimeDriver } from './nativeDriver';
 
 type ResultView = 'table' | 'json';
 export type RunMode = 'normal' | 'transaction' | 'execute-anyway';
@@ -23,7 +23,8 @@ interface QueryState {
   isRunning: boolean;
   toast: string | null;
   history: QueryHistoryEntry[];
-  driver: InMemoryDriver;
+  driver: DatabaseDriver;
+  driverKind: DriverKind;
   setSql: (sql: string) => void;
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
@@ -54,7 +55,7 @@ function writeHistory(history: QueryHistoryEntry[]): void {
   }
 }
 
-const initialSql = `-- Revenue by day · last 30 days
+const postgresInitialSql = `-- Revenue by day · last 30 days
 SELECT
   DATE_TRUNC('day', created_at)::date AS day,
   COUNT(*) AS orders,
@@ -65,9 +66,25 @@ WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
 GROUP BY 1
 ORDER BY day DESC;`;
 
+const sqliteInitialSql = `-- Revenue by day · last 30 days
+SELECT
+  date(created_at) AS day,
+  COUNT(*) AS orders,
+  printf('$%.2f', SUM(total_amount)) AS revenue
+FROM orders
+WHERE created_at >= date('now', '-30 days')
+  AND status = 'paid'
+GROUP BY 1
+ORDER BY day DESC;`;
+
 export const useQueryStore = create<QueryState>((set, get) => {
-  const driver = new InMemoryDriver();
-  void driver.connect({ kind: 'postgres', name: 'production-db', database: 'production' });
+  const driver = createRuntimeDriver();
+  const initialSql = driver.kind === 'sqlite' ? sqliteInitialSql : postgresInitialSql;
+  const driverReady = driver.connect({
+    kind: driver.kind,
+    name: driver.kind === 'sqlite' ? 'local-demo' : 'production-db',
+    database: driver.kind === 'sqlite' ? ':memory:' : 'production',
+  });
   return {
     sql: initialSql,
     result: null,
@@ -79,6 +96,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     toast: null,
     history: readHistory(),
     driver,
+    driverKind: driver.kind,
     setSql: (sql) => set({ sql }),
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
@@ -86,6 +104,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     runQuery: async (mode = 'normal') => {
       set({ isRunning: true });
       try {
+        await driverReady;
         const execute = () => get().driver.execute(get().sql);
         const result = mode === 'transaction' ? await get().driver.transaction(execute) : await execute();
         const historyEntry: QueryHistoryEntry = {
@@ -109,7 +128,10 @@ export const useQueryStore = create<QueryState>((set, get) => {
         set({ isRunning: false, toast: error instanceof Error ? error.message : 'Query failed' });
       }
     },
-    loadMetadata: async () => set({ metadata: await get().driver.metadata() }),
+    loadMetadata: async () => {
+      await driverReady;
+      set({ metadata: await get().driver.metadata() });
+    },
     notify: (toast) => {
       set({ toast });
       window.setTimeout(() => set({ toast: null }), 2200);
@@ -122,4 +144,4 @@ export const useQueryStore = create<QueryState>((set, get) => {
   };
 });
 
-export { initialSql };
+export { postgresInitialSql, sqliteInitialSql };

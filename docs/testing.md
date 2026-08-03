@@ -20,6 +20,10 @@ pnpm run verify
 pnpm run typecheck
 pnpm run test
 pnpm run build
+cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+pnpm --filter @queryx/desktop tauri build --no-bundle
 ```
 
 `pnpm run verify` checks version alignment and local Markdown links. The same commands run in GitHub Actions.

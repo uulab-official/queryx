@@ -4,7 +4,7 @@ QueryX is a local-first database IDE in active construction. The repository incl
 
 The product direction and implementation gates are tracked in [ROADMAP.md](ROADMAP.md). The documentation structure and writing plan live in [docs/DOCUMENTATION_PLAN.md](docs/DOCUMENTATION_PLAN.md).
 
-The implementation foundation is documented in [docs/architecture.md](docs/architecture.md) and [docs/driver-api.md](docs/driver-api.md).
+The implementation foundation is documented in [docs/architecture.md](docs/architecture.md), [docs/driver-api.md](docs/driver-api.md), and [docs/sqlite-driver.md](docs/sqlite-driver.md).
 
 ## Run locally
 
@@ -16,6 +16,14 @@ pnpm dev
 ```
 
 Then visit the Vite URL shown in the terminal.
+
+Run the native Tauri shell with the real Rust/SQLx SQLite driver:
+
+```bash
+pnpm --filter @queryx/desktop tauri:dev
+```
+
+Rust stable plus the platform prerequisites from the Tauri 2 setup guide are required.
 
 The original dependency-free preview can still be opened directly from `index.html`.
 
@@ -30,4 +38,4 @@ The original dependency-free preview can still be opened directly from `index.ht
 
 ## Project direction
 
-The desktop frontend currently uses an in-memory PostgreSQL-shaped driver so the workflow is real without pretending a database connection is already production-ready. The next milestone adds the Tauri 2 shell, Rust driver bridge, SQLite/PostgreSQL connectivity, and local storage boundaries described in the roadmap.
+The browser frontend uses an in-memory PostgreSQL-shaped fallback. The Tauri runtime uses a real SQLx SQLite connection through typed commands; it currently opens a seeded `:memory:` demo database while file-selection UX is being built. PostgreSQL connectivity, persistent connection storage, and OS keychain integration remain on the roadmap.

@@ -1,23 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { inspectQuerySafety } from '@queryx/core';
 import type { QuerySafetyReport } from '@queryx/core';
 import type { TableMetadata } from '@queryx/shared';
-import { initialSql, useQueryStore, type RunMode } from './store';
-
-const sqlLines = initialSql.split('\n');
+import { useQueryStore, type RunMode } from './store';
 
 function Icon({ children }: { children: string }) {
   return <span className="icon" aria-hidden="true">{children}</span>;
 }
 
 function App() {
-  const { sql, result, metadata, selectedTable, resultView, filter, isRunning, toast, history, setSql, setFilter, setResultView, setSelectedTable, runQuery, loadMetadata, notify } = useQueryStore();
+  const { sql, result, metadata, selectedTable, resultView, filter, isRunning, toast, history, driverKind, setSql, setFilter, setResultView, setSelectedTable, runQuery, loadMetadata, notify } = useQueryStore();
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<'day' | 'orders' | 'revenue'>('day');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [pendingSafety, setPendingSafety] = useState<QuerySafetyReport | null>(null);
+  const initialized = useRef(false);
+  const sqlLines = sql.split('\n');
 
-  useEffect(() => { void loadMetadata(); void runQuery(); }, [loadMetadata, runQuery]);
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+    void loadMetadata();
+    void runQuery();
+  }, [loadMetadata, runQuery]);
   const handleRun = (mode: RunMode = 'normal') => {
     if (mode === 'normal') {
       const safety = inspectQuerySafety(sql);
@@ -65,9 +70,9 @@ function App() {
       <aside className="activitybar"><button className="activity-icon active"><Icon>◈</Icon></button><button className="activity-icon"><Icon>⌕</Icon></button><button className="activity-icon"><Icon>⌘</Icon></button><button className="activity-icon"><Icon>⊞</Icon></button><div className="activity-spacer" /><button className="activity-icon"><Icon>?</Icon></button></aside>
       <aside className="sidebar">
         <div className="panel-heading">EXPLORER <button className="mini-button" onClick={() => notify('New connection dialog is ready')}>＋</button></div>
-        <div className="connection-select"><span className="status-dot green" /> <strong>production-db</strong><span className="driver-tag">PG</span><span className="chevron">⌄</span></div>
+        <div className="connection-select"><span className="status-dot green" /> <strong>{driverKind === 'sqlite' ? 'local-demo' : 'production-db'}</strong><span className="driver-tag">{driverKind === 'sqlite' ? 'SQLite' : 'PG'}</span><span className="chevron">⌄</span></div>
         <div className="tree">
-          <TreeRow label="production-db" icon="◉" tone="db" onClick={() => toggle('root')} collapsed={collapsed.includes('root')} />
+          <TreeRow label={driverKind === 'sqlite' ? 'local-demo' : 'production-db'} icon="◉" tone="db" onClick={() => toggle('root')} collapsed={collapsed.includes('root')} />
           {!collapsed.includes('root') && <div className="tree-children"><TreeRow label="Schemas" icon="▱" tone="folder" onClick={() => toggle('schemas')} collapsed={collapsed.includes('schemas')} />{!collapsed.includes('schemas') && <div className="tree-children"><TreeRow label="public" icon="◇" tone="schema" onClick={() => toggle('public')} collapsed={collapsed.includes('public')} />{!collapsed.includes('public') && <div className="tree-children"><TreeRow label="Tables" icon="▱" tone="folder" onClick={() => toggle('tables')} collapsed={collapsed.includes('tables')} count={tables.length} />{!collapsed.includes('tables') && <div className="tree-children">{tables.map((table) => <button className={`tree-row ${selectedTable === table.name ? 'selected' : ''}`} key={table.name} onClick={() => setSelectedTable(table.name)}><span className="tree-icon table">▤</span>{table.name}</button>)}<button className="tree-row muted">+ 5 more</button></div>}<TreeRow label="Views" icon="▱" tone="folder" count={3} /><TreeRow label="Functions" icon="▱" tone="folder" count={12} /></div>}</div>}</div>}
         </div>
         <div className="section-label">RECENT QUERIES <button className="mini-button">•••</button></div>
@@ -76,9 +81,9 @@ function App() {
       </aside>
       <main className="main-area">
         <div className="editor-tabs"><div className="tab active"><span className="sql-badge">SQL</span>Daily revenue <span className="tab-close">×</span></div><div className="tab">＋ New query</div><div className="tab-spacer" /><span className="connected"><span className="status-dot green" /> Connected ⌄</span></div>
-        <section className="editor-pane"><div className="editor-toolbar"><div><button className="run-button" onClick={() => handleRun()} disabled={isRunning}><span>{isRunning ? '◌' : '▶'}</span> {isRunning ? 'Running…' : 'Run'} <kbd>⌘↵</kbd></button><button className="toolbar-button" onClick={() => setSql(sql.replace(/\s+/g, ' ').replaceAll(' SELECT', '\nSELECT'))}>Format <kbd>⌘L</kbd></button><button className="toolbar-button" onClick={() => notify('Explain plan is available for connected drivers')}>Explain</button></div><div className="toolbar-right"><button className="toolbar-button">◫</button><button className="toolbar-button" onClick={() => notify('Query saved to local favorites')}>♡</button><button className="toolbar-button">•••</button></div></div><div className="code-editor"><div className="line-numbers">{sqlLines.map((_, index) => <span key={index}>{index + 1}</span>)}</div><textarea aria-label="SQL editor" value={sql} onChange={(event) => setSql(event.target.value)} spellCheck={false} /> <div className="editor-minimap"><i /><i /><i /><i /><i /><i /></div></div><div className="editor-footer"><span>PostgreSQL</span><span>UTF-8</span><span>Ln {sqlLines.length}, Col 21</span><span className="footer-spacer" /><span>Spaces: 2</span><span>SQL</span></div></section>
+        <section className="editor-pane"><div className="editor-toolbar"><div><button className="run-button" onClick={() => handleRun()} disabled={isRunning}><span>{isRunning ? '◌' : '▶'}</span> {isRunning ? 'Running…' : 'Run'} <kbd>⌘↵</kbd></button><button className="toolbar-button" onClick={() => setSql(sql.replace(/\s+/g, ' ').replaceAll(' SELECT', '\nSELECT'))}>Format <kbd>⌘L</kbd></button><button className="toolbar-button" onClick={() => notify('Explain plan is available for connected drivers')}>Explain</button></div><div className="toolbar-right"><button className="toolbar-button">◫</button><button className="toolbar-button" onClick={() => notify('Query saved to local favorites')}>♡</button><button className="toolbar-button">•••</button></div></div><div className="code-editor"><div className="line-numbers">{sqlLines.map((_, index) => <span key={index}>{index + 1}</span>)}</div><textarea aria-label="SQL editor" value={sql} onChange={(event) => setSql(event.target.value)} spellCheck={false} /> <div className="editor-minimap"><i /><i /><i /><i /><i /><i /></div></div><div className="editor-footer"><span>{driverKind === 'sqlite' ? 'SQLite' : 'PostgreSQL'}</span><span>UTF-8</span><span>Ln {sqlLines.length}, Col 21</span><span className="footer-spacer" /><span>Spaces: 2</span><span>SQL</span></div></section>
         <section className="results-pane"><div className="results-heading"><div className="result-title"><span>⌄</span> Results <small>{result?.rows.length === 10 ? '30 rows' : `${visibleRows.length} rows`}</small><em>· {result?.executionTime ?? 0}ms</em></div><div className="result-actions"><button className={resultView === 'table' ? 'active' : ''} onClick={() => setResultView('table')}>▤ Table</button><button className={resultView === 'json' ? 'active' : ''} onClick={() => setResultView('json')}>{'{ }'} JSON</button><button onClick={() => notify('CSV export queued locally')}>⇩ Export</button></div></div><div className="results-toolbar"><span className="result-meta"><i /> Query completed successfully <b /> Today at 10:42 AM</span><label className="filter-box">⌕<input id="result-filter" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter results..." /><kbd>⌘F</kbd></label></div>{resultView === 'table' ? <div className="grid-wrap"><table><thead><tr><th><input type="checkbox" /></th>{(['day', 'orders', 'revenue'] as const).map((key) => <th key={key} onClick={() => sort(key)}>{key} <span>↕</span></th>)}<th /></tr></thead><tbody>{visibleRows.map((row) => <tr key={String(row.day)}><td><input type="checkbox" /></td><td>{String(row.day)}</td><td>{String(row.orders)}</td><td>{String(row.revenue)}</td><td /></tr>)}</tbody></table></div> : <pre className="json-view">{JSON.stringify(visibleRows, null, 2)}</pre>}<div className="pagination">Showing <strong>1–{Math.min(10, visibleRows.length)}</strong> of <strong>{visibleRows.length}</strong><div><button disabled>‹</button><button className="active">1</button><button>2</button><button>›</button></div><span>10 / page⌄</span></div></section>
-        <div className="statusbar"><span><span className="status-dot green" /> production-db</span><span>PostgreSQL 16.2</span><span className="footer-spacer" /><span>Safe mode <i className="toggle" /></span><span>⌘ Enter to run</span></div>
+        <div className="statusbar"><span><span className="status-dot green" /> {driverKind === 'sqlite' ? 'local-demo' : 'production-db'}</span><span>{driverKind === 'sqlite' ? 'SQLite · Rust native' : 'PostgreSQL 16.2'}</span><span className="footer-spacer" /><span>Safe mode <i className="toggle" /></span><span>⌘ Enter to run</span></div>
       </main>
       <Inspector table={currentTable} />
     </div>

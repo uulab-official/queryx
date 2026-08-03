@@ -5,5 +5,6 @@
   "type": "module",
   "exports": { ".": "./src/index.ts" },
   "dependencies": { "@queryx/shared": "workspace:*" },
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json" }
+  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json" },
+  "devDependencies": { "typescript": "^5.7.2" }
 }
