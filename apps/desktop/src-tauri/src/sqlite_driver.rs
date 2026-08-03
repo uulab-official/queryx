@@ -275,7 +275,7 @@ impl DatabaseDriver for SqliteDriver {
                 dependent: DatabaseObjectRef {
                     kind: DatabaseObjectKind::Trigger,
                     id: Some(trigger.id.clone()),
-                    schema: trigger.schema.clone(),
+                    schema: Some(trigger.schema.clone()),
                     name: trigger.name.clone(),
                     identity_arguments: None,
                 },
@@ -298,6 +298,7 @@ impl DatabaseDriver for SqliteDriver {
             views,
             routines: Vec::new(),
             triggers,
+            event_triggers: Vec::new(),
             dependencies,
         })
     }
@@ -312,7 +313,7 @@ fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> Da
     DatabaseObjectRef {
         kind,
         id: None,
-        schema: schema.to_string(),
+        schema: Some(schema.to_string()),
         name: name.to_string(),
         identity_arguments: None,
     }
@@ -555,6 +556,7 @@ mod tests {
         assert!(!index.unique);
         assert_eq!(view.columns.len(), 3);
         assert!(metadata.routines.is_empty());
+        assert!(metadata.event_triggers.is_empty());
         let trigger = metadata
             .triggers
             .iter()

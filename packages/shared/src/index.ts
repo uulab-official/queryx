@@ -119,12 +119,17 @@ export interface TriggerMetadata {
   definition: string | null;
 }
 
-export type DatabaseObjectKind = "table" | "view" | "routine" | "trigger";
+export type DatabaseObjectKind =
+  | "table"
+  | "view"
+  | "routine"
+  | "trigger"
+  | "eventTrigger";
 
 export interface DatabaseObjectRef {
   kind: DatabaseObjectKind;
   id: string | null;
-  schema: string;
+  schema: string | null;
   name: string;
   identityArguments: string | null;
 }
@@ -133,13 +138,35 @@ export type DependencyKind =
   | "foreignKey"
   | "viewReference"
   | "triggerFunction"
-  | "triggerOwner";
+  | "triggerOwner"
+  | "eventTriggerFunction";
 
 export interface DependencyMetadata {
   id: string;
   kind: DependencyKind;
   dependent: DatabaseObjectRef;
   referenced: DatabaseObjectRef;
+}
+
+export type EventTriggerEvent =
+  | "ddlCommandStart"
+  | "ddlCommandEnd"
+  | "sqlDrop"
+  | "tableRewrite"
+  | "unknown";
+
+export interface EventTriggerMetadata {
+  id: string;
+  name: string;
+  event: EventTriggerEvent;
+  status: TriggerStatus;
+  tags: string[] | null;
+  function: DatabaseObjectRef & {
+    kind: "routine";
+    id: string;
+    schema: string;
+  };
+  definition: string | null;
 }
 
 export interface DatabaseMetadata {
@@ -149,6 +176,7 @@ export interface DatabaseMetadata {
   views: ViewMetadata[];
   routines: RoutineMetadata[];
   triggers: TriggerMetadata[];
+  eventTriggers: EventTriggerMetadata[];
   dependencies: DependencyMetadata[];
 }
 

@@ -23,6 +23,7 @@ import type {
   DependencyKind,
   DriverConfig,
   DriverKind,
+  EventTriggerMetadata,
   RelationRef,
   RoutineMetadata,
   TableMetadata,
@@ -175,6 +176,7 @@ function App() {
   const views = metadata?.views ?? [];
   const routines = metadata?.routines ?? [];
   const triggers = metadata?.triggers ?? [];
+  const eventTriggers = metadata?.eventTriggers ?? [];
   const schemas = metadata?.schemas ?? [];
   const currentTable =
     selectedObject?.kind === "table"
@@ -201,6 +203,12 @@ function App() {
   const currentTrigger =
     selectedObject?.kind === "trigger"
       ? triggers.find((trigger) => trigger.id === selectedObject.id)
+      : undefined;
+  const currentEventTrigger =
+    selectedObject?.kind === "eventTrigger"
+      ? eventTriggers.find(
+          (eventTrigger) => eventTrigger.id === selectedObject.id,
+        )
       : undefined;
   const foreignKeyIndex = useMemo(() => buildForeignKeyIndex(tables), [tables]);
   const currentForeignKeys = currentTable
@@ -242,7 +250,15 @@ function App() {
               name: currentTrigger.name,
               identityArguments: null,
             }
-          : undefined;
+          : currentEventTrigger
+            ? {
+                kind: "eventTrigger",
+                id: currentEventTrigger.id,
+                schema: null,
+                name: currentEventTrigger.name,
+                identityArguments: null,
+              }
+            : undefined;
   const currentDependencies = currentObjectRef
     ? dependencyIndex.get(currentObjectRef)
     : undefined;
@@ -339,6 +355,10 @@ function App() {
   };
   const selectDependencyObject = (object: DatabaseObjectRef) => {
     if (object.kind === "table" || object.kind === "view") {
+      if (!object.schema) {
+        notify(`Referenced ${object.kind} ${object.name} has no schema`);
+        return;
+      }
       const visible = (object.kind === "table" ? tables : views).some(
         (relation) =>
           relation.schema === object.schema && relation.name === object.name,
@@ -375,9 +395,21 @@ function App() {
         });
         return;
       }
+    } else if (object.kind === "eventTrigger" && object.id) {
+      const eventTrigger = eventTriggers.find(
+        (candidate) => candidate.id === object.id,
+      );
+      if (eventTrigger) {
+        setSelectedObject({
+          kind: "eventTrigger",
+          id: eventTrigger.id,
+          name: eventTrigger.name,
+        });
+        return;
+      }
     }
     notify(
-      `Referenced ${object.kind} ${object.schema}.${object.name} is not visible`,
+      `Referenced ${object.kind} ${databaseObjectQualifiedName(object)} is not visible`,
     );
   };
 
@@ -691,6 +723,40 @@ function App() {
                     })}
                   </div>
                 )}
+                <TreeRow
+                  label="Event Triggers"
+                  icon="✦"
+                  tone="folder"
+                  count={eventTriggers.length}
+                  onClick={() => toggle("event-triggers")}
+                  collapsed={collapsed.includes("event-triggers")}
+                />
+                {!collapsed.includes("event-triggers") &&
+                  eventTriggers.length > 0 && (
+                    <div className="tree-children">
+                      {eventTriggers.map((eventTrigger) => (
+                        <button
+                          type="button"
+                          className={`tree-row trigger-tree-row ${selectedObject?.kind === "eventTrigger" && selectedObject.id === eventTrigger.id ? "selected" : ""}`}
+                          key={eventTrigger.id}
+                          title={`${eventTrigger.name} · ${eventTrigger.event}`}
+                          onClick={() =>
+                            setSelectedObject({
+                              kind: "eventTrigger",
+                              id: eventTrigger.id,
+                              name: eventTrigger.name,
+                            })
+                          }
+                        >
+                          <span className="tree-icon trigger">✦</span>
+                          <span className="routine-tree-label">
+                            {eventTrigger.name}
+                          </span>
+                          <small>{eventTrigger.event}</small>
+                        </button>
+                      ))}
+                    </div>
+                  )}
               </div>
             )}
           </div>
@@ -1017,13 +1083,16 @@ function App() {
                 ? `routine:${selectedObject.id}`
                 : selectedObject.kind === "trigger"
                   ? `trigger:${selectedObject.id}`
-                  : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
+                  : selectedObject.kind === "eventTrigger"
+                    ? `event-trigger:${selectedObject.id}`
+                    : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
               : "no-object"
           }
           table={currentTable}
           view={currentView}
           routine={currentRoutine}
           trigger={currentTrigger}
+          eventTrigger={currentEventTrigger}
           foreignKeys={currentForeignKeys}
           dependencies={currentDependencies}
           onSelectTable={selectRelatedTable}
@@ -1033,7 +1102,7 @@ function App() {
             void navigator.clipboard
               .writeText(definition)
               .then(() => notify("DDL copied"))
-              .catch(() => notify("Could not copy routine DDL"));
+              .catch(() => notify("Could not copy DDL"));
           }}
         />
       </div>
@@ -1375,6 +1444,7 @@ function Inspector({
   view,
   routine,
   trigger,
+  eventTrigger,
   foreignKeys,
   dependencies,
   onSelectTable,
@@ -1386,6 +1456,7 @@ function Inspector({
   view?: ViewMetadata;
   routine?: RoutineMetadata;
   trigger?: TriggerMetadata;
+  eventTrigger?: EventTriggerMetadata;
   foreignKeys?: ForeignKeyRelations;
   dependencies?: ObjectDependencies;
   onSelectTable: (relation: RelationRef) => void;
@@ -1401,6 +1472,86 @@ function Inspector({
     (foreignKeys?.outgoing.length ?? 0) + (foreignKeys?.incoming.length ?? 0);
   const dependencyCount =
     (dependencies?.dependsOn.length ?? 0) + (dependencies?.usedBy.length ?? 0);
+
+  if (eventTrigger) {
+    const definition = eventTrigger.definition;
+    return (
+      <aside className="inspector">
+        <div className="panel-heading">
+          INSPECTOR <span className="read-only-badge">READ ONLY</span>
+        </div>
+        <div className="inspector-title trigger-title">
+          <span className="table-symbol trigger-symbol">✦</span>
+          <span>
+            <strong title={eventTrigger.name}>{eventTrigger.name}</strong>
+            <small>database scope · event trigger</small>
+          </span>
+        </div>
+        <div className="inspector-section routine-details">
+          <div className="section-title">EVENT TRIGGER DETAILS</div>
+          <dl>
+            <dt>Status</dt>
+            <dd>
+              <span className={`trigger-status ${eventTrigger.status}`}>
+                {eventTrigger.status}
+              </span>
+            </dd>
+            <dt>Event</dt>
+            <dd>{eventTriggerEventLabel(eventTrigger.event)}</dd>
+            <dt>Tags</dt>
+            <dd title={eventTrigger.tags?.join(", ")}>
+              {eventTrigger.tags?.join(", ") ?? "All supported commands"}
+            </dd>
+            <dt>Function</dt>
+            <dd>
+              <button
+                type="button"
+                className="relation-link"
+                onClick={() => onSelectDependency(eventTrigger.function)}
+              >
+                {eventTrigger.function.schema}.
+                {dependencyObjectLabel(eventTrigger.function)} ↗
+              </button>
+            </dd>
+          </dl>
+        </div>
+        <DependencyPanel
+          dependencies={dependencies}
+          onSelectObject={onSelectDependency}
+        />
+        <div className="inspector-section routine-definition-section">
+          <div className="section-title routine-definition-heading">
+            CATALOG-RECONSTRUCTED DDL
+            {definition && (
+              <button
+                type="button"
+                className="copy-ddl-button"
+                onClick={() => onCopyDefinition(definition)}
+              >
+                Copy DDL
+              </button>
+            )}
+          </div>
+          {definition ? (
+            <code
+              className="definition-preview routine-definition"
+              aria-label={`${eventTrigger.name} read-only DDL`}
+            >
+              {definition}
+            </code>
+          ) : (
+            <div className="inspector-empty">
+              Definition is unavailable for this event trigger.
+            </div>
+          )}
+          <p className="ddl-safety-note">
+            Reconstructed from catalog values for inspection only. QueryX never
+            executes this text automatically.
+          </p>
+        </div>
+      </aside>
+    );
+  }
 
   if (trigger) {
     const definition = trigger.definition;
@@ -1796,13 +1947,37 @@ const dependencyKindLabels: Record<DependencyKind, string> = {
   viewReference: "View reference",
   triggerFunction: "Trigger function",
   triggerOwner: "Trigger owner",
+  eventTriggerFunction: "Event trigger function",
 };
+
+function eventTriggerEventLabel(event: EventTriggerMetadata["event"]): string {
+  const labels: Record<EventTriggerMetadata["event"], string> = {
+    ddlCommandStart: "DDL command start",
+    ddlCommandEnd: "DDL command end",
+    sqlDrop: "SQL drop",
+    tableRewrite: "Table rewrite",
+    unknown: "Unknown",
+  };
+  return labels[event];
+}
+
+function databaseObjectQualifiedName(object: DatabaseObjectRef): string {
+  return object.schema ? `${object.schema}.${object.name}` : object.name;
+}
 
 function dependencyObjectLabel(object: DatabaseObjectRef): string {
   if (object.kind === "routine") {
     return `${object.name}(${object.identityArguments ?? ""})`;
   }
   return object.name;
+}
+
+function dependencyObjectScope(object: DatabaseObjectRef): string {
+  return object.schema ?? "database scope";
+}
+
+function dependencyObjectKindLabel(object: DatabaseObjectRef): string {
+  return object.kind === "eventTrigger" ? "event trigger" : object.kind;
 }
 
 function DependencyPanel({
@@ -1825,13 +2000,14 @@ function DependencyPanel({
           className="relation-row dependency-row"
           key={dependency.id}
           onClick={() => onSelectObject(dependency.referenced)}
-          aria-label={`Open ${dependency.referenced.kind} ${dependency.referenced.schema}.${dependencyObjectLabel(dependency.referenced)}`}
+          aria-label={`Open ${dependencyObjectKindLabel(dependency.referenced)} ${databaseObjectQualifiedName(dependency.referenced)}`}
         >
           <span className="relation-arrow">→</span>
           <span>
             <strong>{dependencyObjectLabel(dependency.referenced)}</strong>
             <small>
-              {dependency.referenced.schema} · {dependency.referenced.kind}
+              {dependencyObjectScope(dependency.referenced)} ·{" "}
+              {dependencyObjectKindLabel(dependency.referenced)}
             </small>
             <em>{dependencyKindLabels[dependency.kind]}</em>
           </span>
@@ -1849,13 +2025,14 @@ function DependencyPanel({
           className="relation-row dependency-row incoming"
           key={dependency.id}
           onClick={() => onSelectObject(dependency.dependent)}
-          aria-label={`Open ${dependency.dependent.kind} ${dependency.dependent.schema}.${dependencyObjectLabel(dependency.dependent)}`}
+          aria-label={`Open ${dependencyObjectKindLabel(dependency.dependent)} ${databaseObjectQualifiedName(dependency.dependent)}`}
         >
           <span className="relation-arrow">←</span>
           <span>
             <strong>{dependencyObjectLabel(dependency.dependent)}</strong>
             <small>
-              {dependency.dependent.schema} · {dependency.dependent.kind}
+              {dependencyObjectScope(dependency.dependent)} ·{" "}
+              {dependencyObjectKindLabel(dependency.dependent)}
             </small>
             <em>{dependencyKindLabels[dependency.kind]}</em>
           </span>

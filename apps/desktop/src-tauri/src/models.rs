@@ -95,6 +95,7 @@ pub struct DatabaseMetadata {
     pub views: Vec<ViewMetadata>,
     pub routines: Vec<RoutineMetadata>,
     pub triggers: Vec<TriggerMetadata>,
+    pub event_triggers: Vec<EventTriggerMetadata>,
     pub dependencies: Vec<DependencyMetadata>,
 }
 
@@ -105,14 +106,15 @@ pub enum DatabaseObjectKind {
     View,
     Routine,
     Trigger,
+    EventTrigger,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DatabaseObjectRef {
     pub kind: DatabaseObjectKind,
     pub id: Option<String>,
-    pub schema: String,
+    pub schema: Option<String>,
     pub name: String,
     pub identity_arguments: Option<String>,
 }
@@ -124,6 +126,7 @@ pub enum DependencyKind {
     ViewReference,
     TriggerFunction,
     TriggerOwner,
+    EventTriggerFunction,
 }
 
 #[derive(Debug, Serialize)]
@@ -133,6 +136,28 @@ pub struct DependencyMetadata {
     pub kind: DependencyKind,
     pub dependent: DatabaseObjectRef,
     pub referenced: DatabaseObjectRef,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum EventTriggerEvent {
+    DdlCommandStart,
+    DdlCommandEnd,
+    SqlDrop,
+    TableRewrite,
+    Unknown,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventTriggerMetadata {
+    pub id: String,
+    pub name: String,
+    pub event: EventTriggerEvent,
+    pub status: TriggerStatus,
+    pub tags: Option<Vec<String>>,
+    pub function: DatabaseObjectRef,
+    pub definition: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]

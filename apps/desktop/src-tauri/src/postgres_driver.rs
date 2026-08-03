@@ -17,10 +17,11 @@ use crate::{
     error::AppError,
     models::{
         ColumnMetadata, ConnectionConfig, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
-        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair,
-        ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult, RelationRef, RoutineKind,
-        RoutineMetadata, SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
-        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
+        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, EventTriggerEvent,
+        EventTriggerMetadata, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn,
+        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
+        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -543,6 +544,11 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     )
     .fetch_all(pool)
     .await?;
+    let event_trigger_rows = sqlx::query(
+        "SELECT event_trigger.oid::text AS event_trigger_id, event_trigger.evtname AS event_trigger_name, event_trigger.evtevent AS event_name, event_trigger.evtenabled::text AS trigger_status, event_trigger.evttags AS tags, quote_ident(event_trigger.evtname) AS quoted_event_trigger_name, ARRAY(SELECT quote_literal(tag) FROM unnest(COALESCE(event_trigger.evttags, ARRAY[]::text[])) AS tag)::text[] AS quoted_tags, routine.oid::text AS routine_id, routine_ns.nspname AS routine_schema, routine.proname AS routine_name, pg_get_function_identity_arguments(routine.oid) AS routine_identity_arguments, quote_ident(routine_ns.nspname) AS quoted_routine_schema, quote_ident(routine.proname) AS quoted_routine_name FROM pg_catalog.pg_event_trigger event_trigger JOIN pg_catalog.pg_proc routine ON routine.oid = event_trigger.evtfoid JOIN pg_catalog.pg_namespace routine_ns ON routine_ns.oid = routine.pronamespace ORDER BY event_trigger.evtname",
+    )
+    .fetch_all(pool)
+    .await?;
     let view_dependency_rows = sqlx::query(
         "SELECT DISTINCT view_relation.oid::text AS dependent_id, view_ns.nspname AS dependent_schema, view_relation.relname AS dependent_name, referenced_relation.oid::text AS referenced_id, referenced_ns.nspname AS referenced_schema, referenced_relation.relname AS referenced_name, referenced_relation.relkind = 'v' AS referenced_is_view FROM pg_catalog.pg_rewrite rewrite JOIN pg_catalog.pg_class view_relation ON view_relation.oid = rewrite.ev_class JOIN pg_catalog.pg_namespace view_ns ON view_ns.oid = view_relation.relnamespace JOIN pg_catalog.pg_depend dependency ON dependency.classid = 'pg_rewrite'::regclass AND dependency.objid = rewrite.oid AND dependency.refclassid = 'pg_class'::regclass JOIN pg_catalog.pg_class referenced_relation ON referenced_relation.oid = dependency.refobjid JOIN pg_catalog.pg_namespace referenced_ns ON referenced_ns.oid = referenced_relation.relnamespace WHERE rewrite.rulename = '_RETURN' AND view_relation.relkind = 'v' AND referenced_relation.relkind IN ('r', 'p', 'v') AND referenced_relation.oid <> view_relation.oid AND view_ns.nspname NOT IN ('pg_catalog', 'information_schema') AND view_ns.nspname NOT LIKE 'pg_toast%' AND view_ns.nspname NOT LIKE 'pg_temp_%' AND referenced_ns.nspname NOT IN ('pg_catalog', 'information_schema') AND referenced_ns.nspname NOT LIKE 'pg_toast%' AND referenced_ns.nspname NOT LIKE 'pg_temp_%' ORDER BY view_ns.nspname, view_relation.relname, referenced_ns.nspname, referenced_relation.relname",
     )
@@ -771,17 +777,73 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
             dependent: DatabaseObjectRef {
                 kind: DatabaseObjectKind::Trigger,
                 id: Some(id),
-                schema,
+                schema: Some(schema),
                 name,
                 identity_arguments: None,
             },
             referenced: DatabaseObjectRef {
                 kind: DatabaseObjectKind::Routine,
                 id: Some(format!("postgres:routine:{routine_raw_id}")),
-                schema: routine_schema,
+                schema: Some(routine_schema),
                 name: routine_name,
                 identity_arguments: Some(routine_identity_arguments),
             },
+        });
+    }
+
+    let mut event_triggers = Vec::new();
+    for row in event_trigger_rows {
+        let raw_id: String = row.try_get("event_trigger_id")?;
+        let id = format!("postgres:event-trigger:{raw_id}");
+        let name: String = row.try_get("event_trigger_name")?;
+        let event_name: String = row.try_get("event_name")?;
+        let status: String = row.try_get("trigger_status")?;
+        let tags: Option<Vec<String>> = row.try_get("tags")?;
+        let quoted_tags: Vec<String> = row.try_get("quoted_tags")?;
+        let routine_raw_id: String = row.try_get("routine_id")?;
+        let routine_schema: String = row.try_get("routine_schema")?;
+        let routine_name: String = row.try_get("routine_name")?;
+        let routine_identity_arguments: String = row.try_get("routine_identity_arguments")?;
+        let function = DatabaseObjectRef {
+            kind: DatabaseObjectKind::Routine,
+            id: Some(format!("postgres:routine:{routine_raw_id}")),
+            schema: Some(routine_schema),
+            name: routine_name,
+            identity_arguments: Some(routine_identity_arguments),
+        };
+        let tag_clause = if quoted_tags.is_empty() {
+            String::new()
+        } else {
+            format!(" WHEN TAG IN ({})", quoted_tags.join(", "))
+        };
+        let definition = format!(
+            "CREATE EVENT TRIGGER {} ON {}{} EXECUTE FUNCTION {}.{}();",
+            row.try_get::<String, _>("quoted_event_trigger_name")?,
+            event_name,
+            tag_clause,
+            row.try_get::<String, _>("quoted_routine_schema")?,
+            row.try_get::<String, _>("quoted_routine_name")?,
+        );
+        event_triggers.push(EventTriggerMetadata {
+            id: id.clone(),
+            name: name.clone(),
+            event: event_trigger_event_from_catalog(&event_name),
+            status: trigger_status_from_catalog(&status),
+            tags,
+            function: function.clone(),
+            definition: Some(definition),
+        });
+        dependencies.push(DependencyMetadata {
+            id: format!("postgres:dependency:event-trigger-function:{raw_id}"),
+            kind: DependencyKind::EventTriggerFunction,
+            dependent: DatabaseObjectRef {
+                kind: DatabaseObjectKind::EventTrigger,
+                id: Some(id),
+                schema: None,
+                name,
+                identity_arguments: None,
+            },
+            referenced: function,
         });
     }
 
@@ -810,7 +872,7 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
             dependent: DatabaseObjectRef {
                 kind: DatabaseObjectKind::Trigger,
                 id: Some(trigger.id.clone()),
-                schema: trigger.schema.clone(),
+                schema: Some(trigger.schema.clone()),
                 name: trigger.name.clone(),
                 identity_arguments: None,
             },
@@ -859,6 +921,7 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         views,
         routines,
         triggers,
+        event_triggers,
         dependencies,
     })
 }
@@ -867,9 +930,28 @@ fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> Da
     DatabaseObjectRef {
         kind,
         id: None,
-        schema: schema.to_string(),
+        schema: Some(schema.to_string()),
         name: name.to_string(),
         identity_arguments: None,
+    }
+}
+
+fn event_trigger_event_from_catalog(event: &str) -> EventTriggerEvent {
+    match event {
+        "ddl_command_start" => EventTriggerEvent::DdlCommandStart,
+        "ddl_command_end" => EventTriggerEvent::DdlCommandEnd,
+        "sql_drop" => EventTriggerEvent::SqlDrop,
+        "table_rewrite" => EventTriggerEvent::TableRewrite,
+        _ => EventTriggerEvent::Unknown,
+    }
+}
+
+fn trigger_status_from_catalog(status: &str) -> TriggerStatus {
+    match status {
+        "D" => TriggerStatus::Disabled,
+        "R" => TriggerStatus::Replica,
+        "A" => TriggerStatus::Always,
+        _ => TriggerStatus::Origin,
     }
 }
 
@@ -921,6 +1003,32 @@ mod tests {
             trigger_condition_from_definition(definition).as_deref(),
             Some("(new.status IS NOT NULL)")
         );
+    }
+
+    #[test]
+    fn normalizes_event_trigger_catalog_values() {
+        assert_eq!(
+            event_trigger_event_from_catalog("ddl_command_start"),
+            EventTriggerEvent::DdlCommandStart
+        );
+        assert_eq!(
+            event_trigger_event_from_catalog("ddl_command_end"),
+            EventTriggerEvent::DdlCommandEnd
+        );
+        assert_eq!(
+            event_trigger_event_from_catalog("sql_drop"),
+            EventTriggerEvent::SqlDrop
+        );
+        assert_eq!(
+            event_trigger_event_from_catalog("table_rewrite"),
+            EventTriggerEvent::TableRewrite
+        );
+        assert_eq!(
+            event_trigger_event_from_catalog("future_event"),
+            EventTriggerEvent::Unknown
+        );
+        assert_eq!(trigger_status_from_catalog("D"), TriggerStatus::Disabled);
+        assert_eq!(trigger_status_from_catalog("O"), TriggerStatus::Origin);
     }
 
     #[tokio::test]
@@ -1030,11 +1138,14 @@ mod tests {
             .iter()
             .find(|dependency| {
                 dependency.kind == DependencyKind::ForeignKey
-                    && dependency.dependent.schema == schema
+                    && dependency.dependent.schema.as_deref() == Some(schema.as_str())
                     && dependency.dependent.name == "invoices"
             })
             .expect("postgres foreign key dependency");
-        assert_eq!(dependency.referenced.schema, schema);
+        assert_eq!(
+            dependency.referenced.schema.as_deref(),
+            Some(schema.as_str())
+        );
         assert_eq!(dependency.referenced.name, "accounts");
 
         sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
@@ -1062,6 +1173,7 @@ mod tests {
             .await
             .expect("connect postgres routine metadata database");
         let schema = format!("queryx_routines_{}", Uuid::new_v4().simple());
+        let event_trigger_name = format!("queryx_event_{}", Uuid::new_v4().simple());
         sqlx::query(&format!(r#"CREATE SCHEMA "{schema}""#))
             .execute(&driver.pool)
             .await
@@ -1086,6 +1198,13 @@ mod tests {
             format!(
                 r#"CREATE FUNCTION "{schema}".audit_order() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$"#
             ),
+            format!(
+                r#"CREATE FUNCTION "{schema}".enforce_schema_policy() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN NULL; END $$"#
+            ),
+            format!(
+                r#"CREATE EVENT TRIGGER "{event_trigger_name}" ON ddl_command_end WHEN TAG IN ('ALTER TABLE', 'CREATE TABLE') EXECUTE FUNCTION "{schema}".enforce_schema_policy()"#
+            ),
+            format!(r#"ALTER EVENT TRIGGER "{event_trigger_name}" DISABLE"#),
             format!(
                 r#"CREATE TRIGGER orders_audit BEFORE INSERT OR UPDATE OF status ON "{schema}".orders FOR EACH ROW WHEN (NEW.status IS NOT NULL) EXECUTE FUNCTION "{schema}".audit_order()"#
             ),
@@ -1191,7 +1310,10 @@ mod tests {
             trigger_function.referenced.kind,
             DatabaseObjectKind::Routine
         );
-        assert_eq!(trigger_function.referenced.schema, schema);
+        assert_eq!(
+            trigger_function.referenced.schema.as_deref(),
+            Some(schema.as_str())
+        );
         assert_eq!(trigger_function.referenced.name, "audit_order");
         assert_eq!(
             trigger_function.referenced.identity_arguments.as_deref(),
@@ -1212,13 +1334,59 @@ mod tests {
             .iter()
             .find(|dependency| {
                 dependency.kind == DependencyKind::ViewReference
-                    && dependency.dependent.schema == schema
+                    && dependency.dependent.schema.as_deref() == Some(schema.as_str())
                     && dependency.dependent.name == "active_orders"
                     && dependency.referenced.name == "orders"
             })
             .expect("postgres view relation dependency");
         assert_eq!(view_reference.referenced.kind, DatabaseObjectKind::Table);
+        let event_trigger = metadata
+            .event_triggers
+            .iter()
+            .find(|event_trigger| event_trigger.name == event_trigger_name)
+            .expect("postgres event trigger metadata");
+        assert_eq!(event_trigger.event, EventTriggerEvent::DdlCommandEnd);
+        assert_eq!(event_trigger.status, TriggerStatus::Disabled);
+        assert_eq!(
+            event_trigger.tags.as_ref(),
+            Some(&vec!["ALTER TABLE".to_string(), "CREATE TABLE".to_string()])
+        );
+        assert_eq!(event_trigger.function.kind, DatabaseObjectKind::Routine);
+        assert_eq!(
+            event_trigger.function.schema.as_deref(),
+            Some(schema.as_str())
+        );
+        assert_eq!(event_trigger.function.name, "enforce_schema_policy");
+        assert_eq!(
+            event_trigger.function.identity_arguments.as_deref(),
+            Some("")
+        );
+        assert!(event_trigger
+            .definition
+            .as_deref()
+            .is_some_and(|definition| {
+                definition.contains("CREATE EVENT TRIGGER")
+                    && definition.contains("WHEN TAG IN ('ALTER TABLE', 'CREATE TABLE')")
+                    && definition.contains("EXECUTE FUNCTION")
+            }));
+        let event_trigger_function = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::EventTriggerFunction
+                    && dependency.dependent.id.as_deref() == Some(event_trigger.id.as_str())
+            })
+            .expect("postgres event trigger function dependency");
+        assert_eq!(event_trigger_function.dependent.schema, None);
+        assert_eq!(
+            event_trigger_function.referenced.id,
+            event_trigger.function.id
+        );
 
+        sqlx::query(&format!(r#"DROP EVENT TRIGGER "{event_trigger_name}""#))
+            .execute(&driver.pool)
+            .await
+            .expect("drop event trigger");
         sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
             .execute(&driver.pool)
             .await

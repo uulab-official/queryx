@@ -10,7 +10,12 @@ export interface DependencyIndex {
 }
 
 export function databaseObjectRefKey(object: DatabaseObjectRef): string {
-  if ((object.kind === "routine" || object.kind === "trigger") && object.id) {
+  if (
+    (object.kind === "routine" ||
+      object.kind === "trigger" ||
+      object.kind === "eventTrigger") &&
+    object.id
+  ) {
     return JSON.stringify([object.kind, object.id]);
   }
   return JSON.stringify([object.kind, object.schema, object.name]);

@@ -58,4 +58,26 @@ describe("buildDependencyIndex", () => {
     expect(index.get(integerOverload).usedBy).toHaveLength(1);
     expect(index.get(numericOverload).usedBy).toHaveLength(0);
   });
+
+  it("indexes database-scoped event triggers by opaque id", () => {
+    const routine = overloadedRoutine("routine:event-trigger");
+    const eventTrigger = {
+      kind: "eventTrigger",
+      id: "event-trigger:schema-guard",
+      schema: null,
+      name: "schema_guard",
+      identityArguments: null,
+    } satisfies DatabaseObjectRef;
+    const edge: DependencyMetadata = {
+      id: "event-trigger:function",
+      kind: "eventTriggerFunction",
+      dependent: eventTrigger,
+      referenced: routine,
+    };
+
+    const index = buildDependencyIndex([edge]);
+
+    expect(index.get(eventTrigger).dependsOn).toEqual([edge]);
+    expect(index.get(routine).usedBy).toEqual([edge]);
+  });
 });

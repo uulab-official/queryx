@@ -144,6 +144,17 @@ $function$`,
       definition:
         "CREATE OR REPLACE FUNCTION public.audit_order() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
     },
+    {
+      id: "demo:public:enforce_schema_policy",
+      schema: "public",
+      name: "enforce_schema_policy",
+      kind: "function",
+      identityArguments: "",
+      returnType: "event_trigger",
+      language: "plpgsql",
+      definition:
+        "CREATE OR REPLACE FUNCTION public.enforce_schema_policy() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN NULL; END $$",
+    },
   ],
   triggers: [
     {
@@ -159,6 +170,24 @@ $function$`,
       condition: "NEW.status = 'paid'",
       definition:
         "CREATE TRIGGER orders_audit AFTER INSERT OR UPDATE ON public.orders FOR EACH ROW WHEN (NEW.status = 'paid') EXECUTE FUNCTION public.audit_order()",
+    },
+  ],
+  eventTriggers: [
+    {
+      id: "demo:event-trigger:schema_guard",
+      name: "schema_guard",
+      event: "ddlCommandEnd",
+      status: "origin",
+      tags: ["ALTER TABLE", "DROP TABLE"],
+      function: {
+        kind: "routine",
+        id: "demo:public:enforce_schema_policy",
+        schema: "public",
+        name: "enforce_schema_policy",
+        identityArguments: "",
+      },
+      definition:
+        "CREATE EVENT TRIGGER schema_guard ON ddl_command_end WHEN TAG IN ('ALTER TABLE', 'DROP TABLE') EXECUTE FUNCTION public.enforce_schema_policy();",
     },
   ],
   dependencies: [
@@ -231,6 +260,24 @@ $function$`,
         id: "demo:public:audit_order",
         schema: "public",
         name: "audit_order",
+        identityArguments: "",
+      },
+    },
+    {
+      id: "demo:dependency:schema-guard-function",
+      kind: "eventTriggerFunction",
+      dependent: {
+        kind: "eventTrigger",
+        id: "demo:event-trigger:schema_guard",
+        schema: null,
+        name: "schema_guard",
+        identityArguments: null,
+      },
+      referenced: {
+        kind: "routine",
+        id: "demo:public:enforce_schema_policy",
+        schema: "public",
+        name: "enforce_schema_policy",
         identityArguments: "",
       },
     },

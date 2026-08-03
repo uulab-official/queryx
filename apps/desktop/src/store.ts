@@ -42,7 +42,8 @@ export type SelectedDatabaseObject =
       identityArguments: string;
       routineKind: "function" | "procedure";
     }
-  | { kind: "trigger"; id: string; schema: string; name: string };
+  | { kind: "trigger"; id: string; schema: string; name: string }
+  | { kind: "eventTrigger"; id: string; name: string };
 
 interface QueryState {
   sql: string;
@@ -98,13 +99,16 @@ function defaultObject(
       routineKind: routine.kind,
     };
   const trigger = metadata.triggers[0];
-  return trigger
-    ? {
-        kind: "trigger",
-        id: trigger.id,
-        schema: trigger.schema,
-        name: trigger.name,
-      }
+  if (trigger)
+    return {
+      kind: "trigger",
+      id: trigger.id,
+      schema: trigger.schema,
+      name: trigger.name,
+    };
+  const eventTrigger = metadata.eventTriggers[0];
+  return eventTrigger
+    ? { kind: "eventTrigger", id: eventTrigger.id, name: eventTrigger.name }
     : null;
 }
 
