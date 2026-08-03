@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0d10" />
+    <meta name="description" content="QueryX — the local-first database IDE." />
+    <meta property="og:title" content="QueryX — Local-first database IDE" />
+    <meta property="og:description" content="A modern, fast, local-first database IDE." />
+    <meta property="og:type" content="website" />
+    <title>QueryX — Local-first database IDE</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23e2ff67'/%3E%3Cpath d='M9 9h9.5a4.5 4.5 0 0 1 0 9H9V9Zm0 9v5m0-5h8.5' fill='none' stroke='%230b0d10' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span>Q</span></div>
+          <div class="brand-name">Query<span>X</span></div>
+          <div class="beta-badge">BETA</div>
+        </div>
+        <div class="workspace-switcher">
+          <span class="workspace-dot"></span>
+          <span>Acme workspace</span>
+          <span class="chevron">⌄</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" title="Command palette" data-action="command"><span class="shortcut">⌘K</span></button>
+          <button class="icon-button" title="Toggle theme" data-action="theme">☼</button>
+          <button class="icon-button" title="Settings" data-action="settings">⚙</button>
+          <div class="avatar">JD</div>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="activitybar">
+          <button class="activity-icon active" title="Explorer" data-panel="explorer"><span class="glyph">◈</span></button>
+          <button class="activity-icon" title="Search" data-panel="search"><span class="glyph">⌕</span></button>
+          <button class="activity-icon" title="Connections" data-panel="connections"><span class="glyph">⌘</span></button>
+          <button class="activity-icon" title="Extensions" data-panel="extensions"><span class="glyph">⊞</span></button>
+          <div class="activity-spacer"></div>
+          <button class="activity-icon" title="Help"><span class="glyph">?</span></button>
+          <button class="activity-icon" title="Account"><span class="glyph">♙</span></button>
+        </aside>
+
+        <aside class="sidebar" id="sidebar">
+          <div class="sidebar-heading">
+            <span>EXPLORER</span>
+            <div class="heading-actions"><button class="mini-button" title="New connection" data-action="new-connection">＋</button><button class="mini-button" title="More">•••</button></div>
+          </div>
+          <div class="connection-select">
+            <span class="status-dot green"></span>
+            <span class="connection-name">production-db</span>
+            <span class="connection-type">PG</span>
+            <span class="chevron">⌄</span>
+          </div>
+          <div class="tree" id="tree">
+            <button class="tree-row root expanded"><span class="tree-caret">⌄</span><span class="tree-icon db">◉</span><span>production-db</span><span class="tree-more">•••</span></button>
+            <div class="tree-children">
+              <button class="tree-row expanded"><span class="tree-caret">⌄</span><span class="tree-icon folder">▱</span><span>Schemas</span></button>
+              <div class="tree-children nested">
+                <button class="tree-row expanded"><span class="tree-caret">⌄</span><span class="tree-icon schema">◇</span><span>public</span></button>
+                <div class="tree-children nested">
+                  <button class="tree-row group expanded"><span class="tree-caret">⌄</span><span class="tree-icon folder">▱</span><span>Tables</span><span class="count">8</span></button>
+                  <div class="tree-children nested">
+                    <button class="tree-row selected" data-table="orders"><span class="tree-icon table">▤</span><span>orders</span></button>
+                    <button class="tree-row" data-table="customers"><span class="tree-icon table">▤</span><span>customers</span></button>
+                    <button class="tree-row" data-table="products"><span class="tree-icon table">▤</span><span>products</span></button>
+                    <button class="tree-row" data-table="subscriptions"><span class="tree-icon table">▤</span><span>subscriptions</span></button>
+                    <button class="tree-row muted"><span class="tree-icon table">▤</span><span>+ 4 more</span></button>
+                  </div>
+                  <button class="tree-row"><span class="tree-caret">›</span><span class="tree-icon folder">▱</span><span>Views</span><span class="count">3</span></button>
+                  <button class="tree-row"><span class="tree-caret">›</span><span class="tree-icon folder">▱</span><span>Functions</span><span class="count">12</span></button>
+                  <button class="tree-row"><span class="tree-caret">›</span><span class="tree-icon folder">▱</span><span>Indexes</span><span class="count">24</span></button>
+                </div>
+              </div>
+              <button class="tree-row"><span class="tree-caret">›</span><span class="tree-icon folder">▱</span><span>Extensions</span></button>
+            </div>
+          </div>
+          <div class="sidebar-section-label"><span>RECENT QUERIES</span><button class="mini-button">•••</button></div>
+          <div class="recent-list">
+            <button class="recent-query"><span class="query-status success">✓</span><span><strong>Daily revenue</strong><small>2 minutes ago</small></span><span class="recent-time">⌘1</span></button>
+            <button class="recent-query"><span class="query-status success">✓</span><span><strong>Active subscriptions</strong><small>Yesterday</small></span></button>
+            <button class="recent-query"><span class="query-status error">×</span><span><strong>Migration check</strong><small>Yesterday</small></span></button>
+          </div>
+          <div class="storage-note"><span class="lock-icon">⌑</span><div><strong>Local-first</strong><small>Data stays on your device</small></div><span class="verified">✓</span></div>
+        </aside>
+
+        <main class="main-area">
+          <div class="editor-tabs">
+            <div class="tab active"><span class="sql-icon">SQL</span><span>Daily revenue</span><span class="tab-close">×</span></div>
+            <div class="tab"><span class="sql-icon">SQL</span><span>New query</span><span class="tab-close">×</span></div>
+            <button class="new-tab">＋</button>
+            <div class="tab-spacer"></div>
+            <div class="editor-mode"><span class="status-dot green"></span>Connected <span class="chevron">⌄</span></div>
+          </div>
+          <section class="editor-pane">
+            <div class="editor-toolbar">
+              <div class="toolbar-left"><button class="run-button" id="runButton"><span class="play">▶</span> Run <span class="toolbar-shortcut">⌘↵</span></button><button class="toolbar-button" id="formatButton">Format <span class="toolbar-shortcut">⌘L</span></button><button class="toolbar-button">Explain</button></div>
+              <div class="toolbar-right"><button class="toolbar-button" title="Split editor">◫</button><button class="toolbar-button" title="Save query">♡</button><button class="toolbar-button" title="More">•••</button></div>
+            </div>
+            <div class="code-editor" id="codeEditor" tabindex="0">
+              <div class="line-numbers"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span></div>
+              <pre class="code-content"><code><span class="comment">-- Revenue by day · last 30 days</span>
+<span class="keyword">SELECT</span>
+  <span class="field">DATE_TRUNC</span>(<span class="string">'day'</span>, created_at)::date <span class="keyword">AS</span> day,
+  <span class="field">COUNT</span>(*) <span class="keyword">AS</span> orders,
+  <span class="field">SUM</span>(total_amount) <span class="keyword">AS</span> revenue
+<span class="keyword">FROM</span> orders
+<span class="keyword">WHERE</span> created_at &gt;= <span class="field">CURRENT_DATE</span> - <span class="number">INTERVAL</span> <span class="string">'30 days'</span>
+  <span class="keyword">AND</span> status = <span class="string">'paid'</span>
+<span class="keyword">GROUP BY</span> <span class="number">1</span>
+<span class="keyword">ORDER BY</span> day <span class="keyword">DESC</span>;</code></pre>
+              <div class="editor-minimap"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <div class="editor-footer"><span>PostgreSQL</span><span>UTF-8</span><span>Ln 12, Col 21</span><span class="footer-spacer"></span><span>Spaces: 2</span><span>SQL</span></div>
+          </section>
+
+          <section class="results-pane">
+            <div class="results-heading"><div class="result-title"><span class="result-chevron">⌄</span><span>Results</span><span class="result-count" id="resultCount">30 rows</span><span class="result-time" id="resultTime">· 182ms</span></div><div class="result-actions"><button class="result-action active" data-result-view="table">▤ Table</button><button class="result-action" data-result-view="json">{ } JSON</button><button class="result-action">⇩ Export</button><button class="result-action">⌕</button></div></div>
+            <div class="results-toolbar"><div class="result-meta"><span class="green-dot"></span> Query completed successfully <span class="divider"></span><span>Today at 10:42 AM</span></div><label class="filter-box"><span>⌕</span><input id="filterInput" placeholder="Filter results..." /><kbd>⌘F</kbd></label></div>
+            <div class="grid-wrap" id="gridWrap">
+              <table class="result-grid"><thead><tr><th class="checkbox-col"><input type="checkbox" /></th><th data-sort="day">day <span>↕</span></th><th data-sort="orders">orders <span>↕</span></th><th data-sort="revenue">revenue <span>↕</span></th><th class="last-col"></th></tr></thead><tbody id="resultBody"></tbody></table>
+            </div>
+            <div class="json-view" id="jsonView" hidden><pre id="jsonContent"></pre></div>
+            <div class="pagination"><span>Showing <strong>1–10</strong> of <strong>30</strong></span><div><button disabled>‹</button><button class="page-active">1</button><button>2</button><button>3</button><button>›</button></div><span class="page-size">10 / page⌄</span></div>
+          </section>
+          <div class="statusbar"><span class="status-connection"><span class="status-dot green"></span> production-db</span><span>PostgreSQL 16.2</span><span class="status-spacer"></span><span>Safe mode <span class="toggle on"></span></span><span>⌘ Enter to run</span></div>
+        </main>
+
+        <aside class="inspector">
+          <div class="inspector-heading"><span>INSPECTOR</span><button class="mini-button">×</button></div>
+          <div class="inspector-title"><div class="table-symbol">▤</div><div><strong id="inspectorTable">orders</strong><small>public · table</small></div><button class="mini-button">•••</button></div>
+          <div class="inspector-tabs"><button class="active">Columns <span>6</span></button><button>Indexes <span>3</span></button></div>
+          <div class="column-list" id="columnList">
+            <div class="column-row"><span class="key-symbol">⌁</span><div><strong>id</strong><small>uuid</small></div><span class="null-badge">PK</span></div>
+            <div class="column-row"><span class="key-symbol empty">•</span><div><strong>customer_id</strong><small>uuid</small></div></div>
+            <div class="column-row"><span class="key-symbol empty">•</span><div><strong>status</strong><small>varchar(24)</small></div></div>
+            <div class="column-row"><span class="key-symbol empty">•</span><div><strong>total_amount</strong><small>numeric(12,2)</small></div></div>
+            <div class="column-row"><span class="key-symbol empty">•</span><div><strong>created_at</strong><small>timestamptz</small></div></div>
+            <div class="column-row"><span class="key-symbol empty">•</span><div><strong>updated_at</strong><small>timestamptz</small></div></div>
+          </div>
+          <div class="inspector-section"><div class="section-title">TABLE DETAILS <span>⌃</span></div><dl><dt>Rows</dt><dd>1,248,521</dd><dt>Size</dt><dd>284 MB</dd><dt>Created</dt><dd>Jan 12, 2024</dd><dt>Last vacuum</dt><dd>2 hours ago</dd></dl></div>
+          <div class="inspector-section"><div class="section-title">QUICK ACTIONS <span>⌃</span></div><button class="quick-action">⌘ View table data <span>→</span></button><button class="quick-action">⌘ Generate SQL <span>→</span></button><button class="quick-action">⌘ Copy table name <span>→</span></button></div>
+          <div class="inspector-spacer"></div><div class="inspector-tip"><span>✦</span><p><strong>Tip</strong> Use ⌘P to quickly open any table or query.</p></div>
+        </aside>
+      </div>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
