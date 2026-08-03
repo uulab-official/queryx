@@ -59,7 +59,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL/SQLite relation triggers with status, events, owner navigation, and read-only DDL
 - [x] Direct object dependencies with Depends on / Used by navigation and overload-safe PostgreSQL trigger-function edges
 - [x] PostgreSQL database-scoped event triggers with tags, activation status, function navigation, and reconstructed DDL
-- [ ] PostgreSQL aggregates/window functions and editable DDL
+- [x] PostgreSQL aggregates/window functions with catalog-specific Inspector metadata
+- [ ] Editable DDL with explicit preview, transaction, and rollback controls
 - [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
 
 Release gates:

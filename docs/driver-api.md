@@ -85,7 +85,7 @@ Indexes preserve ordered column or expression labels, uniqueness, primary status
 
 Foreign keys are owned by the source table and preserve an opaque snapshot ID, optional database name, ordered source/reference column pairs, target relation, referential actions, match mode, and optional deferrability. Incoming relationships are derived by the core reverse index rather than duplicated in the IPC payload. See [ADR-0005](decisions/ADR-0005-table-owned-foreign-keys.md).
 
-Routines preserve an opaque snapshot ID, schema/name, function or procedure kind, identity arguments, optional return text, language, and optional database-rendered definition. Selection uses only the opaque ID; it is not a durable identifier across reconnects. Drivers that have no compatible routine catalog return an empty array. See [ADR-0006](decisions/ADR-0006-overload-safe-routine-metadata.md).
+Routines preserve an opaque snapshot ID, schema/name, function, procedure, aggregate, or window-function kind, identity arguments, optional return text, language, and optional database-rendered definition. Aggregate entries may include catalog-specific mode and direct-argument metadata. Selection uses only the opaque ID; it is not a durable identifier across reconnects. Drivers that have no compatible routine catalog return an empty array. See [ADR-0006](decisions/ADR-0006-overload-safe-routine-metadata.md) and [ADR-0010](decisions/ADR-0010-postgresql-callable-kinds.md).
 
 Triggers preserve opaque snapshot identity, typed owner relation, timing/events, optional UPDATE columns, orientation, activation status, optional condition, and nullable database-rendered DDL. See [ADR-0007](decisions/ADR-0007-driver-neutral-trigger-metadata.md).
 

@@ -77,7 +77,18 @@ export interface ViewMetadata {
   definition?: string;
 }
 
-export type RoutineKind = "function" | "procedure";
+export type RoutineKind = "function" | "procedure" | "aggregate" | "window";
+
+export type AggregateKind =
+  | "normal"
+  | "orderedSet"
+  | "hypotheticalSet"
+  | "unknown";
+
+export interface AggregateMetadata {
+  kind: AggregateKind;
+  directArgumentCount: number;
+}
 
 export interface RoutineMetadata {
   id: string;
@@ -88,6 +99,7 @@ export interface RoutineMetadata {
   returnType: string | null;
   language: string;
   definition: string | null;
+  aggregate?: AggregateMetadata;
 }
 
 export type TriggerTiming = "before" | "after" | "insteadOf" | "unknown";

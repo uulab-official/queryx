@@ -296,7 +296,7 @@ function App() {
       ]),
       ...metadata.routines.map((routine) => ({
         label: routine.name,
-        detail: `${routine.schema} ${routine.kind}(${routine.identityArguments})${routine.returnType ? ` → ${routine.returnType}` : ""}`,
+        detail: `${routine.schema} ${routineKindLabel(routine.kind)}(${routine.identityArguments})${routine.returnType ? ` → ${routine.returnType}` : ""}`,
         kind: "function" as const,
       })),
     ];
@@ -674,9 +674,7 @@ function App() {
                                         {routine.identityArguments})
                                       </span>
                                       <small>
-                                        {routine.kind === "procedure"
-                                          ? "proc"
-                                          : "fn"}
+                                        {routineKindShortLabel(routine.kind)}
                                       </small>
                                     </button>
                                   ))}
@@ -1661,7 +1659,7 @@ function Inspector({
           <span>
             <strong title={signature}>{signature}</strong>
             <small>
-              {routine.schema} · {routine.kind}
+              {routine.schema} · {routineKindLabel(routine.kind)}
             </small>
           </span>
         </div>
@@ -1671,7 +1669,7 @@ function Inspector({
             <dt>Schema</dt>
             <dd>{routine.schema}</dd>
             <dt>Kind</dt>
-            <dd>{routine.kind}</dd>
+            <dd>{routineKindLabel(routine.kind)}</dd>
             <dt>Language</dt>
             <dd>{routine.language}</dd>
             <dt>Arguments</dt>
@@ -1682,16 +1680,24 @@ function Inspector({
             <dd title={routine.returnType ?? undefined}>
               {routine.returnType ?? "None"}
             </dd>
+            {routine.aggregate && (
+              <>
+                <dt>Aggregate mode</dt>
+                <dd>{aggregateKindLabel(routine.aggregate.kind)}</dd>
+                <dt>Direct arguments</dt>
+                <dd>{routine.aggregate.directArgumentCount}</dd>
+              </>
+            )}
           </dl>
         </div>
         <DependencyPanel
           dependencies={dependencies}
           onSelectObject={onSelectDependency}
         />
-        <div className="inspector-section routine-definition-section">
-          <div className="section-title routine-definition-heading">
-            DATABASE-RENDERED DDL
-            {definition && (
+        {definition ? (
+          <div className="inspector-section routine-definition-section">
+            <div className="section-title routine-definition-heading">
+              DATABASE-RENDERED DDL
               <button
                 type="button"
                 className="copy-ddl-button"
@@ -1699,25 +1705,28 @@ function Inspector({
               >
                 Copy DDL
               </button>
-            )}
-          </div>
-          {definition ? (
+            </div>
             <code
               className="definition-preview routine-definition"
               aria-label={`${signature} read-only DDL`}
             >
               {definition}
             </code>
-          ) : (
+            <p className="ddl-safety-note">
+              Displayed for inspection only. QueryX never executes this text
+              automatically.
+            </p>
+          </div>
+        ) : (
+          <div className="inspector-section routine-definition-section">
+            <div className="section-title">CATALOG METADATA</div>
             <div className="inspector-empty">
-              Definition is unavailable for this routine.
+              PostgreSQL does not expose executable DDL for this catalog{" "}
+              {routineKindLabel(routine.kind)}. QueryX keeps this object
+              inspection-only.
             </div>
-          )}
-          <p className="ddl-safety-note">
-            Displayed for inspection only. QueryX never executes this text
-            automatically.
-          </p>
-        </div>
+          </div>
+        )}
       </aside>
     );
   }
@@ -1959,6 +1968,41 @@ function eventTriggerEventLabel(event: EventTriggerMetadata["event"]): string {
     unknown: "Unknown",
   };
   return labels[event];
+}
+
+function routineKindLabel(kind: RoutineMetadata["kind"]): string {
+  const labels: Record<RoutineMetadata["kind"], string> = {
+    function: "function",
+    procedure: "procedure",
+    aggregate: "aggregate",
+    window: "window function",
+  };
+  return labels[kind];
+}
+
+function routineKindShortLabel(kind: RoutineMetadata["kind"]): string {
+  const labels: Record<RoutineMetadata["kind"], string> = {
+    function: "fn",
+    procedure: "proc",
+    aggregate: "agg",
+    window: "win",
+  };
+  return labels[kind];
+}
+
+function aggregateKindLabel(
+  kind: NonNullable<RoutineMetadata["aggregate"]>["kind"],
+): string {
+  const labels: Record<
+    NonNullable<RoutineMetadata["aggregate"]>["kind"],
+    string
+  > = {
+    normal: "normal",
+    orderedSet: "ordered-set",
+    hypotheticalSet: "hypothetical-set",
+    unknown: "unknown",
+  };
+  return labels[kind];
 }
 
 function databaseObjectQualifiedName(object: DatabaseObjectRef): string {

@@ -15,7 +15,7 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 - `docs/sql-editor.md` — tabs, autocomplete, shortcuts, format, explain
 - `docs/results.md` — grid, filter, sort, copy, JSON view, pagination
 - `docs/metadata-explorer.md` — schemas, tables, views, columns, indexes, foreign keys, routines
-- `docs/routine-inspector.md` — overload identity, database-rendered DDL, safety boundary
+- `docs/routine-inspector.md` — overload identity, functions/procedures/aggregates/window functions, database-rendered DDL, safety boundary
 - `docs/trigger-inspector.md` — trigger activation, ownership, database-rendered DDL
 - `docs/event-trigger-inspector.md` — database-wide DDL events, function dependencies, reconstructed DDL
 - `docs/dependency-inspector.md` — direct dependency direction, navigation, identity, driver limits

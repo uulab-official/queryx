@@ -38,7 +38,7 @@ pnpm --filter @queryx/desktop tauri build --no-bundle
 
 CSV unit tests cover column order, control-character escaping, NULL handling, UTF-8 BOM output, object serialization, and spreadsheet-formula protection. The manual export smoke test filters and sorts a result, exports it, opens the CSV in a text editor and spreadsheet, and confirms that the visible row order and count match without evaluating formula-like cells.
 
-The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, overload-safe routine DDL, trigger status/timing/DDL metadata, and direct FK/view/trigger dependency edges. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
+The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, overload-safe function/procedure DDL, aggregate kind and mode metadata, trigger status/timing/DDL metadata, and direct FK/view/trigger dependency edges. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
 
 ## Driver contract checklist
 
@@ -49,7 +49,7 @@ Every driver must test:
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior
 - cancel-before-start, duplicate cancel, completion/cancel races, and unsupported-driver capability behavior
-- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, routines, relation/event triggers, and typed direct dependencies
+- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, functions/procedures/aggregates/window functions, relation/event triggers, and typed direct dependencies
 - dependency direction, incoming/outgoing indexing, overload identity, and explicit unsupported catalog behavior
 - PostgreSQL event-trigger event/tag/status normalization, catalog-reconstructed DDL, database scope, and function navigation
 - real SQLite and PostgreSQL trigger ownership, timing/events, activation status, conditions, and DDL

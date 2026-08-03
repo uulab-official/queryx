@@ -1,6 +1,6 @@
 # Metadata Explorer
 
-QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, routines, relation triggers, and direct object dependencies. Database-specific catalog queries remain inside the SQLite and PostgreSQL drivers.
+QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, functions, procedures, aggregates, window functions, relation triggers, and direct object dependencies. Database-specific catalog queries remain inside the SQLite and PostgreSQL drivers.
 
 ## Browse relations
 
@@ -14,7 +14,8 @@ The Inspector shows:
 - view definition when the catalog exposes it;
 - table index name, ordered key columns, access method, and primary/unique badges.
 - outgoing and incoming foreign keys with ordered source/target column pairs and update/delete actions.
-- overload-safe function/procedure signatures, language, return shape, and read-only database-rendered DDL.
+- overload-safe function/procedure/aggregate/window-function signatures, language, return shape, and read-only database-rendered DDL where PostgreSQL exposes it.
+- aggregate mode (`normal`, `ordered-set`, or `hypothetical-set`) and direct-argument count from `pg_aggregate`.
 - trigger activation mode, timing/events, owner navigation, condition, and read-only DDL.
 - direct **Depends on / Used by** edges across visible tables, views, routines, and triggers.
 - PostgreSQL event-trigger activation, DDL event, command tags, execution function, and catalog-reconstructed DDL.
@@ -23,7 +24,7 @@ View, table, and routine names are also available to Monaco metadata completion.
 
 ## Inspect routines
 
-Routines are displayed as `name(identity arguments)`, so overloads remain distinct. Selection resolves through an opaque snapshot ID rather than the visible name or argument text. PostgreSQL reconstructs the displayed `CREATE OR REPLACE` statement; original comments and formatting may differ.
+Routines are displayed as `name(identity arguments)`, so overloads remain distinct. Selection resolves through an opaque snapshot ID rather than the visible name or argument text. Functions and procedures show PostgreSQL's reconstructed `CREATE OR REPLACE` statement. Aggregate and window-function entries remain catalog metadata: PostgreSQL does not expose executable DDL for them through the same routine-definition function, so QueryX does not invent or execute a definition.
 
 The DDL panel is read only. **Copy DDL** is an explicit clipboard action and never executes or inserts the definition into an editor. See [Routine Inspector](routine-inspector.md) for identity, privacy, and recovery details.
 
@@ -59,7 +60,7 @@ SQLite reports foreign-key and trigger-owner dependency edges. It does not guess
 
 QueryX excludes `pg_catalog`, `information_schema`, TOAST, and temporary schemas. It combines `information_schema` relation data with `pg_catalog` index, constraint, and routine metadata. PostgreSQL constraint and routine OIDs provide snapshot identities, while paired `conkey`/`confkey` ordinals preserve composite relationships. Estimated row counts come from PostgreSQL catalog statistics and can differ from an exact `COUNT(*)`.
 
-One `pg_proc` query loads ordinary functions and procedures, identity arguments, result text, language, and `pg_get_functiondef` output. Aggregates and window functions are intentionally excluded until they receive a separate model.
+One `pg_proc` query loads functions, procedures, aggregates, and window functions. `pg_aggregate` is left-joined for aggregate mode and direct-argument count. `pg_get_functiondef` is called only for ordinary functions and procedures; aggregate/window entries keep a null definition instead of claiming a synthetic DDL representation.
 
 A separate batched `pg_trigger` query loads non-internal relation triggers, activation modes, UPDATE columns, conditions, and reconstructed DDL.
 

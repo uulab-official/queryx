@@ -16,11 +16,12 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, ConnectionConfig, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
-        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, EventTriggerEvent,
-        EventTriggerMetadata, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn,
-        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
-        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        AggregateKind, AggregateMetadata, ColumnMetadata, ConnectionConfig, DatabaseMetadata,
+        DatabaseObjectKind, DatabaseObjectRef, DependencyKind, DependencyMetadata,
+        DriverCapability, DriverKind, EventTriggerEvent, EventTriggerMetadata,
+        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
+        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, TriggerEvent,
+        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
         TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
@@ -535,7 +536,7 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     .fetch_all(pool)
     .await?;
     let routine_rows = sqlx::query(
-        "SELECT p.oid::text AS routine_id, ns.nspname AS routine_schema, p.proname AS routine_name, p.prokind = 'p' AS is_procedure, pg_get_function_identity_arguments(p.oid) AS identity_arguments, CASE WHEN p.prokind = 'p' THEN NULL::text ELSE pg_get_function_result(p.oid) END AS return_type, language.lanname AS language, pg_get_functiondef(p.oid) AS definition FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace ns ON ns.oid = p.pronamespace JOIN pg_catalog.pg_language language ON language.oid = p.prolang WHERE p.prokind IN ('f', 'p') AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, p.proname, pg_get_function_identity_arguments(p.oid)",
+        "SELECT p.oid::text AS routine_id, ns.nspname AS routine_schema, p.proname AS routine_name, p.prokind::text AS routine_kind, pg_get_function_identity_arguments(p.oid) AS identity_arguments, CASE WHEN p.prokind = 'p' THEN NULL::text ELSE pg_get_function_result(p.oid) END AS return_type, language.lanname AS language, CASE WHEN p.prokind IN ('f', 'p') THEN pg_get_functiondef(p.oid) ELSE NULL::text END AS definition, aggregate.aggkind::text AS aggregate_kind, aggregate.aggnumdirectargs::integer AS aggregate_direct_argument_count FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace ns ON ns.oid = p.pronamespace JOIN pg_catalog.pg_language language ON language.oid = p.prolang LEFT JOIN pg_catalog.pg_aggregate aggregate ON aggregate.aggfnoid = p.oid WHERE p.prokind IN ('f', 'p', 'a', 'w') AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, p.proname, pg_get_function_identity_arguments(p.oid)",
     )
     .fetch_all(pool)
     .await?;
@@ -692,15 +693,25 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
                 id: format!("postgres:routine:{id}"),
                 schema: row.try_get("routine_schema")?,
                 name: row.try_get("routine_name")?,
-                kind: if row.try_get("is_procedure")? {
-                    RoutineKind::Procedure
-                } else {
-                    RoutineKind::Function
-                },
+                kind: routine_kind_from_catalog(&row.try_get::<String, _>("routine_kind")?),
                 identity_arguments: row.try_get("identity_arguments")?,
                 return_type: row.try_get("return_type")?,
                 language: row.try_get("language")?,
-                definition: Some(row.try_get("definition")?),
+                definition: row.try_get("definition")?,
+                aggregate: if row.try_get::<String, _>("routine_kind")? == "a" {
+                    Some(AggregateMetadata {
+                        kind: aggregate_kind_from_catalog(
+                            row.try_get::<Option<String>, _>("aggregate_kind")?
+                                .as_deref(),
+                        ),
+                        direct_argument_count: row
+                            .try_get::<Option<i32>, _>("aggregate_direct_argument_count")?
+                            .unwrap_or_default()
+                            .max(0) as u32,
+                    })
+                } else {
+                    None
+                },
             })
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
@@ -936,6 +947,24 @@ fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> Da
     }
 }
 
+fn routine_kind_from_catalog(kind: &str) -> RoutineKind {
+    match kind {
+        "p" => RoutineKind::Procedure,
+        "a" => RoutineKind::Aggregate,
+        "w" => RoutineKind::Window,
+        _ => RoutineKind::Function,
+    }
+}
+
+fn aggregate_kind_from_catalog(kind: Option<&str>) -> AggregateKind {
+    match kind {
+        Some("n") => AggregateKind::Normal,
+        Some("o") => AggregateKind::OrderedSet,
+        Some("h") => AggregateKind::HypotheticalSet,
+        _ => AggregateKind::Unknown,
+    }
+}
+
 fn event_trigger_event_from_catalog(event: &str) -> EventTriggerEvent {
     match event {
         "ddl_command_start" => EventTriggerEvent::DdlCommandStart,
@@ -1029,6 +1058,28 @@ mod tests {
         );
         assert_eq!(trigger_status_from_catalog("D"), TriggerStatus::Disabled);
         assert_eq!(trigger_status_from_catalog("O"), TriggerStatus::Origin);
+    }
+
+    #[test]
+    fn normalizes_postgres_routine_and_aggregate_kinds() {
+        assert_eq!(routine_kind_from_catalog("f"), RoutineKind::Function);
+        assert_eq!(routine_kind_from_catalog("p"), RoutineKind::Procedure);
+        assert_eq!(routine_kind_from_catalog("a"), RoutineKind::Aggregate);
+        assert_eq!(routine_kind_from_catalog("w"), RoutineKind::Window);
+        assert_eq!(routine_kind_from_catalog("future"), RoutineKind::Function);
+        assert_eq!(
+            aggregate_kind_from_catalog(Some("n")),
+            AggregateKind::Normal
+        );
+        assert_eq!(
+            aggregate_kind_from_catalog(Some("o")),
+            AggregateKind::OrderedSet
+        );
+        assert_eq!(
+            aggregate_kind_from_catalog(Some("h")),
+            AggregateKind::HypotheticalSet
+        );
+        assert_eq!(aggregate_kind_from_catalog(None), AggregateKind::Unknown);
     }
 
     #[tokio::test]
@@ -1202,6 +1253,12 @@ mod tests {
                 r#"CREATE FUNCTION "{schema}".enforce_schema_policy() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN NULL; END $$"#
             ),
             format!(
+                r#"CREATE FUNCTION "{schema}".sum_numeric(state numeric, value numeric) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT COALESCE(state, 0) + value $$"#
+            ),
+            format!(
+                r#"CREATE AGGREGATE "{schema}".total_numeric(numeric) (SFUNC = "{schema}".sum_numeric, STYPE = numeric, INITCOND = '0')"#
+            ),
+            format!(
                 r#"CREATE EVENT TRIGGER "{event_trigger_name}" ON ddl_command_end WHEN TAG IN ('ALTER TABLE', 'CREATE TABLE') EXECUTE FUNCTION "{schema}".enforce_schema_policy()"#
             ),
             format!(r#"ALTER EVENT TRIGGER "{event_trigger_name}" DISABLE"#),
@@ -1236,6 +1293,11 @@ mod tests {
             .iter()
             .find(|routine| routine.schema == schema && routine.name == "refresh_orders")
             .expect("procedure metadata");
+        let aggregate = metadata
+            .routines
+            .iter()
+            .find(|routine| routine.schema == schema && routine.name == "total_numeric")
+            .expect("aggregate metadata");
 
         assert_eq!(overloads.len(), 2);
         assert_ne!(overloads[0].id, overloads[1].id);
@@ -1265,6 +1327,22 @@ mod tests {
             .definition
             .as_deref()
             .is_some_and(|ddl| ddl.contains("CREATE OR REPLACE PROCEDURE")));
+        assert_eq!(aggregate.kind, RoutineKind::Aggregate);
+        assert_eq!(aggregate.identity_arguments, "numeric");
+        assert_eq!(aggregate.return_type.as_deref(), Some("numeric"));
+        assert_eq!(aggregate.language, "internal");
+        assert_eq!(aggregate.definition, None);
+        assert_eq!(
+            aggregate.aggregate.as_ref().map(|value| value.kind),
+            Some(AggregateKind::Normal)
+        );
+        assert_eq!(
+            aggregate
+                .aggregate
+                .as_ref()
+                .map(|value| value.direct_argument_count),
+            Some(0)
+        );
         let audit_trigger = metadata
             .triggers
             .iter()

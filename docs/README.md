@@ -9,7 +9,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, routines, triggers, and dependency navigation
-- [Routine Inspector](routine-inspector.md) — overload identity, read-only PostgreSQL DDL, safety, and recovery
+- [Routine Inspector](routine-inspector.md) — overload identity, functions/procedures/aggregates/window functions, read-only PostgreSQL DDL, safety, and recovery
 - [Trigger Inspector](trigger-inspector.md) — activation modes, events, owner navigation, and read-only DDL
 - [Event Trigger Inspector](event-trigger-inspector.md) — database-scoped PostgreSQL DDL events, tags, function navigation, and reconstructed DDL
 - [Dependency Inspector](dependency-inspector.md) — Depends on / Used by semantics, navigation, and driver coverage

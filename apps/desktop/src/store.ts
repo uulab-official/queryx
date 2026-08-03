@@ -40,7 +40,7 @@ export type SelectedDatabaseObject =
       schema: string;
       name: string;
       identityArguments: string;
-      routineKind: "function" | "procedure";
+      routineKind: "function" | "procedure" | "aggregate" | "window";
     }
   | { kind: "trigger"; id: string; schema: string; name: string }
   | { kind: "eventTrigger"; id: string; name: string };

@@ -2,11 +2,11 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, relation triggers, event triggers, and direct object dependencies.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and direct object dependencies.
 
 ## Routine catalog
 
-One batched `pg_proc` query loads visible ordinary functions and procedures. QueryX uses routine OIDs only as opaque identities for the active metadata snapshot, identity arguments to distinguish overloads in the UI, `pg_get_function_result` for return shapes, and `pg_get_functiondef` for read-only database-rendered DDL. Aggregates and window functions are excluded.
+One batched `pg_proc` query loads visible functions, procedures, aggregates, and window functions. QueryX uses routine OIDs only as opaque identities for the active metadata snapshot, identity arguments to distinguish overloads in the UI, and `pg_get_function_result` for return shapes. A `pg_aggregate` left join provides aggregate mode (`normal`, `ordered-set`, or `hypothetical-set`) and direct-argument count. `pg_get_functiondef` is limited to ordinary functions and procedures; aggregate and window entries intentionally have no executable DDL panel.
 
 The DDL is reconstructed by PostgreSQL and may not preserve original comments, whitespace, or formatting. QueryX displays and copies it but never executes it automatically. Routine bodies remain within the local desktop process and the connected database boundary.
 
@@ -64,7 +64,7 @@ Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, us
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Aggregates/window functions and editable DDL are not yet part of the shared metadata model.
+- Editable DDL is not yet part of the shared metadata model. Aggregate/window entries are inspection-only because PostgreSQL does not provide the same executable routine definition contract for those catalog kinds.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

@@ -165,6 +165,24 @@ pub struct EventTriggerMetadata {
 pub enum RoutineKind {
     Function,
     Procedure,
+    Aggregate,
+    Window,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AggregateKind {
+    Normal,
+    OrderedSet,
+    HypotheticalSet,
+    Unknown,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AggregateMetadata {
+    pub kind: AggregateKind,
+    pub direct_argument_count: u32,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +196,8 @@ pub struct RoutineMetadata {
     pub return_type: Option<String>,
     pub language: String,
     pub definition: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aggregate: Option<AggregateMetadata>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]

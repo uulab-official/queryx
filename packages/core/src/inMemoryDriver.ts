@@ -155,6 +155,27 @@ $function$`,
       definition:
         "CREATE OR REPLACE FUNCTION public.enforce_schema_policy() RETURNS event_trigger LANGUAGE plpgsql AS $$ BEGIN NULL; END $$",
     },
+    {
+      id: "demo:public:total_numeric",
+      schema: "public",
+      name: "total_numeric",
+      kind: "aggregate",
+      identityArguments: "numeric",
+      returnType: "numeric",
+      language: "internal",
+      aggregate: { kind: "normal", directArgumentCount: 0 },
+      definition: null,
+    },
+    {
+      id: "demo:public:rank",
+      schema: "public",
+      name: "rank",
+      kind: "window",
+      identityArguments: "",
+      returnType: "bigint",
+      language: "internal",
+      definition: null,
+    },
   ],
   triggers: [
     {
