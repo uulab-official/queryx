@@ -12,7 +12,7 @@ The DDL is reconstructed by PostgreSQL and may not preserve original comments, w
 
 ## Trigger catalog
 
-One `pg_trigger` query returns non-internal triggers for loaded table, partition, and view kinds. QueryX derives timing/events/orientation from `tgtype`, UPDATE columns from `tgattr`, preserves every `tgenabled` mode, and displays `pg_get_expr` conditions plus `pg_get_triggerdef` DDL.
+One `pg_trigger` query returns non-internal triggers for loaded table, partition, and view kinds. QueryX derives timing/events/orientation from `tgtype`, UPDATE columns from `tgattr`, preserves every `tgenabled` mode, and extracts optional conditions from standardized `pg_get_triggerdef` DDL.
 
 ## Connection behavior
 

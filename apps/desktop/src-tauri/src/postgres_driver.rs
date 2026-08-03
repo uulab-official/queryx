@@ -539,7 +539,7 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     .fetch_all(pool)
     .await?;
     let trigger_rows = sqlx::query(
-        "SELECT t.oid::text AS trigger_id, ns.nspname AS trigger_schema, t.tgname AS trigger_name, relation.relname AS relation_name, relation.relkind = 'v' AS is_view, t.tgtype::integer AS trigger_type, t.tgenabled::text AS trigger_status, pg_get_expr(t.tgqual, t.tgrelid, true) AS condition, pg_get_triggerdef(t.oid, true) AS definition, ARRAY(SELECT attribute.attname FROM unnest(t.tgattr::smallint[]) WITH ORDINALITY AS trigger_attribute(attnum, ordinality) JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = t.tgrelid AND attribute.attnum = trigger_attribute.attnum ORDER BY trigger_attribute.ordinality)::text[] AS update_columns FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class relation ON relation.oid = t.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = relation.relnamespace WHERE NOT t.tgisinternal AND relation.relkind IN ('r', 'p', 'v') AND relation.relpersistence <> 't' AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, t.tgname, relation.relname",
+        "SELECT t.oid::text AS trigger_id, ns.nspname AS trigger_schema, t.tgname AS trigger_name, relation.relname AS relation_name, relation.relkind = 'v' AS is_view, t.tgtype::integer AS trigger_type, t.tgenabled::text AS trigger_status, pg_get_triggerdef(t.oid, true) AS definition, ARRAY(SELECT attribute.attname FROM unnest(t.tgattr::smallint[]) WITH ORDINALITY AS trigger_attribute(attnum, ordinality) JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = t.tgrelid AND attribute.attnum = trigger_attribute.attnum ORDER BY trigger_attribute.ordinality)::text[] AS update_columns FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class relation ON relation.oid = t.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = relation.relnamespace WHERE NOT t.tgisinternal AND relation.relkind IN ('r', 'p', 'v') AND relation.relpersistence <> 't' AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, t.tgname, relation.relname",
     )
     .fetch_all(pool)
     .await?;
@@ -701,6 +701,7 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
             let trigger_type: i32 = row.try_get("trigger_type")?;
             let update_columns: Vec<String> = row.try_get("update_columns")?;
             let status: String = row.try_get("trigger_status")?;
+            let definition: String = row.try_get("definition")?;
             let mut events = Vec::new();
             if trigger_type & 4 != 0 {
                 events.push(TriggerEvent::Insert);
@@ -747,8 +748,8 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
                     "A" => TriggerStatus::Always,
                     _ => TriggerStatus::Origin,
                 },
-                condition: row.try_get("condition")?,
-                definition: Some(row.try_get("definition")?),
+                condition: trigger_condition_from_definition(&definition),
+                definition: Some(definition),
             })
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
@@ -761,6 +762,12 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         routines,
         triggers,
     })
+}
+
+fn trigger_condition_from_definition(definition: &str) -> Option<String> {
+    let start = definition.find(" WHEN (")? + " WHEN (".len();
+    let end = definition.rfind(") EXECUTE ")?;
+    (end > start).then(|| definition[start..end].to_string())
 }
 
 #[cfg(test)]

@@ -14,7 +14,7 @@ QueryX lists relation triggers under each schema's **Triggers** group for Postgr
 
 ## Driver behavior
 
-PostgreSQL preserves all `tgenabled` modes: `origin`, `replica`, `always`, and `disabled`. It obtains timing/events from the catalog bitmask, UPDATE OF columns from `tgattr`, conditions from `pg_get_expr`, and DDL from `pg_get_triggerdef`. Internal constraint triggers, system schemas, temporary relations, and unsupported relation kinds are excluded.
+PostgreSQL preserves all `tgenabled` modes: `origin`, `replica`, `always`, and `disabled`. It obtains timing/events from the catalog bitmask, UPDATE OF columns from `tgattr`, and extracts the optional condition from standardized `pg_get_triggerdef` DDL. Internal constraint triggers, system schemas, temporary relations, and unsupported relation kinds are excluded.
 
 SQLite reads trigger ownership and SQL from `main.sqlite_master`. SQLite has no equivalent activation flag, so visible triggers report `enabled`; this does not mean PostgreSQL `always`. Timing and events are conservatively derived from the CREATE TRIGGER header. Unsupported syntax falls back to `unknown` while preserving the DDL.
 
