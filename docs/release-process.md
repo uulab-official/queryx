@@ -17,7 +17,7 @@ The version is recorded in `VERSION` and must match the root package plus every 
 1. Update `VERSION` and all workspace package versions.
 2. Move the relevant `Unreleased` entries into a dated version section in `CHANGELOG.md`.
 3. Update `ROADMAP.md` status and supported driver capabilities.
-4. Run `pnpm run verify`, `pnpm run typecheck`, `pnpm run test`, and `pnpm run build`.
+4. Run `pnpm run verify`, `pnpm run format:check`, `pnpm run lint`, `pnpm run typecheck`, `pnpm run test`, and `pnpm run build`.
 5. Run the manual smoke checklist from `docs/testing.md`.
 6. Commit with `release: vX.Y.Z` and create a signed tag `vX.Y.Z`.
 7. Publish release notes with known issues and rollback/migration guidance.

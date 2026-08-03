@@ -204,7 +204,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
     setSelectedTable: (selectedTable) => set({ selectedTable }),
-    runQuery: async (mode = "normal", sqlOverride) => {
+    runQuery: async (mode = "normal", sqlOverride?: string) => {
       if (get().isRunning) return;
       const controller = new AbortController();
       activeQueryController = controller;

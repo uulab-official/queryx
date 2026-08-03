@@ -43,7 +43,7 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 
 ## 작성 우선순위
 
-### Phase A — prototype handoff
+### Phase A — prototype handoff (complete)
 
 현재 프로토타입을 다음 구현자가 이어받을 수 있게 합니다.
 
@@ -51,16 +51,18 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 2. `ROADMAP.md`에 v0.1의 완료 기준을 고정합니다.
 3. architecture ADR을 작성해 driver interface, local storage, safe mode 결정을 기록합니다.
 
-### Phase B — v0.1 launch docs
+### Phase B — v0.1 launch docs (in progress)
 
 실제 SQLite/PostgreSQL 연결이 들어오는 시점에 사용자 문서를 추가합니다.
 
-1. Getting Started
-2. Connections
-3. SQL Editor
-4. Results and Export
-5. Troubleshooting
-6. Security and local-first FAQ
+1. [x] Getting Started
+2. [x] Connections
+3. [x] SQL Editor
+4. [x] Results and CSV Export
+5. [x] Troubleshooting
+6. [x] Security policy and local-first boundaries
+7. [ ] Native packaging, signing, and update guide
+8. [ ] Workspace persistence and keychain guide when those features land
 
 ### Phase C — extensibility docs
 

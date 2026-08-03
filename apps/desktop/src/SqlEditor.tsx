@@ -86,6 +86,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(
       runSelectionOrDocument,
     }));
 
+    // biome-ignore lint/correctness/useExhaustiveDependencies: Monaco is initialized once; later tab and callback changes are synchronized through refs and the following effect.
     useEffect(() => {
       let disposeEditor: (() => void) | undefined;
       const initialization = window.setTimeout(() => {

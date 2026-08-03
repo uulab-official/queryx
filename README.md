@@ -1,45 +1,83 @@
 # QueryX
 
-QueryX is a local-first database IDE in active construction. The repository includes the first interactive UI slice plus a real pnpm workspace with typed driver and query-result contracts.
+[![CI](https://github.com/uulab-official/queryx/actions/workflows/ci.yml/badge.svg)](https://github.com/uulab-official/queryx/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-alpha-orange.svg)](ROADMAP.md)
 
-The product direction and implementation gates are tracked in [ROADMAP.md](ROADMAP.md). The documentation structure and writing plan live in [docs/DOCUMENTATION_PLAN.md](docs/DOCUMENTATION_PLAN.md).
+QueryX is an open-source, local-first database IDE for developers who want a fast SQL workflow without sending database credentials, queries, or results through a vendor cloud. The long-term product goal is a focused, extensible alternative to general-purpose tools such as DBeaver and Oracle SQL Developer: the ergonomics of a modern code editor with database-grade safety and metadata tooling.
 
-The implementation foundation is documented in [docs/architecture.md](docs/architecture.md), [docs/driver-api.md](docs/driver-api.md), [docs/connections.md](docs/connections.md), [docs/sql-editor.md](docs/sql-editor.md), [docs/sqlite-driver.md](docs/sqlite-driver.md), and [docs/postgres-driver.md](docs/postgres-driver.md).
+> QueryX is alpha software. Use a least-privilege database account and review destructive statements before running them against important data.
 
-## Run locally
+## Why QueryX
 
-Install dependencies and start the actual React/Vite desktop frontend:
+- **Local first:** the desktop process connects directly to your database. There is no QueryX relay service.
+- **Safe by default:** UPDATE and DELETE without a WHERE clause are intercepted before execution.
+- **Driver neutral:** SQLite and PostgreSQL share typed query, metadata, transaction, and capability contracts.
+- **Editor centered:** Monaco provides SQL syntax highlighting, metadata completion, selections, tabs, and independent undo history.
+- **Open and testable:** TypeScript and Rust quality gates run on Linux, macOS, and Windows in GitHub Actions.
+
+## Current capabilities
+
+| Area | Available now | Next production gate |
+| --- | --- | --- |
+| Connections | Native SQLite and PostgreSQL, TLS modes, session-only passwords | Saved profiles and OS keychain |
+| SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
+| Results | Dynamic table/JSON view, local filter/sort, guarded CSV export | Virtualized streaming, copy modes, paging |
+| Safety | Destructive-query warning, transaction execution path | Parser-backed analysis and affected-row estimate |
+| Metadata | Schemas, tables, columns | Views, indexes, keys, routines, dependencies |
+| Runtime | Tauri 2, React, Rust, SQLx | Signed installers and automatic updates |
+
+The detailed delivery order and acceptance gates are in the [product roadmap](ROADMAP.md).
+
+## Quick start
+
+Prerequisites: Node.js 22, pnpm 11, Rust stable, and the platform packages required by Tauri 2.
 
 ```bash
+git clone https://github.com/uulab-official/queryx.git
+cd queryx
 pnpm install
-pnpm dev
-```
-
-Then visit the Vite URL shown in the terminal.
-
-Run the native Tauri shell with the real Rust/SQLx SQLite and PostgreSQL drivers:
-
-```bash
 pnpm --filter @queryx/desktop tauri:dev
 ```
 
-Rust stable plus the platform prerequisites from the Tauri 2 setup guide are required.
+QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file or PostgreSQL server. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
 
-The original dependency-free preview can still be opened directly from `index.html`.
+See [Getting Started](docs/getting-started.md) for platform setup and the first-query walkthrough.
 
-## Included in this slice
+## Development
 
-- VS Code-inspired dark IDE shell with Explorer, editor, results, and Inspector panels
-- Real SQLite and PostgreSQL connections in the native desktop runtime
-- Session-only connection dialog with host, port, database, user, password, and SSL mode
-- Dynamic query results for arbitrary columns with table and JSON views
-- Monaco SQL editing with syntax highlighting, schema/table/column completion, multi-tab models, and selected-query execution
-- Run, format, filter, sort, and JSON result interactions
-- PostgreSQL server-side query cancellation from the toolbar or Escape key
-- Schema tree collapse/expand and table switching with column metadata
-- Local-first status messaging and no-network static runtime
-- Connection status, failure feedback, and schema-aware Explorer metadata
+```bash
+pnpm run verify
+pnpm run format:check
+pnpm run lint
+pnpm run typecheck
+pnpm run test
+pnpm run build
+pnpm run check:native
+pnpm run test:native
+pnpm --filter @queryx/desktop tauri build --no-bundle
+```
 
-## Project direction
+The repository is a pnpm workspace:
 
-The browser frontend uses an in-memory PostgreSQL-shaped fallback. The Tauri runtime opens a seeded SQLite `:memory:` database by default and can switch to a real PostgreSQL server from the connection dialog. PostgreSQL advertises native cancellation; SQLite deliberately does not until an interrupt-safe implementation is available. Saved profiles, OS keychain integration, and broader metadata remain on the roadmap.
+```text
+apps/desktop/          React/Vite UI and Tauri host
+packages/shared/       Driver-neutral public contracts
+packages/core/         Safety, export, and deterministic core logic
+docs/                  User, contributor, architecture, and ADR docs
+scripts/               Repository verification harness
+```
+
+Read the [architecture](docs/architecture.md), [driver API](docs/driver-api.md), and [testing guide](docs/testing.md) before changing a cross-layer contract.
+
+## Documentation
+
+The [documentation index](docs/README.md) routes users and contributors to setup, connections, SQL editing, results/export, troubleshooting, drivers, architecture, testing, and release operations.
+
+## Contributing and security
+
+Contributions are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), follow the [Code of Conduct](CODE_OF_CONDUCT.md), and do not open a public issue for a suspected vulnerability—use the process in [SECURITY.md](SECURITY.md).
+
+## License
+
+QueryX is licensed under the [Apache License 2.0](LICENSE).

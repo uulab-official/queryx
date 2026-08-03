@@ -7,16 +7,28 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { inspectQuerySafety } from "@queryx/core";
+import { inspectQuerySafety, serializeRowsToCsv } from "@queryx/core";
 import type { QuerySafetyReport } from "@queryx/core";
 import type { DriverConfig, DriverKind, TableMetadata } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
+import { saveCsvFile } from "./exportCsv";
 import { useQueryStore, type RunMode } from "./store";
 
 const MonacoSqlEditor = lazy(async () => {
   const module = await import("./SqlEditor");
   return { default: module.SqlEditor };
 });
+
+const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
+let nextResultRowKey = 0;
+
+function resultRowKey(row: Record<string, unknown>): string {
+  const existing = resultRowKeys.get(row);
+  if (existing) return existing;
+  const key = `query-result-row-${nextResultRowKey++}`;
+  resultRowKeys.set(row, key);
+  return key;
+}
 
 function Icon({ children }: { children: string }) {
   return (
@@ -199,6 +211,29 @@ function App() {
         : [...current, key],
     );
 
+  const exportResults = async () => {
+    if (!result || result.columns.length === 0) {
+      notify("Run a query with tabular results before exporting");
+      return;
+    }
+    const timestamp = new Date()
+      .toISOString()
+      .replaceAll(":", "-")
+      .slice(0, 19);
+    try {
+      const outcome = await saveCsvFile(
+        serializeRowsToCsv(result.columns, visibleRows),
+        `queryx-results-${timestamp}.csv`,
+      );
+      if (outcome === "saved")
+        notify(`Exported ${visibleRows.length.toLocaleString()} rows locally`);
+    } catch (error) {
+      notify(
+        `CSV export failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -210,6 +245,7 @@ function App() {
           <small>BETA</small>
         </div>
         <button
+          type="button"
           className="workspace-switcher"
           onClick={() => setConnectionOpen(true)}
         >
@@ -218,12 +254,14 @@ function App() {
         </button>
         <div className="topbar-actions">
           <button
+            type="button"
             className="icon-button"
             onClick={() => notify("Command palette · type to search commands")}
           >
             ⌘K
           </button>
           <button
+            type="button"
             className="icon-button"
             onClick={() => notify("Settings are stored locally")}
           >
@@ -234,20 +272,20 @@ function App() {
       </header>
       <div className="workspace">
         <aside className="activitybar">
-          <button className="activity-icon active">
+          <button type="button" className="activity-icon active">
             <Icon>◈</Icon>
           </button>
-          <button className="activity-icon">
+          <button type="button" className="activity-icon">
             <Icon>⌕</Icon>
           </button>
-          <button className="activity-icon">
+          <button type="button" className="activity-icon">
             <Icon>⌘</Icon>
           </button>
-          <button className="activity-icon">
+          <button type="button" className="activity-icon">
             <Icon>⊞</Icon>
           </button>
           <div className="activity-spacer" />
-          <button className="activity-icon">
+          <button type="button" className="activity-icon">
             <Icon>?</Icon>
           </button>
         </aside>
@@ -255,6 +293,7 @@ function App() {
           <div className="panel-heading">
             EXPLORER{" "}
             <button
+              type="button"
               className="mini-button"
               aria-label="New connection"
               onClick={() => setConnectionOpen(true)}
@@ -263,6 +302,7 @@ function App() {
             </button>
           </div>
           <button
+            type="button"
             className="connection-select"
             onClick={() => setConnectionOpen(true)}
           >
@@ -322,6 +362,7 @@ function App() {
                                     const tableKey = `${table.schema}.${table.name}`;
                                     return (
                                       <button
+                                        type="button"
                                         className={`tree-row ${selectedTable === tableKey ? "selected" : ""}`}
                                         key={tableKey}
                                         onClick={() =>
@@ -348,7 +389,10 @@ function App() {
             )}
           </div>
           <div className="section-label">
-            RECENT QUERIES <button className="mini-button">•••</button>
+            RECENT QUERIES{" "}
+            <button type="button" className="mini-button">
+              •••
+            </button>
           </div>
           <div className="recent-list">
             {history.length > 0 ? (
@@ -392,6 +436,7 @@ function App() {
                 key={tab.id}
               >
                 <button
+                  type="button"
                   className="tab-select"
                   onClick={() => selectQuery(tab.id)}
                 >
@@ -400,6 +445,7 @@ function App() {
                   {tab.isDirty && <span className="dirty-dot">●</span>}
                 </button>
                 <button
+                  type="button"
                   className="tab-close"
                   aria-label={`Close ${tab.title}`}
                   onClick={() => requestCloseQuery(tab.id)}
@@ -408,11 +454,12 @@ function App() {
                 </button>
               </div>
             ))}
-            <button className="new-query-tab" onClick={newQuery}>
+            <button type="button" className="new-query-tab" onClick={newQuery}>
               ＋ New query
             </button>
             <div className="tab-spacer" />
             <button
+              type="button"
               className="connected"
               onClick={() => setConnectionOpen(true)}
             >
@@ -431,6 +478,7 @@ function App() {
             <div className="editor-toolbar">
               <div>
                 <button
+                  type="button"
                   className={
                     isRunning && canCancel ? "cancel-button" : "run-button"
                   }
@@ -446,6 +494,7 @@ function App() {
                   <kbd>{isRunning && canCancel ? "Esc" : "⌘↵"}</kbd>
                 </button>
                 <button
+                  type="button"
                   className="toolbar-button"
                   onClick={() =>
                     setSql(
@@ -458,6 +507,7 @@ function App() {
                   Format <kbd>⌘L</kbd>
                 </button>
                 <button
+                  type="button"
                   className="toolbar-button"
                   onClick={() =>
                     notify("Explain plan is available for connected drivers")
@@ -467,14 +517,19 @@ function App() {
                 </button>
               </div>
               <div className="toolbar-right">
-                <button className="toolbar-button">◫</button>
+                <button type="button" className="toolbar-button">
+                  ◫
+                </button>
                 <button
+                  type="button"
                   className="toolbar-button"
                   onClick={() => notify("Query saved to local favorites")}
                 >
                   ♡
                 </button>
-                <button className="toolbar-button">•••</button>
+                <button type="button" className="toolbar-button">
+                  •••
+                </button>
               </div>
             </div>
             <div className="code-editor">
@@ -516,18 +571,24 @@ function App() {
               </div>
               <div className="result-actions">
                 <button
+                  type="button"
                   className={resultView === "table" ? "active" : ""}
                   onClick={() => setResultView("table")}
                 >
                   ▤ Table
                 </button>
                 <button
+                  type="button"
                   className={resultView === "json" ? "active" : ""}
                   onClick={() => setResultView("json")}
                 >
                   {"{ }"} JSON
                 </button>
-                <button onClick={() => notify("CSV export queued locally")}>
+                <button
+                  type="button"
+                  onClick={() => void exportResults()}
+                  disabled={!result || result.columns.length === 0}
+                >
                   ⇩ Export
                 </button>
               </div>
@@ -568,22 +629,28 @@ function App() {
                     <tr>
                       <th className="row-number">#</th>
                       {result?.columns.map((column) => (
-                        <th key={column.name} onClick={() => sort(column.name)}>
-                          {column.name} <small>{column.type}</small>
-                          <span>
-                            {sortBy === column.name
-                              ? sortDirection === "asc"
-                                ? "↑"
-                                : "↓"
-                              : "↕"}
-                          </span>
+                        <th key={column.name}>
+                          <button
+                            type="button"
+                            className="column-sort"
+                            onClick={() => sort(column.name)}
+                          >
+                            {column.name} <small>{column.type}</small>
+                            <span>
+                              {sortBy === column.name
+                                ? sortDirection === "asc"
+                                  ? "↑"
+                                  : "↓"
+                                : "↕"}
+                            </span>
+                          </button>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {visibleRows.map((row, rowIndex) => (
-                      <tr key={rowIndex}>
+                      <tr key={resultRowKey(row)}>
                         <td className="row-number">{rowIndex + 1}</td>
                         {result?.columns.map((column) => (
                           <td
@@ -676,7 +743,7 @@ function TreeRow({
   collapsed?: boolean;
 }) {
   return (
-    <button className="tree-row" onClick={onClick}>
+    <button type="button" className="tree-row" onClick={onClick}>
       <span className="tree-caret">
         {onClick ? (collapsed ? "›" : "⌄") : ""}
       </span>
@@ -700,7 +767,7 @@ function Recent({
 }) {
   const icon = status === "error" ? "×" : status === "cancelled" ? "■" : "✓";
   return (
-    <button className="recent-query" onClick={onClick}>
+    <button type="button" className="recent-query" onClick={onClick}>
       <span className={`query-status ${status}`}>{icon}</span>
       <span>
         <strong>{name}</strong>
@@ -758,13 +825,25 @@ function SafeModeDialog({
             <strong>1,248,521</strong>
           </div>
           <div className="modal-actions">
-            <button className="modal-secondary" onClick={onCancel}>
+            <button
+              type="button"
+              className="modal-secondary"
+              onClick={onCancel}
+            >
               Cancel
             </button>
-            <button className="modal-transaction" onClick={onRunInTransaction}>
+            <button
+              type="button"
+              className="modal-transaction"
+              onClick={onRunInTransaction}
+            >
               Run in Transaction
             </button>
-            <button className="modal-danger" onClick={onExecuteAnyway}>
+            <button
+              type="button"
+              className="modal-danger"
+              onClick={onExecuteAnyway}
+            >
               Execute Anyway
             </button>
           </div>
@@ -816,9 +895,9 @@ function ConnectionDialog({
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <section
+      <dialog
+        open
         className="connection-modal"
-        role="dialog"
         aria-modal="true"
         aria-labelledby="connection-title"
       >
@@ -828,6 +907,7 @@ function ConnectionDialog({
             <h2 id="connection-title">Connect a database</h2>
           </div>
           <button
+            type="button"
             className="mini-button"
             aria-label="Close connection dialog"
             onClick={onClose}
@@ -954,7 +1034,7 @@ function ConnectionDialog({
             </button>
           </div>
         </form>
-      </section>
+      </dialog>
     </div>
   );
 }
@@ -963,7 +1043,10 @@ function Inspector({ table }: { table?: TableMetadata }) {
   return (
     <aside className="inspector">
       <div className="panel-heading">
-        INSPECTOR <button className="mini-button">×</button>
+        INSPECTOR{" "}
+        <button type="button" className="mini-button">
+          ×
+        </button>
       </div>
       {table && (
         <>
@@ -973,13 +1056,15 @@ function Inspector({ table }: { table?: TableMetadata }) {
               <strong>{table.name}</strong>
               <small>{table.schema} · table</small>
             </span>
-            <button className="mini-button">•••</button>
+            <button type="button" className="mini-button">
+              •••
+            </button>
           </div>
           <div className="inspector-tabs">
-            <button className="active">
+            <button type="button" className="active">
               Columns <span>{table.columns.length}</span>
             </button>
-            <button disabled>
+            <button type="button" disabled>
               Indexes <span>soon</span>
             </button>
           </div>

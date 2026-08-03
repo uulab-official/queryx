@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a focused QueryX workflow improvement
+title: "feat: "
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the database workflow and why current behavior is insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior rather than only a UI control or implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Product area
+      options: [Connections, SQL editor, Results and export, Metadata, Data editing and safety, Drivers, Plugins, Documentation, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and prior art
+      description: Include workarounds or behavior in other database tools if relevant.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety, privacy, and compatibility impact
+      description: Note credential, filesystem, destructive-query, driver, or migration implications.

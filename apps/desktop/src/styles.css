@@ -1146,6 +1146,21 @@ button:disabled {
   float: right;
   margin-left: 14px;
 }
+.grid-wrap .column-sort {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.grid-wrap .column-sort span {
+  margin-left: auto;
+}
 .grid-wrap th.row-number,
 .grid-wrap td.row-number {
   width: 42px;

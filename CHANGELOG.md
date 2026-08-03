@@ -18,6 +18,10 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Monaco SQL editor with syntax highlighting, metadata-aware completion, cursor/selection status, and lazy loading.
 - Multi-tab query documents with independent Monaco models, undo history, dirty state, keyboard creation/closing, and selected-SQL execution.
 - Capability-driven PostgreSQL query cancellation with AbortSignal, Escape/toolbar controls, an isolated cancellation pool, and race-condition tests.
+- Native and browser CSV export for the visible result set with deterministic escaping, UTF-8 BOM output, and spreadsheet-formula injection protection.
+- Open-source project handbook: getting started, results/export, troubleshooting, contribution, conduct, and security documentation plus issue and pull request templates.
+- Least-privilege GitHub Actions with web quality gates and Linux, macOS, and Windows native build/test coverage.
+- Competitive, acceptance-gated roadmap toward a production database IDE.
 
 ## [0.1.0] — 2026-08-03
 
