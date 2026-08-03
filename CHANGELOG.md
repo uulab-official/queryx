@@ -15,6 +15,8 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Native SQLx PostgreSQL driver with SSL modes, transactions, normalized values, and catalog metadata.
 - Local-only PostgreSQL/SQLite connection dialog; session passwords are never persisted.
 - Dynamic result columns, PostgreSQL type labels, schema-aware Explorer nodes, and unsupported-type warnings.
+- Monaco SQL editor with syntax highlighting, metadata-aware completion, cursor/selection status, and lazy loading.
+- Multi-tab query documents with independent Monaco models, undo history, dirty state, keyboard creation/closing, and selected-SQL execution.
 
 ## [0.1.0] — 2026-08-03
 

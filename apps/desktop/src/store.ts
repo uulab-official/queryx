@@ -19,8 +19,17 @@ export interface QueryHistoryEntry {
   status: "success" | "error";
 }
 
+export interface QueryTab {
+  id: string;
+  title: string;
+  sql: string;
+  isDirty: boolean;
+}
+
 interface QueryState {
   sql: string;
+  tabs: QueryTab[];
+  activeTabId: string;
   result: QueryResult | null;
   metadata: DatabaseMetadata | null;
   selectedTable: string;
@@ -35,10 +44,13 @@ interface QueryState {
   connectionStatus: "connecting" | "connected" | "error";
   connectionError: string | null;
   setSql: (sql: string) => void;
+  newQuery: () => void;
+  selectQuery: (id: string) => void;
+  closeQuery: (id: string) => void;
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
   setSelectedTable: (table: string) => void;
-  runQuery: (mode?: RunMode) => Promise<void>;
+  runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<void>;
   loadMetadata: () => Promise<void>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
@@ -103,6 +115,15 @@ export const useQueryStore = create<QueryState>((set, get) => {
   });
   return {
     sql: initialSql,
+    tabs: [
+      {
+        id: "query-1",
+        title: "Daily revenue",
+        sql: initialSql,
+        isDirty: false,
+      },
+    ],
+    activeTabId: "query-1",
     result: null,
     metadata: null,
     selectedTable: "",
@@ -116,15 +137,67 @@ export const useQueryStore = create<QueryState>((set, get) => {
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
     connectionStatus: "connecting",
     connectionError: null,
-    setSql: (sql) => set({ sql }),
+    setSql: (sql) =>
+      set((state) => ({
+        sql,
+        tabs: state.tabs.map((tab) =>
+          tab.id === state.activeTabId ? { ...tab, sql, isDirty: true } : tab,
+        ),
+      })),
+    newQuery: () => {
+      const id = crypto.randomUUID();
+      const nextNumber = get().tabs.length + 1;
+      const tab: QueryTab = {
+        id,
+        title: `Query ${nextNumber}`,
+        sql: "",
+        isDirty: false,
+      };
+      set((state) => ({
+        tabs: [...state.tabs, tab],
+        activeTabId: id,
+        sql: tab.sql,
+      }));
+    },
+    selectQuery: (id) => {
+      const tab = get().tabs.find((candidate) => candidate.id === id);
+      if (tab) set({ activeTabId: id, sql: tab.sql });
+    },
+    closeQuery: (id) => {
+      const state = get();
+      const index = state.tabs.findIndex((tab) => tab.id === id);
+      if (index === -1) return;
+      const remaining = state.tabs.filter((tab) => tab.id !== id);
+      if (remaining.length === 0) {
+        const replacement: QueryTab = {
+          id: crypto.randomUUID(),
+          title: "Query 1",
+          sql: "",
+          isDirty: false,
+        };
+        set({ tabs: [replacement], activeTabId: replacement.id, sql: "" });
+        return;
+      }
+      if (state.activeTabId !== id) {
+        set({ tabs: remaining });
+        return;
+      }
+      const replacement = remaining[Math.min(index, remaining.length - 1)];
+      set({
+        tabs: remaining,
+        activeTabId: replacement.id,
+        sql: replacement.sql,
+      });
+    },
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
     setSelectedTable: (selectedTable) => set({ selectedTable }),
-    runQuery: async (mode = "normal") => {
+    runQuery: async (mode = "normal", sqlOverride) => {
       set({ isRunning: true });
       try {
         await driverReady;
-        const execute = () => get().driver.execute(get().sql);
+        const executedSql = sqlOverride?.trim() || get().sql;
+        const execute = () => get().driver.execute(executedSql);
         const result =
           mode === "transaction"
             ? await get().driver.transaction(execute)
@@ -132,12 +205,12 @@ export const useQueryStore = create<QueryState>((set, get) => {
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
           label:
-            get()
-              .sql.split("\n")
+            executedSql
+              .split("\n")
               .find((line) => line.trim() && !line.trim().startsWith("--"))
               ?.trim()
               .slice(0, 32) ?? "Untitled query",
-          sql: get().sql,
+          sql: executedSql,
           executedAt: new Date().toISOString(),
           status: "success",
         };
@@ -153,7 +226,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         get().addHistory({
           id: crypto.randomUUID(),
           label: "Query failed",
-          sql: get().sql,
+          sql: sqlOverride?.trim() || get().sql,
           executedAt: new Date().toISOString(),
           status: "error",
         });
@@ -198,6 +271,10 @@ export const useQueryStore = create<QueryState>((set, get) => {
         await get().driver.disconnect();
         const nextSql =
           nextDriver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
+        const activeTab = get().tabs.find(
+          (tab) => tab.id === get().activeTabId,
+        );
+        const shouldReplaceSql = activeTab ? !activeTab.isDirty : false;
         set({
           driver: nextDriver,
           driverKind: nextDriver.kind,
@@ -208,7 +285,14 @@ export const useQueryStore = create<QueryState>((set, get) => {
           selectedTable: metadata.tables[0]
             ? `${metadata.tables[0].schema}.${metadata.tables[0].name}`
             : "",
-          sql: nextSql,
+          sql: shouldReplaceSql ? nextSql : get().sql,
+          tabs: shouldReplaceSql
+            ? get().tabs.map((tab) =>
+                tab.id === get().activeTabId
+                  ? { ...tab, sql: nextSql, isDirty: false }
+                  : tab,
+              )
+            : get().tabs,
           result: null,
           toast: `Connected to ${config.name}`,
         });

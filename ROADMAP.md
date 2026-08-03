@@ -29,6 +29,7 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] SQLx 기반 실제 PostgreSQL connection과 환경 선택형 integration test
 - [x] 세션 전용 credential 입력을 제공하는 connection dialog
 - [x] 임의 query column을 렌더링하는 dynamic result grid
+- [x] Monaco 기반 SQL editor, 독립 undo 모델을 가진 multi-tab, metadata autocomplete
 
 ## v0.1 — Local database workflow
 
@@ -42,12 +43,13 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [ ] MySQL driver 구현 및 연결 테스트
 - [x] 공통 `QueryResult` 모델(`columns`, `rows`, `executionTime`, `affectedRows`, `warnings`, `error`)
 - [ ] Explorer metadata API(`listSchemas`, `listTables`, `listColumns`, `listIndexes`, `listViews`)
-- [ ] Monaco 기반 SQL editor와 multi-tab 상태
+- [x] Monaco 기반 SQL editor와 multi-tab 상태
 - [ ] AG Grid Community 기반 결과 그리드
 - [ ] CSV export
 - [ ] Query history와 favorites의 SQLite local storage
 - [ ] OS keychain 연동; 비밀번호를 SQLite나 workspace 파일에 저장하지 않음
-- [ ] Ctrl/Cmd+Enter 실행, 실행 취소, 오류 상태 처리
+- [x] Ctrl/Cmd+Enter 전체/선택 SQL 실행과 오류 상태 처리
+- [ ] 실행 중인 native query 취소
 
 완료 기준:
 

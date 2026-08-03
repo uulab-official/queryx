@@ -9,8 +9,11 @@ QueryX uses a small, explicit test pyramid:
 3. **Type checks** prevent the UI, shared contracts, and driver packages from drifting apart.
 4. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 5. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort result → inspect table.
+6. **Browser workflow checks** cover Monaco load, query-tab creation/switching/closing, document preservation, and keyboard execution.
 
 The desktop preview also has a Safe Mode smoke path: replace the editor query with an UPDATE or DELETE without WHERE, press Cmd/Ctrl+Enter, confirm the warning, then choose Cancel, Run in Transaction, or Execute Anyway. This is a UI contract preview; native transaction semantics belong to the Rust driver.
+
+The editor smoke path creates a second query with Cmd/Ctrl+T, enters distinct SQL in both tabs, switches between them, and confirms that each document and its undo history remain independent. Selecting SQL before Cmd/Ctrl+Enter must execute only the selection; with no selection it executes the complete active document.
 
 ## Local commands
 

@@ -37,6 +37,12 @@ The UI must never branch on database vendor details to render a result. Driver-s
 - Local persistence: connections without secrets, history, favorites, settings, workspace indexes.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 
+## Editor boundary
+
+Each query tab owns a stable Monaco model URI. Switching tabs swaps models rather than replacing editor text, preserving cursor state and undo/redo history inside Monaco. Zustand owns serializable tab text and active-tab state; Monaco owns ephemeral editor internals. Closed-tab and unmount cleanup explicitly dispose models and editor subscriptions.
+
+The Monaco implementation is loaded through a React lazy boundary. The base application shell remains a small initial bundle while Monaco, SQL tokenization, and the editor worker load as a separate cached chunk.
+
 ## Native driver selection
 
 The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` with the selected driver kind. The native registry factory is the only vendor-selection boundary. Native connections live behind `Arc<dyn DatabaseDriver>`, so execute, metadata, transaction, and disconnect handlers remain vendor-neutral.

@@ -1,8 +1,22 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { inspectQuerySafety } from "@queryx/core";
 import type { QuerySafetyReport } from "@queryx/core";
 import type { DriverConfig, DriverKind, TableMetadata } from "@queryx/shared";
+import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
 import { useQueryStore, type RunMode } from "./store";
+
+const MonacoSqlEditor = lazy(async () => {
+  const module = await import("./SqlEditor");
+  return { default: module.SqlEditor };
+});
 
 function Icon({ children }: { children: string }) {
   return (
@@ -15,6 +29,8 @@ function Icon({ children }: { children: string }) {
 function App() {
   const {
     sql,
+    tabs,
+    activeTabId,
     result,
     metadata,
     selectedTable,
@@ -28,6 +44,9 @@ function App() {
     connectionStatus,
     connectionError,
     setSql,
+    newQuery,
+    selectQuery,
+    closeQuery,
     setFilter,
     setResultView,
     setSelectedTable,
@@ -39,12 +58,14 @@ function App() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [pendingSafety, setPendingSafety] = useState<QuerySafetyReport | null>(
-    null,
-  );
+  const [pendingSafety, setPendingSafety] = useState<{
+    report: QuerySafetyReport;
+    sql: string;
+  } | null>(null);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
-  const sqlLines = sql.split("\n");
+  const editorRef = useRef<SqlEditorHandle>(null);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -52,26 +73,60 @@ function App() {
     void loadMetadata();
     void runQuery();
   }, [loadMetadata, runQuery]);
-  const handleRun = (mode: RunMode = "normal") => {
+  const handleRun = (mode: RunMode = "normal", sqlOverride?: string) => {
+    const executableSql = sqlOverride?.trim() || sql;
+    if (!executableSql.trim()) {
+      notify("Enter SQL before running the query");
+      return;
+    }
     if (mode === "normal") {
-      const safety = inspectQuerySafety(sql);
+      const safety = inspectQuerySafety(executableSql);
       if (safety.isDangerous) {
-        setPendingSafety(safety);
+        setPendingSafety({ report: safety, sql: executableSql });
         return;
       }
     }
     setPendingSafety(null);
-    void runQuery(mode);
+    void runQuery(mode, executableSql);
+  };
+  const requestCloseQuery = (id: string) => {
+    const tab = tabs.find((candidate) => candidate.id === id);
+    if (
+      tab?.isDirty &&
+      !window.confirm(`Close ${tab.title}? Unsaved SQL will be discarded.`)
+    ) {
+      return;
+    }
+    closeQuery(id);
   };
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      const insideEditor =
+        event.target instanceof HTMLElement &&
+        event.target.closest(".monaco-editor") !== null;
+      if (
+        !insideEditor &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key === "Enter"
+      ) {
         event.preventDefault();
         handleRun();
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+      if (
+        !insideEditor &&
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "f"
+      ) {
         event.preventDefault();
         document.getElementById("result-filter")?.focus();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        newQuery();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "w") {
+        event.preventDefault();
+        requestCloseQuery(activeTabId);
       }
     };
     window.addEventListener("keydown", listener);
@@ -83,6 +138,28 @@ function App() {
   const currentTable =
     tables.find((table) => `${table.schema}.${table.name}` === selectedTable) ??
     tables[0];
+  const completions = useMemo<SqlCompletion[]>(() => {
+    if (!metadata) return [];
+    return [
+      ...metadata.schemas.map((schema) => ({
+        label: schema,
+        detail: "Schema",
+        kind: "schema" as const,
+      })),
+      ...metadata.tables.flatMap((table) => [
+        {
+          label: table.name,
+          detail: `${table.schema} table`,
+          kind: "table" as const,
+        },
+        ...table.columns.map((column) => ({
+          label: column.name,
+          detail: `${table.schema}.${table.name} · ${column.type}`,
+          kind: "column" as const,
+        })),
+      ]),
+    ];
+  }, [metadata]);
   const visibleRows = useMemo(() => {
     if (!result) return [];
     const query = filter.trim().toLowerCase();
@@ -298,11 +375,31 @@ function App() {
         </aside>
         <main className="main-area">
           <div className="editor-tabs">
-            <div className="tab active">
-              <span className="sql-badge">SQL</span>Daily revenue{" "}
-              <span className="tab-close">×</span>
-            </div>
-            <div className="tab">＋ New query</div>
+            {tabs.map((tab) => (
+              <div
+                className={`tab ${tab.id === activeTabId ? "active" : ""}`}
+                key={tab.id}
+              >
+                <button
+                  className="tab-select"
+                  onClick={() => selectQuery(tab.id)}
+                >
+                  <span className="sql-badge">SQL</span>
+                  {tab.title}
+                  {tab.isDirty && <span className="dirty-dot">●</span>}
+                </button>
+                <button
+                  className="tab-close"
+                  aria-label={`Close ${tab.title}`}
+                  onClick={() => requestCloseQuery(tab.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button className="new-query-tab" onClick={newQuery}>
+              ＋ New query
+            </button>
             <div className="tab-spacer" />
             <button
               className="connected"
@@ -324,7 +421,7 @@ function App() {
               <div>
                 <button
                   className="run-button"
-                  onClick={() => handleRun()}
+                  onClick={() => editorRef.current?.runSelectionOrDocument()}
                   disabled={isRunning}
                 >
                   <span>{isRunning ? "◌" : "▶"}</span>{" "}
@@ -363,30 +460,31 @@ function App() {
               </div>
             </div>
             <div className="code-editor">
-              <div className="line-numbers">
-                {sqlLines.map((_, index) => (
-                  <span key={index}>{index + 1}</span>
-                ))}
-              </div>
-              <textarea
-                aria-label="SQL editor"
-                value={sql}
-                onChange={(event) => setSql(event.target.value)}
-                spellCheck={false}
-              />{" "}
-              <div className="editor-minimap">
-                <i />
-                <i />
-                <i />
-                <i />
-                <i />
-                <i />
-              </div>
+              <Suspense
+                fallback={
+                  <div className="editor-loading">Loading SQL editor…</div>
+                }
+              >
+                <MonacoSqlEditor
+                  ref={editorRef}
+                  tabs={tabs}
+                  activeTabId={activeTabId}
+                  completions={completions}
+                  onChange={setSql}
+                  onRun={(selectedSql) => handleRun("normal", selectedSql)}
+                  onCursorChange={(line, column, selected) =>
+                    setCursor({ line, column, selected })
+                  }
+                />
+              </Suspense>
             </div>
             <div className="editor-footer">
               <span>{driverKind === "sqlite" ? "SQLite" : "PostgreSQL"}</span>
               <span>UTF-8</span>
-              <span>Ln {sqlLines.length}, Col 21</span>
+              <span>
+                Ln {cursor.line}, Col {cursor.column}
+                {cursor.selected > 0 && ` · ${cursor.selected} selected`}
+              </span>
               <span className="footer-spacer" />
               <span>Spaces: 2</span>
               <span>SQL</span>
@@ -520,10 +618,10 @@ function App() {
       {toast && <div className="toast">{toast}</div>}
       {pendingSafety && (
         <SafeModeDialog
-          report={pendingSafety}
+          report={pendingSafety.report}
           onCancel={() => setPendingSafety(null)}
-          onRunInTransaction={() => handleRun("transaction")}
-          onExecuteAnyway={() => handleRun("execute-anyway")}
+          onRunInTransaction={() => handleRun("transaction", pendingSafety.sql)}
+          onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
         />
       )}
       {connectionOpen && (

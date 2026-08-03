@@ -4,7 +4,7 @@ QueryX is a local-first database IDE in active construction. The repository incl
 
 The product direction and implementation gates are tracked in [ROADMAP.md](ROADMAP.md). The documentation structure and writing plan live in [docs/DOCUMENTATION_PLAN.md](docs/DOCUMENTATION_PLAN.md).
 
-The implementation foundation is documented in [docs/architecture.md](docs/architecture.md), [docs/driver-api.md](docs/driver-api.md), [docs/connections.md](docs/connections.md), [docs/sqlite-driver.md](docs/sqlite-driver.md), and [docs/postgres-driver.md](docs/postgres-driver.md).
+The implementation foundation is documented in [docs/architecture.md](docs/architecture.md), [docs/driver-api.md](docs/driver-api.md), [docs/connections.md](docs/connections.md), [docs/sql-editor.md](docs/sql-editor.md), [docs/sqlite-driver.md](docs/sqlite-driver.md), and [docs/postgres-driver.md](docs/postgres-driver.md).
 
 ## Run locally
 
@@ -33,6 +33,7 @@ The original dependency-free preview can still be opened directly from `index.ht
 - Real SQLite and PostgreSQL connections in the native desktop runtime
 - Session-only connection dialog with host, port, database, user, password, and SSL mode
 - Dynamic query results for arbitrary columns with table and JSON views
+- Monaco SQL editing with syntax highlighting, schema/table/column completion, multi-tab models, and selected-query execution
 - Run, format, filter, sort, and JSON result interactions
 - Schema tree collapse/expand and table switching with column metadata
 - Local-first status messaging and no-network static runtime
