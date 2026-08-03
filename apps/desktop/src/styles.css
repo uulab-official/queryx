@@ -974,16 +974,19 @@ button:disabled {
 }
 .inspector-tabs {
   display: flex;
-  gap: 17px;
+  gap: 12px;
+  overflow-x: auto;
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
 }
 .inspector-tabs button {
+  flex: 0 0 auto;
   height: 31px;
   border-bottom: 2px solid transparent;
   background: transparent;
   color: #75808b;
   font-size: 10px;
+  white-space: nowrap;
 }
 .inspector-tabs button.active {
   border-color: var(--lime);

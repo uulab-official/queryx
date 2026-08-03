@@ -119,6 +119,29 @@ export interface TriggerMetadata {
   definition: string | null;
 }
 
+export type DatabaseObjectKind = "table" | "view" | "routine" | "trigger";
+
+export interface DatabaseObjectRef {
+  kind: DatabaseObjectKind;
+  id: string | null;
+  schema: string;
+  name: string;
+  identityArguments: string | null;
+}
+
+export type DependencyKind =
+  | "foreignKey"
+  | "viewReference"
+  | "triggerFunction"
+  | "triggerOwner";
+
+export interface DependencyMetadata {
+  id: string;
+  kind: DependencyKind;
+  dependent: DatabaseObjectRef;
+  referenced: DatabaseObjectRef;
+}
+
 export interface DatabaseMetadata {
   databases: string[];
   schemas: string[];
@@ -126,6 +149,7 @@ export interface DatabaseMetadata {
   views: ViewMetadata[];
   routines: RoutineMetadata[];
   triggers: TriggerMetadata[];
+  dependencies: DependencyMetadata[];
 }
 
 export interface DriverConfig {

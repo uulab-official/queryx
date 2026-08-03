@@ -95,6 +95,44 @@ pub struct DatabaseMetadata {
     pub views: Vec<ViewMetadata>,
     pub routines: Vec<RoutineMetadata>,
     pub triggers: Vec<TriggerMetadata>,
+    pub dependencies: Vec<DependencyMetadata>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseObjectKind {
+    Table,
+    View,
+    Routine,
+    Trigger,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseObjectRef {
+    pub kind: DatabaseObjectKind,
+    pub id: Option<String>,
+    pub schema: String,
+    pub name: String,
+    pub identity_arguments: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DependencyKind {
+    ForeignKey,
+    ViewReference,
+    TriggerFunction,
+    TriggerOwner,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DependencyMetadata {
+    pub id: String,
+    pub kind: DependencyKind,
+    pub dependent: DatabaseObjectRef,
+    pub referenced: DatabaseObjectRef,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]

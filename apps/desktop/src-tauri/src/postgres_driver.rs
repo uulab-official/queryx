@@ -16,11 +16,11 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, ConnectionConfig, DatabaseMetadata, DriverCapability, DriverKind,
-        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
-        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, TriggerEvent,
-        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
-        TriggerStatus, TriggerTiming, ViewMetadata,
+        ColumnMetadata, ConnectionConfig, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
+        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair,
+        ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult, RelationRef, RoutineKind,
+        RoutineMetadata, SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
+        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -539,7 +539,12 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     .fetch_all(pool)
     .await?;
     let trigger_rows = sqlx::query(
-        "SELECT t.oid::text AS trigger_id, ns.nspname AS trigger_schema, t.tgname AS trigger_name, relation.relname AS relation_name, relation.relkind = 'v' AS is_view, t.tgtype::integer AS trigger_type, t.tgenabled::text AS trigger_status, pg_get_triggerdef(t.oid, true) AS definition, ARRAY(SELECT attribute.attname FROM unnest(t.tgattr::smallint[]) WITH ORDINALITY AS trigger_attribute(attnum, ordinality) JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = t.tgrelid AND attribute.attnum = trigger_attribute.attnum ORDER BY trigger_attribute.ordinality)::text[] AS update_columns FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class relation ON relation.oid = t.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = relation.relnamespace WHERE NOT t.tgisinternal AND relation.relkind IN ('r', 'p', 'v') AND relation.relpersistence <> 't' AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, t.tgname, relation.relname",
+        "SELECT t.oid::text AS trigger_id, ns.nspname AS trigger_schema, t.tgname AS trigger_name, relation.relname AS relation_name, relation.relkind = 'v' AS is_view, t.tgtype::integer AS trigger_type, t.tgenabled::text AS trigger_status, pg_get_triggerdef(t.oid, true) AS definition, ARRAY(SELECT attribute.attname FROM unnest(t.tgattr::smallint[]) WITH ORDINALITY AS trigger_attribute(attnum, ordinality) JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = t.tgrelid AND attribute.attnum = trigger_attribute.attnum ORDER BY trigger_attribute.ordinality)::text[] AS update_columns, routine.oid::text AS routine_id, routine_ns.nspname AS routine_schema, routine.proname AS routine_name, pg_get_function_identity_arguments(routine.oid) AS routine_identity_arguments FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class relation ON relation.oid = t.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = relation.relnamespace JOIN pg_catalog.pg_proc routine ON routine.oid = t.tgfoid JOIN pg_catalog.pg_namespace routine_ns ON routine_ns.oid = routine.pronamespace WHERE NOT t.tgisinternal AND relation.relkind IN ('r', 'p', 'v') AND relation.relpersistence <> 't' AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, t.tgname, relation.relname",
+    )
+    .fetch_all(pool)
+    .await?;
+    let view_dependency_rows = sqlx::query(
+        "SELECT DISTINCT view_relation.oid::text AS dependent_id, view_ns.nspname AS dependent_schema, view_relation.relname AS dependent_name, referenced_relation.oid::text AS referenced_id, referenced_ns.nspname AS referenced_schema, referenced_relation.relname AS referenced_name, referenced_relation.relkind = 'v' AS referenced_is_view FROM pg_catalog.pg_rewrite rewrite JOIN pg_catalog.pg_class view_relation ON view_relation.oid = rewrite.ev_class JOIN pg_catalog.pg_namespace view_ns ON view_ns.oid = view_relation.relnamespace JOIN pg_catalog.pg_depend dependency ON dependency.classid = 'pg_rewrite'::regclass AND dependency.objid = rewrite.oid AND dependency.refclassid = 'pg_class'::regclass JOIN pg_catalog.pg_class referenced_relation ON referenced_relation.oid = dependency.refobjid JOIN pg_catalog.pg_namespace referenced_ns ON referenced_ns.oid = referenced_relation.relnamespace WHERE rewrite.rulename = '_RETURN' AND view_relation.relkind = 'v' AND referenced_relation.relkind IN ('r', 'p', 'v') AND referenced_relation.oid <> view_relation.oid AND view_ns.nspname NOT IN ('pg_catalog', 'information_schema') AND view_ns.nspname NOT LIKE 'pg_toast%' AND view_ns.nspname NOT LIKE 'pg_temp_%' AND referenced_ns.nspname NOT IN ('pg_catalog', 'information_schema') AND referenced_ns.nspname NOT LIKE 'pg_toast%' AND referenced_ns.nspname NOT LIKE 'pg_temp_%' ORDER BY view_ns.nspname, view_relation.relname, referenced_ns.nspname, referenced_relation.relname",
     )
     .fetch_all(pool)
     .await?;
@@ -694,65 +699,158 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
-    let triggers = trigger_rows
-        .into_iter()
-        .map(|row| {
-            let id: String = row.try_get("trigger_id")?;
-            let trigger_type: i32 = row.try_get("trigger_type")?;
-            let update_columns: Vec<String> = row.try_get("update_columns")?;
-            let status: String = row.try_get("trigger_status")?;
-            let definition: String = row.try_get("definition")?;
-            let mut events = Vec::new();
-            if trigger_type & 4 != 0 {
-                events.push(TriggerEvent::Insert);
-            }
-            if trigger_type & 16 != 0 {
-                events.push(TriggerEvent::Update);
-            }
-            if trigger_type & 8 != 0 {
-                events.push(TriggerEvent::Delete);
-            }
-            if trigger_type & 32 != 0 {
-                events.push(TriggerEvent::Truncate);
-            }
-            Ok(TriggerMetadata {
-                id: format!("postgres:trigger:{id}"),
-                schema: row.try_get("trigger_schema")?,
-                name: row.try_get("trigger_name")?,
-                relation: TriggerRelationRef {
-                    schema: row.try_get("trigger_schema")?,
-                    name: row.try_get("relation_name")?,
-                    kind: if row.try_get("is_view")? {
-                        TriggerRelationKind::View
-                    } else {
-                        TriggerRelationKind::Table
-                    },
+    let mut triggers = Vec::new();
+    let mut dependencies = Vec::new();
+    for row in trigger_rows {
+        let raw_id: String = row.try_get("trigger_id")?;
+        let id = format!("postgres:trigger:{raw_id}");
+        let trigger_type: i32 = row.try_get("trigger_type")?;
+        let update_columns: Vec<String> = row.try_get("update_columns")?;
+        let status: String = row.try_get("trigger_status")?;
+        let definition: String = row.try_get("definition")?;
+        let schema: String = row.try_get("trigger_schema")?;
+        let name: String = row.try_get("trigger_name")?;
+        let relation_name: String = row.try_get("relation_name")?;
+        let relation_kind = if row.try_get("is_view")? {
+            TriggerRelationKind::View
+        } else {
+            TriggerRelationKind::Table
+        };
+        let routine_raw_id: String = row.try_get("routine_id")?;
+        let routine_schema: String = row.try_get("routine_schema")?;
+        let routine_name: String = row.try_get("routine_name")?;
+        let routine_identity_arguments: String = row.try_get("routine_identity_arguments")?;
+        let mut events = Vec::new();
+        if trigger_type & 4 != 0 {
+            events.push(TriggerEvent::Insert);
+        }
+        if trigger_type & 16 != 0 {
+            events.push(TriggerEvent::Update);
+        }
+        if trigger_type & 8 != 0 {
+            events.push(TriggerEvent::Delete);
+        }
+        if trigger_type & 32 != 0 {
+            events.push(TriggerEvent::Truncate);
+        }
+        triggers.push(TriggerMetadata {
+            id: id.clone(),
+            schema: schema.clone(),
+            name: name.clone(),
+            relation: TriggerRelationRef {
+                schema: schema.clone(),
+                name: relation_name,
+                kind: relation_kind,
+            },
+            timing: if trigger_type & 64 != 0 {
+                TriggerTiming::InsteadOf
+            } else if trigger_type & 2 != 0 {
+                TriggerTiming::Before
+            } else {
+                TriggerTiming::After
+            },
+            events,
+            update_columns: (!update_columns.is_empty()).then_some(update_columns),
+            orientation: if trigger_type & 1 != 0 {
+                TriggerOrientation::Row
+            } else {
+                TriggerOrientation::Statement
+            },
+            status: match status.as_str() {
+                "D" => TriggerStatus::Disabled,
+                "R" => TriggerStatus::Replica,
+                "A" => TriggerStatus::Always,
+                _ => TriggerStatus::Origin,
+            },
+            condition: trigger_condition_from_definition(&definition),
+            definition: Some(definition),
+        });
+        dependencies.push(DependencyMetadata {
+            id: format!("postgres:dependency:trigger-function:{raw_id}"),
+            kind: DependencyKind::TriggerFunction,
+            dependent: DatabaseObjectRef {
+                kind: DatabaseObjectKind::Trigger,
+                id: Some(id),
+                schema,
+                name,
+                identity_arguments: None,
+            },
+            referenced: DatabaseObjectRef {
+                kind: DatabaseObjectKind::Routine,
+                id: Some(format!("postgres:routine:{routine_raw_id}")),
+                schema: routine_schema,
+                name: routine_name,
+                identity_arguments: Some(routine_identity_arguments),
+            },
+        });
+    }
+
+    for table in &tables {
+        for foreign_key in &table.foreign_keys {
+            dependencies.push(DependencyMetadata {
+                id: format!("postgres:dependency:foreign-key:{}", foreign_key.id),
+                kind: DependencyKind::ForeignKey,
+                dependent: relation_object_ref(
+                    DatabaseObjectKind::Table,
+                    &table.schema,
+                    &table.name,
+                ),
+                referenced: relation_object_ref(
+                    DatabaseObjectKind::Table,
+                    &foreign_key.referenced_relation.schema,
+                    &foreign_key.referenced_relation.name,
+                ),
+            });
+        }
+    }
+    for trigger in &triggers {
+        dependencies.push(DependencyMetadata {
+            id: format!("postgres:dependency:trigger-owner:{}", trigger.id),
+            kind: DependencyKind::TriggerOwner,
+            dependent: DatabaseObjectRef {
+                kind: DatabaseObjectKind::Trigger,
+                id: Some(trigger.id.clone()),
+                schema: trigger.schema.clone(),
+                name: trigger.name.clone(),
+                identity_arguments: None,
+            },
+            referenced: relation_object_ref(
+                match trigger.relation.kind {
+                    TriggerRelationKind::Table => DatabaseObjectKind::Table,
+                    TriggerRelationKind::View => DatabaseObjectKind::View,
                 },
-                timing: if trigger_type & 64 != 0 {
-                    TriggerTiming::InsteadOf
-                } else if trigger_type & 2 != 0 {
-                    TriggerTiming::Before
+                &trigger.relation.schema,
+                &trigger.relation.name,
+            ),
+        });
+    }
+    for row in view_dependency_rows {
+        let dependent_id: String = row.try_get("dependent_id")?;
+        let referenced_id: String = row.try_get("referenced_id")?;
+        let dependent_schema: String = row.try_get("dependent_schema")?;
+        let dependent_name: String = row.try_get("dependent_name")?;
+        let referenced_schema: String = row.try_get("referenced_schema")?;
+        let referenced_name: String = row.try_get("referenced_name")?;
+        dependencies.push(DependencyMetadata {
+            id: format!("postgres:dependency:view-reference:{dependent_id}:{referenced_id}"),
+            kind: DependencyKind::ViewReference,
+            dependent: relation_object_ref(
+                DatabaseObjectKind::View,
+                &dependent_schema,
+                &dependent_name,
+            ),
+            referenced: relation_object_ref(
+                if row.try_get("referenced_is_view")? {
+                    DatabaseObjectKind::View
                 } else {
-                    TriggerTiming::After
+                    DatabaseObjectKind::Table
                 },
-                events,
-                update_columns: (!update_columns.is_empty()).then_some(update_columns),
-                orientation: if trigger_type & 1 != 0 {
-                    TriggerOrientation::Row
-                } else {
-                    TriggerOrientation::Statement
-                },
-                status: match status.as_str() {
-                    "D" => TriggerStatus::Disabled,
-                    "R" => TriggerStatus::Replica,
-                    "A" => TriggerStatus::Always,
-                    _ => TriggerStatus::Origin,
-                },
-                condition: trigger_condition_from_definition(&definition),
-                definition: Some(definition),
-            })
-        })
-        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+                &referenced_schema,
+                &referenced_name,
+            ),
+        });
+    }
+    dependencies.sort_by(|left, right| left.id.cmp(&right.id));
 
     Ok(DatabaseMetadata {
         databases,
@@ -761,7 +859,18 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         views,
         routines,
         triggers,
+        dependencies,
     })
+}
+
+fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
+    DatabaseObjectRef {
+        kind,
+        id: None,
+        schema: schema.to_string(),
+        name: name.to_string(),
+        identity_arguments: None,
+    }
 }
 
 fn trigger_condition_from_definition(definition: &str) -> Option<String> {
@@ -916,6 +1025,17 @@ mod tests {
         assert_eq!(foreign_key.on_delete, "RESTRICT");
         assert_eq!(foreign_key.deferrable, Some(true));
         assert_eq!(foreign_key.initially_deferred, Some(true));
+        let dependency = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::ForeignKey
+                    && dependency.dependent.schema == schema
+                    && dependency.dependent.name == "invoices"
+            })
+            .expect("postgres foreign key dependency");
+        assert_eq!(dependency.referenced.schema, schema);
+        assert_eq!(dependency.referenced.name, "accounts");
 
         sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
             .execute(&driver.pool)
@@ -948,6 +1068,9 @@ mod tests {
             .expect("create routine contract schema");
         for statement in [
             format!(r#"CREATE TABLE "{schema}".orders (id bigint PRIMARY KEY, status text)"#),
+            format!(
+                r#"CREATE VIEW "{schema}".active_orders AS SELECT id, status FROM "{schema}".orders WHERE status = 'active'"#
+            ),
             format!(
                 r#"CREATE FUNCTION "{schema}".calculate_total(amount numeric) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT amount $$"#
             ),
@@ -1056,6 +1179,45 @@ mod tests {
         assert_eq!(truncate_trigger.events, [TriggerEvent::Truncate]);
         assert_eq!(truncate_trigger.orientation, TriggerOrientation::Statement);
         assert_eq!(truncate_trigger.status, TriggerStatus::Disabled);
+        let trigger_function = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::TriggerFunction
+                    && dependency.dependent.id.as_deref() == Some(audit_trigger.id.as_str())
+            })
+            .expect("postgres trigger function dependency");
+        assert_eq!(
+            trigger_function.referenced.kind,
+            DatabaseObjectKind::Routine
+        );
+        assert_eq!(trigger_function.referenced.schema, schema);
+        assert_eq!(trigger_function.referenced.name, "audit_order");
+        assert_eq!(
+            trigger_function.referenced.identity_arguments.as_deref(),
+            Some("")
+        );
+        let trigger_owner = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::TriggerOwner
+                    && dependency.dependent.id.as_deref() == Some(audit_trigger.id.as_str())
+            })
+            .expect("postgres trigger owner dependency");
+        assert_eq!(trigger_owner.referenced.kind, DatabaseObjectKind::Table);
+        assert_eq!(trigger_owner.referenced.name, "orders");
+        let view_reference = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::ViewReference
+                    && dependency.dependent.schema == schema
+                    && dependency.dependent.name == "active_orders"
+                    && dependency.referenced.name == "orders"
+            })
+            .expect("postgres view relation dependency");
+        assert_eq!(view_reference.referenced.kind, DatabaseObjectKind::Table);
 
         sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
             .execute(&driver.pool)

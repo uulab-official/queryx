@@ -13,9 +13,10 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair,
-        ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult, RelationRef, TableMetadata,
-        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
+        DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
+        IndexMetadata, QueryColumn, QueryResult, RelationRef, TableMetadata, TriggerEvent,
+        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
         TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
@@ -248,6 +249,48 @@ impl DatabaseDriver for SqliteDriver {
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
+        let mut dependencies = Vec::new();
+        for table in &tables {
+            for foreign_key in &table.foreign_keys {
+                dependencies.push(DependencyMetadata {
+                    id: format!("sqlite:dependency:foreign-key:{}", foreign_key.id),
+                    kind: DependencyKind::ForeignKey,
+                    dependent: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &table.schema,
+                        &table.name,
+                    ),
+                    referenced: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &foreign_key.referenced_relation.schema,
+                        &foreign_key.referenced_relation.name,
+                    ),
+                });
+            }
+        }
+        for trigger in &triggers {
+            dependencies.push(DependencyMetadata {
+                id: format!("sqlite:dependency:trigger-owner:{}", trigger.id),
+                kind: DependencyKind::TriggerOwner,
+                dependent: DatabaseObjectRef {
+                    kind: DatabaseObjectKind::Trigger,
+                    id: Some(trigger.id.clone()),
+                    schema: trigger.schema.clone(),
+                    name: trigger.name.clone(),
+                    identity_arguments: None,
+                },
+                referenced: relation_object_ref(
+                    match trigger.relation.kind {
+                        TriggerRelationKind::Table => DatabaseObjectKind::Table,
+                        TriggerRelationKind::View => DatabaseObjectKind::View,
+                    },
+                    &trigger.relation.schema,
+                    &trigger.relation.name,
+                ),
+            });
+        }
+        dependencies.sort_by(|left, right| left.id.cmp(&right.id));
+
         Ok(DatabaseMetadata {
             databases: vec![self.path.clone()],
             schemas: vec!["main".into()],
@@ -255,12 +298,23 @@ impl DatabaseDriver for SqliteDriver {
             views,
             routines: Vec::new(),
             triggers,
+            dependencies,
         })
     }
 
     async fn disconnect(&self) -> Result<(), AppError> {
         self.pool.close().await;
         Ok(())
+    }
+}
+
+fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
+    DatabaseObjectRef {
+        kind,
+        id: None,
+        schema: schema.to_string(),
+        name: name.to_string(),
+        identity_arguments: None,
     }
 }
 
@@ -519,6 +573,20 @@ mod tests {
             .definition
             .as_deref()
             .is_some_and(|sql| sql.contains("CREATE VIEW")));
+        let trigger_owner = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::TriggerOwner
+                    && dependency.dependent.id.as_deref() == Some(trigger.id.as_str())
+            })
+            .expect("sqlite trigger owner dependency");
+        assert_eq!(trigger_owner.referenced.kind, DatabaseObjectKind::Table);
+        assert_eq!(trigger_owner.referenced.name, "orders");
+        assert!(metadata
+            .dependencies
+            .iter()
+            .all(|dependency| dependency.kind != DependencyKind::ViewReference));
     }
 
     #[tokio::test]
@@ -565,5 +633,14 @@ mod tests {
         );
         assert_eq!(foreign_key.on_update, "CASCADE");
         assert_eq!(foreign_key.on_delete, "RESTRICT");
+        let dependency = metadata
+            .dependencies
+            .iter()
+            .find(|dependency| {
+                dependency.kind == DependencyKind::ForeignKey
+                    && dependency.dependent.name == "invoices"
+            })
+            .expect("sqlite foreign key dependency");
+        assert_eq!(dependency.referenced.name, "account_versions");
     }
 }

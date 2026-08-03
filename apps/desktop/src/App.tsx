@@ -8,12 +8,19 @@ import {
   type FormEvent,
 } from "react";
 import {
+  buildDependencyIndex,
   buildForeignKeyIndex,
   inspectQuerySafety,
   serializeRowsToCsv,
 } from "@queryx/core";
-import type { ForeignKeyRelations, QuerySafetyReport } from "@queryx/core";
 import type {
+  ForeignKeyRelations,
+  ObjectDependencies,
+  QuerySafetyReport,
+} from "@queryx/core";
+import type {
+  DatabaseObjectRef,
+  DependencyKind,
   DriverConfig,
   DriverKind,
   RelationRef,
@@ -199,6 +206,46 @@ function App() {
   const currentForeignKeys = currentTable
     ? foreignKeyIndex.get(currentTable)
     : undefined;
+  const dependencyIndex = useMemo(
+    () => buildDependencyIndex(metadata?.dependencies ?? []),
+    [metadata?.dependencies],
+  );
+  const currentObjectRef: DatabaseObjectRef | undefined = currentTable
+    ? {
+        kind: "table",
+        id: null,
+        schema: currentTable.schema,
+        name: currentTable.name,
+        identityArguments: null,
+      }
+    : currentView
+      ? {
+          kind: "view",
+          id: null,
+          schema: currentView.schema,
+          name: currentView.name,
+          identityArguments: null,
+        }
+      : currentRoutine
+        ? {
+            kind: "routine",
+            id: currentRoutine.id,
+            schema: currentRoutine.schema,
+            name: currentRoutine.name,
+            identityArguments: currentRoutine.identityArguments,
+          }
+        : currentTrigger
+          ? {
+              kind: "trigger",
+              id: currentTrigger.id,
+              schema: currentTrigger.schema,
+              name: currentTrigger.name,
+              identityArguments: null,
+            }
+          : undefined;
+  const currentDependencies = currentObjectRef
+    ? dependencyIndex.get(currentObjectRef)
+    : undefined;
   const completions = useMemo<SqlCompletion[]>(() => {
     if (!metadata) return [];
     return [
@@ -289,6 +336,49 @@ function App() {
       schema: relation.schema,
       name: relation.name,
     });
+  };
+  const selectDependencyObject = (object: DatabaseObjectRef) => {
+    if (object.kind === "table" || object.kind === "view") {
+      const visible = (object.kind === "table" ? tables : views).some(
+        (relation) =>
+          relation.schema === object.schema && relation.name === object.name,
+      );
+      if (visible) {
+        setSelectedObject({
+          kind: object.kind,
+          schema: object.schema,
+          name: object.name,
+        });
+        return;
+      }
+    } else if (object.kind === "routine" && object.id) {
+      const routine = routines.find((candidate) => candidate.id === object.id);
+      if (routine) {
+        setSelectedObject({
+          kind: "routine",
+          id: routine.id,
+          schema: routine.schema,
+          name: routine.name,
+          identityArguments: routine.identityArguments,
+          routineKind: routine.kind,
+        });
+        return;
+      }
+    } else if (object.kind === "trigger" && object.id) {
+      const trigger = triggers.find((candidate) => candidate.id === object.id);
+      if (trigger) {
+        setSelectedObject({
+          kind: "trigger",
+          id: trigger.id,
+          schema: trigger.schema,
+          name: trigger.name,
+        });
+        return;
+      }
+    }
+    notify(
+      `Referenced ${object.kind} ${object.schema}.${object.name} is not visible`,
+    );
   };
 
   const sort = (key: string) => {
@@ -935,8 +1025,10 @@ function App() {
           routine={currentRoutine}
           trigger={currentTrigger}
           foreignKeys={currentForeignKeys}
+          dependencies={currentDependencies}
           onSelectTable={selectRelatedTable}
           onSelectTriggerRelation={selectTriggerRelation}
+          onSelectDependency={selectDependencyObject}
           onCopyDefinition={(definition) => {
             void navigator.clipboard
               .writeText(definition)
@@ -1284,8 +1376,10 @@ function Inspector({
   routine,
   trigger,
   foreignKeys,
+  dependencies,
   onSelectTable,
   onSelectTriggerRelation,
+  onSelectDependency,
   onCopyDefinition,
 }: {
   table?: TableMetadata;
@@ -1293,16 +1387,20 @@ function Inspector({
   routine?: RoutineMetadata;
   trigger?: TriggerMetadata;
   foreignKeys?: ForeignKeyRelations;
+  dependencies?: ObjectDependencies;
   onSelectTable: (relation: RelationRef) => void;
   onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
+  onSelectDependency: (object: DatabaseObjectRef) => void;
   onCopyDefinition: (definition: string) => void;
 }) {
   const relation = table ?? view;
   const [activeTab, setActiveTab] = useState<
-    "columns" | "indexes" | "relations"
+    "columns" | "indexes" | "relations" | "dependencies"
   >("columns");
   const relationCount =
     (foreignKeys?.outgoing.length ?? 0) + (foreignKeys?.incoming.length ?? 0);
+  const dependencyCount =
+    (dependencies?.dependsOn.length ?? 0) + (dependencies?.usedBy.length ?? 0);
 
   if (trigger) {
     const definition = trigger.definition;
@@ -1353,6 +1451,10 @@ function Inspector({
             )}
           </dl>
         </div>
+        <DependencyPanel
+          dependencies={dependencies}
+          onSelectObject={onSelectDependency}
+        />
         {trigger.condition && (
           <div className="inspector-section">
             <div className="section-title">WHEN CONDITION</div>
@@ -1431,6 +1533,10 @@ function Inspector({
             </dd>
           </dl>
         </div>
+        <DependencyPanel
+          dependencies={dependencies}
+          onSelectObject={onSelectDependency}
+        />
         <div className="inspector-section routine-definition-section">
           <div className="section-title routine-definition-heading">
             DATABASE-RENDERED DDL
@@ -1513,6 +1619,13 @@ function Inspector({
                 </button>
               </>
             )}
+            <button
+              type="button"
+              className={activeTab === "dependencies" ? "active" : ""}
+              onClick={() => setActiveTab("dependencies")}
+            >
+              Dependencies <span>{dependencyCount}</span>
+            </button>
           </div>
           {activeTab === "columns" ? (
             <div className="column-list">
@@ -1556,6 +1669,11 @@ function Inspector({
                 <div className="inspector-empty">No indexes reported</div>
               )}
             </div>
+          ) : activeTab === "dependencies" ? (
+            <DependencyPanel
+              dependencies={dependencies}
+              onSelectObject={onSelectDependency}
+            />
           ) : (
             <div className="relation-list">
               <div className="relation-group-title">
@@ -1670,6 +1788,83 @@ function Inspector({
         </>
       )}
     </aside>
+  );
+}
+
+const dependencyKindLabels: Record<DependencyKind, string> = {
+  foreignKey: "Foreign key",
+  viewReference: "View reference",
+  triggerFunction: "Trigger function",
+  triggerOwner: "Trigger owner",
+};
+
+function dependencyObjectLabel(object: DatabaseObjectRef): string {
+  if (object.kind === "routine") {
+    return `${object.name}(${object.identityArguments ?? ""})`;
+  }
+  return object.name;
+}
+
+function DependencyPanel({
+  dependencies,
+  onSelectObject,
+}: {
+  dependencies?: ObjectDependencies;
+  onSelectObject: (object: DatabaseObjectRef) => void;
+}) {
+  const dependsOn = dependencies?.dependsOn ?? [];
+  const usedBy = dependencies?.usedBy ?? [];
+  return (
+    <div className="relation-list dependency-list">
+      <div className="relation-group-title">
+        Depends on <span>{dependsOn.length}</span>
+      </div>
+      {dependsOn.map((dependency) => (
+        <button
+          type="button"
+          className="relation-row dependency-row"
+          key={dependency.id}
+          onClick={() => onSelectObject(dependency.referenced)}
+          aria-label={`Open ${dependency.referenced.kind} ${dependency.referenced.schema}.${dependencyObjectLabel(dependency.referenced)}`}
+        >
+          <span className="relation-arrow">→</span>
+          <span>
+            <strong>{dependencyObjectLabel(dependency.referenced)}</strong>
+            <small>
+              {dependency.referenced.schema} · {dependency.referenced.kind}
+            </small>
+            <em>{dependencyKindLabels[dependency.kind]}</em>
+          </span>
+        </button>
+      ))}
+      {dependsOn.length === 0 && (
+        <div className="inspector-empty">No dependencies reported</div>
+      )}
+      <div className="relation-group-title">
+        Used by <span>{usedBy.length}</span>
+      </div>
+      {usedBy.map((dependency) => (
+        <button
+          type="button"
+          className="relation-row dependency-row incoming"
+          key={dependency.id}
+          onClick={() => onSelectObject(dependency.dependent)}
+          aria-label={`Open ${dependency.dependent.kind} ${dependency.dependent.schema}.${dependencyObjectLabel(dependency.dependent)}`}
+        >
+          <span className="relation-arrow">←</span>
+          <span>
+            <strong>{dependencyObjectLabel(dependency.dependent)}</strong>
+            <small>
+              {dependency.dependent.schema} · {dependency.dependent.kind}
+            </small>
+            <em>{dependencyKindLabels[dependency.kind]}</em>
+          </span>
+        </button>
+      ))}
+      {usedBy.length === 0 && (
+        <div className="inspector-empty">No dependents reported</div>
+      )}
+    </div>
   );
 }
 

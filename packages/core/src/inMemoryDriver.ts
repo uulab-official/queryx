@@ -133,6 +133,17 @@ AS $function$
   ORDER BY created_at::date DESC;
 $function$`,
     },
+    {
+      id: "demo:public:audit_order",
+      schema: "public",
+      name: "audit_order",
+      kind: "function",
+      identityArguments: "",
+      returnType: "trigger",
+      language: "plpgsql",
+      definition:
+        "CREATE OR REPLACE FUNCTION public.audit_order() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$",
+    },
   ],
   triggers: [
     {
@@ -148,6 +159,80 @@ $function$`,
       condition: "NEW.status = 'paid'",
       definition:
         "CREATE TRIGGER orders_audit AFTER INSERT OR UPDATE ON public.orders FOR EACH ROW WHEN (NEW.status = 'paid') EXECUTE FUNCTION public.audit_order()",
+    },
+  ],
+  dependencies: [
+    {
+      id: "demo:dependency:orders-customers",
+      kind: "foreignKey",
+      dependent: {
+        kind: "table",
+        id: null,
+        schema: "public",
+        name: "orders",
+        identityArguments: null,
+      },
+      referenced: {
+        kind: "table",
+        id: null,
+        schema: "public",
+        name: "customers",
+        identityArguments: null,
+      },
+    },
+    {
+      id: "demo:dependency:paid-orders-orders",
+      kind: "viewReference",
+      dependent: {
+        kind: "view",
+        id: null,
+        schema: "public",
+        name: "paid_orders",
+        identityArguments: null,
+      },
+      referenced: {
+        kind: "table",
+        id: null,
+        schema: "public",
+        name: "orders",
+        identityArguments: null,
+      },
+    },
+    {
+      id: "demo:dependency:orders-audit-owner",
+      kind: "triggerOwner",
+      dependent: {
+        kind: "trigger",
+        id: "demo:trigger:orders_audit",
+        schema: "public",
+        name: "orders_audit",
+        identityArguments: null,
+      },
+      referenced: {
+        kind: "table",
+        id: null,
+        schema: "public",
+        name: "orders",
+        identityArguments: null,
+      },
+    },
+    {
+      id: "demo:dependency:orders-audit-function",
+      kind: "triggerFunction",
+      dependent: {
+        kind: "trigger",
+        id: "demo:trigger:orders_audit",
+        schema: "public",
+        name: "orders_audit",
+        identityArguments: null,
+      },
+      referenced: {
+        kind: "routine",
+        id: "demo:public:audit_order",
+        schema: "public",
+        name: "audit_order",
+        identityArguments: "",
+      },
     },
   ],
 };
