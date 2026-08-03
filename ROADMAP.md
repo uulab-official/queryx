@@ -21,6 +21,8 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] Zustand 기반 query/editor/result UI 상태
 - [x] shared `DatabaseDriver`와 `QueryResult` 타입 계약
 - [x] deterministic `InMemoryDriver`로 연결·metadata·query 실행 workflow
+- [x] Safe Mode safety analyzer와 사용자 확인 모달 preview
+- [x] localStorage 기반 query history preview
 - [x] 실제 `apps/desktop` production build 검증
 - [ ] Tauri 2와 Rust command bridge
 - [ ] 실제 SQLite/PostgreSQL connection
@@ -54,6 +56,8 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 ## v0.2 — Safe editing workflow
 
 목표: 운영 데이터에 대한 실수 방지와 생산성 기능을 갖춥니다.
+
+현재 Safe Mode와 history는 브라우저 preview 단계까지 구현되어 있습니다. 실제 release 완료로 표시하려면 Rust parser/transaction과 SQLite workspace storage가 필요합니다.
 
 - [ ] SQL autocomplete, snippets, formatting
 - [ ] Explain plan panel

@@ -10,6 +10,8 @@ QueryX uses a small, explicit test pyramid:
 4. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 5. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort result → inspect table.
 
+The desktop preview also has a Safe Mode smoke path: replace the editor query with an UPDATE or DELETE without WHERE, press Cmd/Ctrl+Enter, confirm the warning, then choose Cancel, Run in Transaction, or Execute Anyway. This is a UI contract preview; native transaction semantics belong to the Rust driver.
+
 ## Local commands
 
 ```bash
