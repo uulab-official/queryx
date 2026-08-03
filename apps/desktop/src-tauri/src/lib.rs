@@ -3,6 +3,7 @@ mod driver;
 mod driver_registry;
 mod error;
 mod models;
+mod postgres_driver;
 mod sqlite_driver;
 
 use driver_registry::DriverRegistry;

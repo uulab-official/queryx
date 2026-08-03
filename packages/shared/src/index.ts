@@ -1,11 +1,11 @@
-export type DriverKind = 'postgres' | 'mysql' | 'sqlite';
+export type DriverKind = "postgres" | "mysql" | "sqlite";
 
 export type DriverCapability =
-  | 'transactions'
-  | 'explain'
-  | 'cancel'
-  | 'streaming'
-  | 'editing';
+  | "transactions"
+  | "explain"
+  | "cancel"
+  | "streaming"
+  | "editing";
 
 export interface QueryColumn {
   name: string;
@@ -26,7 +26,12 @@ export interface TableMetadata {
   schema: string;
   name: string;
   rowCount: number;
-  columns: Array<{ name: string; type: string; nullable: boolean; primaryKey?: boolean }>;
+  columns: Array<{
+    name: string;
+    type: string;
+    nullable: boolean;
+    primaryKey?: boolean;
+  }>;
 }
 
 export interface DatabaseMetadata {
@@ -38,9 +43,12 @@ export interface DatabaseMetadata {
 export interface DriverConfig {
   kind: DriverKind;
   name: string;
-  database?: string;
+  database: string;
   host?: string;
   port?: number;
+  username?: string;
+  password?: string;
+  sslMode?: "disable" | "prefer" | "require";
 }
 
 export interface DatabaseDriver {

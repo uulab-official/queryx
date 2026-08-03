@@ -26,7 +26,9 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] 실제 `apps/desktop` production build 검증
 - [x] Tauri 2와 Rust command bridge
 - [x] SQLx 기반 실제 SQLite connection과 native integration tests
-- [ ] 실제 PostgreSQL connection
+- [x] SQLx 기반 실제 PostgreSQL connection과 환경 선택형 integration test
+- [x] 세션 전용 credential 입력을 제공하는 connection dialog
+- [x] 임의 query column을 렌더링하는 dynamic result grid
 
 ## v0.1 — Local database workflow
 
@@ -36,7 +38,7 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - [x] Tauri 2 desktop shell
 - [x] Rust `DatabaseDriver` 공통 인터페이스와 contract test 정의
 - [x] SQLite driver 구현 및 연결 테스트
-- [ ] PostgreSQL driver 구현 및 연결 테스트
+- [x] PostgreSQL driver 구현 및 연결 테스트
 - [ ] MySQL driver 구현 및 연결 테스트
 - [x] 공통 `QueryResult` 모델(`columns`, `rows`, `executionTime`, `affectedRows`, `warnings`, `error`)
 - [ ] Explorer metadata API(`listSchemas`, `listTables`, `listColumns`, `listIndexes`, `listViews`)

@@ -2,7 +2,7 @@
 
 ## Current scope
 
-The Tauri runtime owns real SQLite connections through SQLx. The React frontend never imports SQLx or accesses database files directly; it invokes typed Tauri commands through `TauriSqliteDriver`.
+The Tauri runtime owns real SQLite connections through SQLx. The React frontend never imports SQLx or accesses database files directly; it invokes generic typed Tauri commands through `TauriDatabaseDriver`.
 
 The SQLite implementation is exposed through generic commands:
 
@@ -28,7 +28,7 @@ The result also includes columns, execution time, affected rows, warnings, and a
 
 ## Known limitations
 
-- The UI does not yet expose a file picker or saved connection profiles.
+- The connection dialog accepts a path, but a native file picker and saved profiles are not implemented yet.
 - Query cancellation is not wired to SQLx yet.
 - A transaction invocation currently wraps one statement; multi-step transaction sessions need a dedicated transaction ID.
 - Empty SELECT results do not yet include described column metadata.

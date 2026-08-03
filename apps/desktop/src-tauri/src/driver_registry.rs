@@ -7,6 +7,7 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, DriverKind, QueryResult},
+    postgres_driver::PostgresDriver,
     sqlite_driver::SqliteDriver,
 };
 
@@ -26,7 +27,8 @@ impl DriverRegistry {
     pub async fn connect(&self, config: ConnectionConfig) -> Result<ConnectionSummary, AppError> {
         let driver: Arc<dyn DatabaseDriver> = match config.kind {
             DriverKind::Sqlite => Arc::new(SqliteDriver::connect(&config.database).await?),
-            kind => return Err(AppError::UnsupportedDriver(kind.to_string())),
+            DriverKind::Postgres => Arc::new(PostgresDriver::connect(&config).await?),
+            DriverKind::Mysql => return Err(AppError::UnsupportedDriver(config.kind.to_string())),
         };
         let id = Uuid::new_v4();
         let summary = ConnectionSummary {
@@ -93,6 +95,11 @@ mod tests {
             kind: DriverKind::Sqlite,
             name: "contract-test".into(),
             database: ":memory:".into(),
+            host: None,
+            port: None,
+            username: None,
+            password: None,
+            ssl_mode: None,
         }
     }
 
@@ -130,12 +137,17 @@ mod tests {
         let registry = DriverRegistry::default();
         let error = registry
             .connect(ConnectionConfig {
-                kind: DriverKind::Postgres,
+                kind: DriverKind::Mysql,
                 name: "not-ready".into(),
-                database: "postgres".into(),
+                database: "mysql".into(),
+                host: None,
+                port: None,
+                username: None,
+                password: None,
+                ssl_mode: None,
             })
             .await
-            .expect_err("postgres is not implemented yet");
+            .expect_err("mysql is not implemented yet");
 
         assert!(matches!(error, AppError::UnsupportedDriver(_)));
     }

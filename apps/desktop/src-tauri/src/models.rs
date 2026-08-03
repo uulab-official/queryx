@@ -22,12 +22,25 @@ impl std::fmt::Display for DriverKind {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SslMode {
+    Disable,
+    Prefer,
+    Require,
+}
+
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionConfig {
     pub kind: DriverKind,
     pub name: String,
     pub database: String,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username: Option<String>,
+    pub password: Option<String>,
+    pub ssl_mode: Option<SslMode>,
 }
 
 #[derive(Debug, Serialize)]

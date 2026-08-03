@@ -39,6 +39,8 @@ interface QueryResult {
 
 Rows must remain serializable across the Tauri bridge. Binary and database-specific values need an explicit serialization policy before they are added to the shared model.
 
+PostgreSQL normalization currently covers booleans, integer and floating-point values, precision-preserving numeric strings, text, JSON, UUID, date/time values, bytea as base64, and common scalar arrays. Unknown native types are represented by an explicit type marker and add a result warning instead of failing the entire result set.
+
 ## Native Rust contract
 
 The native runtime mirrors the TypeScript boundary with an object-safe async trait:
@@ -66,6 +68,8 @@ Generic Tauri commands:
 - `disconnect_database`
 
 Every native driver must pass the registry contract suite before it can be exposed in the UI.
+
+Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md).
 
 ## Safety
 

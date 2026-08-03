@@ -18,7 +18,7 @@ const cargoVersion = cargoManifest.match(/^version = "([^"]+)"/m)?.[1];
 if (cargoVersion !== version) errors.push(`apps/desktop/src-tauri/Cargo.toml has ${cargoVersion}; expected ${version}`);
 const tauriVersion = readJson('apps/desktop/src-tauri/tauri.conf.json').version;
 if (tauriVersion !== version) errors.push(`apps/desktop/src-tauri/tauri.conf.json has ${tauriVersion}; expected ${version}`);
-for (const required of ['README.md', 'ROADMAP.md', 'CHANGELOG.md', 'docs/DOCUMENTATION_PLAN.md', 'docs/testing.md', 'docs/release-process.md']) {
+for (const required of ['README.md', 'ROADMAP.md', 'CHANGELOG.md', 'docs/DOCUMENTATION_PLAN.md', 'docs/connections.md', 'docs/postgres-driver.md', 'docs/testing.md', 'docs/release-process.md']) {
   if (!existsSync(join(root, required))) errors.push(`Missing required file: ${required}`);
 }
 
@@ -48,6 +48,7 @@ const workspaceFiles = [
   'apps/desktop/src-tauri/src/lib.rs',
   'apps/desktop/src-tauri/src/driver.rs',
   'apps/desktop/src-tauri/src/driver_registry.rs',
+  'apps/desktop/src-tauri/src/postgres_driver.rs',
   'apps/desktop/src-tauri/src/sqlite_driver.rs',
   'packages/shared/src/index.ts',
   'packages/core/src/inMemoryDriver.ts',

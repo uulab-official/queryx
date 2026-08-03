@@ -12,6 +12,9 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - SQLx SQLite driver for connection lifecycle, query execution, transactions, and table/column metadata.
 - Native SQLite integration tests and a deterministic local demo database.
 - Driver-neutral Rust `DatabaseDriver` trait, registry, generic Tauri commands, and reusable contract tests.
+- Native SQLx PostgreSQL driver with SSL modes, transactions, normalized values, and catalog metadata.
+- Local-only PostgreSQL/SQLite connection dialog; session passwords are never persisted.
+- Dynamic result columns, PostgreSQL type labels, schema-aware Explorer nodes, and unsupported-type warnings.
 
 ## [0.1.0] — 2026-08-03
 

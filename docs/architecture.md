@@ -11,7 +11,7 @@ packages/shared/    driver-neutral types and result contracts
 packages/core/      driver implementations and database orchestration
 ```
 
-The desktop app uses Zustand for UI state. The current `InMemoryDriver` is a deterministic PostgreSQL-shaped driver that lets the UI workflow run without connecting to an external database. It is an integration seam, not a production database implementation.
+The desktop app uses Zustand for UI state. The `InMemoryDriver` is a deterministic PostgreSQL-shaped browser fallback. The Tauri runtime uses production SQLx drivers for SQLite and PostgreSQL behind the same native trait and command API.
 
 ## Runtime boundary
 
@@ -37,12 +37,16 @@ The UI must never branch on database vendor details to render a result. Driver-s
 - Local persistence: connections without secrets, history, favorites, settings, workspace indexes.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 
-## Next integration step
+## Native driver selection
 
-The browser preview keeps `InMemoryDriver`; Tauri selects `TauriSqliteDriver`, which invokes generic Rust commands and maps their serialized response to the same shared behavior. Native connections live behind `Arc<dyn DatabaseDriver>` in `DriverRegistry`, so command handlers do not branch by vendor. The next integration steps are:
+The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` with the selected driver kind. The native registry factory is the only vendor-selection boundary. Native connections live behind `Arc<dyn DatabaseDriver>`, so execute, metadata, transaction, and disconnect handlers remain vendor-neutral.
+
+PostgreSQL passwords cross only the local Tauri IPC boundary and remain in process memory for the current session. They are not placed in Zustand, localStorage, SQLite, logs, or connection summaries.
+
+The next integration steps are:
 
 1. Add a native file picker and saved SQLite connection profiles.
-2. Add cancellation and long-query progress channels.
-3. Add PostgreSQL with OS-keychain credentials.
+2. Store saved profile secrets in the OS keychain.
+3. Add cancellation and long-query progress channels.
 4. Add MySQL through the same factory and contract suite.
 5. Expand the metadata contract to indexes, views, triggers, and DDL.
