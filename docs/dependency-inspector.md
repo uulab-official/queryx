@@ -28,6 +28,7 @@ Every edge points from the dependent object to the object it references.
 | View reference | View | Table or view used by its rewrite rule | PostgreSQL |
 | Trigger function | Relation trigger | Invoked trigger function | PostgreSQL |
 | Trigger owner | Relation trigger | Owning table or view | SQLite, PostgreSQL |
+| Event trigger function | Database event trigger | Invoked event-trigger function | PostgreSQL |
 
 Edges are direct, not a computed transitive closure. For example, if `monthly_sales` reads `paid_orders` and `paid_orders` reads `orders`, QueryX reports two direct edges rather than inventing a third `monthly_sales → orders` edge.
 
@@ -38,7 +39,8 @@ Foreign keys also remain available in the table **Relations** tab, where QueryX 
 `DatabaseMetadata.dependencies` is part of the eager connection snapshot. Each edge has an opaque snapshot ID, a typed dependent reference, a typed referenced reference, and a normalized kind.
 
 - Tables and views resolve by `kind + schema + name`.
-- Routines and triggers resolve by opaque snapshot ID.
+- Routines, relation triggers, and event triggers resolve by opaque snapshot ID.
+- Database-scoped event triggers use `schema: null`; schema objects always carry a schema.
 - Routine references include identity arguments for overload-safe display.
 - IDs must not be stored as durable database identifiers across reconnects.
 
@@ -48,7 +50,7 @@ The core package builds incoming and outgoing maps once per snapshot, so Inspect
 
 ### PostgreSQL
 
-QueryX reads direct view dependencies from `pg_rewrite` and `pg_depend`, trigger functions from `pg_trigger.tgfoid`, and preserves PostgreSQL OIDs only as opaque identities for the active snapshot. System, TOAST, and temporary schemas are excluded.
+QueryX reads direct view dependencies from `pg_rewrite` and `pg_depend`, relation-trigger functions from `pg_trigger.tgfoid`, event-trigger functions from `pg_event_trigger.evtfoid`, and preserves PostgreSQL OIDs only as opaque identities for the active snapshot. System, TOAST, and temporary schemas are excluded.
 
 ### SQLite
 

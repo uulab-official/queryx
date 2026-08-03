@@ -4,6 +4,8 @@
 
 QueryX lists relation triggers under each schema's **Triggers** group for PostgreSQL and SQLite. Selecting a trigger shows its owner, timing, events, row/statement orientation, activation mode, optional condition, and database-rendered DDL without executing SQL.
 
+PostgreSQL database-wide event triggers are a distinct object type under the connection root. See [Event Trigger Inspector](event-trigger-inspector.md).
+
 ## Quick start
 
 1. Connect and expand **Schemas → schema → Triggers**.

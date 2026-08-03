@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, relation triggers, and direct object dependencies.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, relation triggers, event triggers, and direct object dependencies.
 
 ## Routine catalog
 
@@ -17,6 +17,10 @@ One `pg_trigger` query returns non-internal triggers for loaded table, partition
 ## Dependency catalog
 
 Foreign-key and trigger-owner edges are normalized from the same metadata snapshot. Trigger-function edges use `pg_trigger.tgfoid`, so overloaded routine navigation resolves by OID instead of name. A batched `pg_rewrite`/`pg_depend` query reports direct view references to visible tables and views. The frontend receives only normalized edge kinds and never branches on PostgreSQL catalogs.
+
+## Event trigger catalog
+
+One batched `pg_event_trigger` query loads database-scoped event names, activation modes, optional command tags, and `evtfoid` function references. Routine OIDs and identity arguments keep function navigation consistent with the Routine Explorer. PostgreSQL `quote_ident` and `quote_literal` produce safe catalog values for the read-only reconstructed `CREATE EVENT TRIGGER` statement.
 
 ## Connection behavior
 
@@ -54,13 +58,13 @@ export QUERYX_TEST_POSTGRES_PASSWORD=local-test-only
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_driver
 ```
 
-Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates isolated schemas to verify composite foreign keys, overloaded functions, default arguments, TABLE returns, procedures, triggers, direct view references, dependency direction, opaque IDs, and reconstructed DDL. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
+Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates isolated objects to verify composite foreign keys, overloaded functions, default arguments, TABLE returns, procedures, relation/event triggers, direct view references, dependency direction, opaque IDs, command tags, activation status, and reconstructed DDL. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
 
 ## Known limitations
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Event triggers, dependencies, aggregates/window functions, and editable DDL are not yet part of the shared metadata model.
+- Aggregates/window functions and editable DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

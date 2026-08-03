@@ -52,6 +52,7 @@ for (const required of [
   "docs/metadata-explorer.md",
   "docs/routine-inspector.md",
   "docs/trigger-inspector.md",
+  "docs/event-trigger-inspector.md",
   "docs/dependency-inspector.md",
   "docs/results.md",
   "docs/troubleshooting.md",

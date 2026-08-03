@@ -49,8 +49,9 @@ Every driver must test:
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior
 - cancel-before-start, duplicate cancel, completion/cancel races, and unsupported-driver capability behavior
-- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, routines, triggers, and typed direct dependencies
+- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, routines, relation/event triggers, and typed direct dependencies
 - dependency direction, incoming/outgoing indexing, overload identity, and explicit unsupported catalog behavior
+- PostgreSQL event-trigger event/tag/status normalization, catalog-reconstructed DDL, database scope, and function navigation
 - real SQLite and PostgreSQL trigger ownership, timing/events, activation status, conditions, and DDL
 - overloaded function identity, procedure/null return behavior, TABLE returns, and read-only database-rendered DDL where supported
 - transaction success, rollback on failure, and disconnect cleanup

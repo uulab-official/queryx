@@ -17,7 +17,7 @@ Splitting edge ownership would make a snapshot semantically incomplete. Per-obje
 
 Add required `DatabaseMetadata.dependencies`. Each driver returns all dependency edges it can support for the loaded snapshot. An edge contains an opaque ID, normalized kind, dependent object reference, and referenced object reference. Direction always means `dependent → referenced`.
 
-PostgreSQL returns foreign-key, trigger-owner, trigger-function, and direct view-reference edges. SQLite returns foreign-key and trigger-owner edges and does not parse view SQL heuristically. The frontend core builds incoming and outgoing maps once and the UI remains vendor neutral.
+PostgreSQL returns foreign-key, trigger-owner, trigger-function, event-trigger-function, and direct view-reference edges. SQLite returns foreign-key and trigger-owner edges and does not parse view SQL heuristically. The frontend core builds incoming and outgoing maps once and the UI remains vendor neutral.
 
 Relations resolve by kind/schema/name. Routines and triggers resolve by opaque snapshot IDs; routine references also carry identity arguments so overloads remain distinct. Snapshot IDs are not durable database identifiers.
 

@@ -4,7 +4,7 @@ QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, col
 
 ## Browse relations
 
-Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, **Routines**, or **Triggers** group. Selecting an object updates the Inspector without executing SQL.
+Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, **Routines**, or **Triggers** group. PostgreSQL database-wide event triggers appear in a separate connection-level **Event Triggers** group. Selecting an object updates the Inspector without executing SQL.
 
 The Inspector shows:
 
@@ -17,6 +17,7 @@ The Inspector shows:
 - overload-safe function/procedure signatures, language, return shape, and read-only database-rendered DDL.
 - trigger activation mode, timing/events, owner navigation, condition, and read-only DDL.
 - direct **Depends on / Used by** edges across visible tables, views, routines, and triggers.
+- PostgreSQL event-trigger activation, DDL event, command tags, execution function, and catalog-reconstructed DDL.
 
 View, table, and routine names are also available to Monaco metadata completion. Routine suggestions use the Function icon and insert the unqualified routine name.
 
@@ -48,6 +49,8 @@ QueryX excludes internal `sqlite_%` objects. It reads tables, views, and relatio
 
 SQLite returns `routines: []` because it has no stored function/procedure catalog equivalent to PostgreSQL. This is an explicit supported contract rather than an error.
 
+SQLite also returns `eventTriggers: []`; it has no PostgreSQL-compatible database DDL event-trigger catalog.
+
 SQLite reports foreign-key and trigger-owner dependency edges. It does not guess view dependencies from SQL text because SQLite has no authoritative view dependency catalog.
 
 `pragma_foreign_key_list` does not expose a declared constraint name or deferrability. QueryX preserves those values as unavailable instead of inferring them. When SQLite omits an implicit referenced column, QueryX displays `primary key` without fabricating a physical column name.
@@ -61,6 +64,8 @@ One `pg_proc` query loads ordinary functions and procedures, identity arguments,
 A separate batched `pg_trigger` query loads non-internal relation triggers, activation modes, UPDATE columns, conditions, and reconstructed DDL.
 
 PostgreSQL adds direct view-to-relation edges from rewrite dependencies and trigger-to-function edges from `tgfoid`. Routine OIDs keep trigger function navigation overload safe.
+
+A batched `pg_event_trigger` query loads database-scoped event triggers and their execution functions. PostgreSQL-provided quoting is used for the catalog-reconstructed read-only definition. See [Event Trigger Inspector](event-trigger-inspector.md).
 
 Expression index entries use the database-rendered expression when no physical column name exists. Partial index predicates and complete definitions remain available in metadata even though the alpha Inspector currently presents only the compact summary.
 
