@@ -39,10 +39,10 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 ## Next integration step
 
-The browser preview keeps `InMemoryDriver`; Tauri selects `TauriSqliteDriver`, which invokes Rust commands and maps their serialized response to the same shared behavior. The next integration steps are:
+The browser preview keeps `InMemoryDriver`; Tauri selects `TauriSqliteDriver`, which invokes generic Rust commands and maps their serialized response to the same shared behavior. Native connections live behind `Arc<dyn DatabaseDriver>` in `DriverRegistry`, so command handlers do not branch by vendor. The next integration steps are:
 
 1. Add a native file picker and saved SQLite connection profiles.
 2. Add cancellation and long-query progress channels.
-3. Extract a Rust driver trait shared by SQLite, PostgreSQL, and MySQL.
-4. Add PostgreSQL with OS-keychain credentials.
-5. Run the same contract test suite for every native driver.
+3. Add PostgreSQL with OS-keychain credentials.
+4. Add MySQL through the same factory and contract suite.
+5. Expand the metadata contract to indexes, views, triggers, and DDL.

@@ -3,17 +3,48 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum DriverKind {
+    Sqlite,
+    Postgres,
+    Mysql,
+}
+
+impl std::fmt::Display for DriverKind {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Sqlite => "sqlite",
+            Self::Postgres => "postgres",
+            Self::Mysql => "mysql",
+        };
+        formatter.write_str(value)
+    }
+}
+
 #[derive(Debug, Deserialize)]
-pub struct SqliteConnectionConfig {
-    pub path: String,
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionConfig {
+    pub kind: DriverKind,
+    pub name: String,
+    pub database: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionSummary {
     pub id: String,
-    pub driver: &'static str,
+    pub name: String,
+    pub driver: DriverKind,
     pub database: String,
+    pub capabilities: Vec<DriverCapability>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DriverCapability {
+    Transactions,
+    Explain,
 }
 
 #[derive(Debug, Serialize)]

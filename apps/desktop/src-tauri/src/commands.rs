@@ -1,48 +1,53 @@
 use tauri::State;
 
 use crate::{
+    driver::ExecutionMode,
+    driver_registry::DriverRegistry,
     error::AppError,
-    models::{ConnectionSummary, DatabaseMetadata, QueryResult, SqliteConnectionConfig},
-    sqlite_driver::SqliteDriverRegistry,
+    models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, QueryResult},
 };
 
 #[tauri::command]
-pub async fn connect_sqlite(
-    state: State<'_, SqliteDriverRegistry>,
-    config: SqliteConnectionConfig,
+pub async fn connect_database(
+    state: State<'_, DriverRegistry>,
+    config: ConnectionConfig,
 ) -> Result<ConnectionSummary, AppError> {
     state.connect(config).await
 }
 
 #[tauri::command]
-pub async fn execute_sqlite(
-    state: State<'_, SqliteDriverRegistry>,
+pub async fn execute_query(
+    state: State<'_, DriverRegistry>,
     connection_id: String,
     sql: String,
 ) -> Result<QueryResult, AppError> {
-    state.execute(&connection_id, &sql).await
+    state
+        .execute(&connection_id, &sql, ExecutionMode::Direct)
+        .await
 }
 
 #[tauri::command]
-pub async fn execute_sqlite_transaction(
-    state: State<'_, SqliteDriverRegistry>,
+pub async fn execute_query_transaction(
+    state: State<'_, DriverRegistry>,
     connection_id: String,
     sql: String,
 ) -> Result<QueryResult, AppError> {
-    state.execute_transaction(&connection_id, &sql).await
+    state
+        .execute(&connection_id, &sql, ExecutionMode::Transaction)
+        .await
 }
 
 #[tauri::command]
-pub async fn sqlite_metadata(
-    state: State<'_, SqliteDriverRegistry>,
+pub async fn database_metadata(
+    state: State<'_, DriverRegistry>,
     connection_id: String,
 ) -> Result<DatabaseMetadata, AppError> {
     state.metadata(&connection_id).await
 }
 
 #[tauri::command]
-pub async fn disconnect_sqlite(
-    state: State<'_, SqliteDriverRegistry>,
+pub async fn disconnect_database(
+    state: State<'_, DriverRegistry>,
     connection_id: String,
 ) -> Result<(), AppError> {
     state.disconnect(&connection_id).await

@@ -4,13 +4,13 @@
 
 The Tauri runtime owns real SQLite connections through SQLx. The React frontend never imports SQLx or accesses database files directly; it invokes typed Tauri commands through `TauriSqliteDriver`.
 
-Implemented commands:
+The SQLite implementation is exposed through generic commands:
 
-- `connect_sqlite` — opens `:memory:` or a SQLite file and returns an opaque connection ID
-- `execute_sqlite` — executes a read or write statement and returns the common result model
-- `execute_sqlite_transaction` — executes one statement inside a native transaction
-- `sqlite_metadata` — returns schemas, tables, and columns for Explorer/Inspector
-- `disconnect_sqlite` — closes and removes the connection from managed state
+- `connect_database` — selects the SQLite factory, opens `:memory:` or a file, and returns an opaque connection ID
+- `execute_query` — executes a read or write statement and returns the common result model
+- `execute_query_transaction` — executes one statement inside a native transaction
+- `database_metadata` — returns schemas, tables, and columns for Explorer/Inspector
+- `disconnect_database` — closes and removes the connection from managed state
 
 ## Demo runtime
 

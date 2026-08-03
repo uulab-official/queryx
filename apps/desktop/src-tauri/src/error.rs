@@ -6,6 +6,8 @@ pub enum AppError {
     ConnectionNotFound(String),
     #[error("invalid SQLite path: {0}")]
     InvalidPath(String),
+    #[error("driver is not implemented yet: {0}")]
+    UnsupportedDriver(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

@@ -39,6 +39,34 @@ interface QueryResult {
 
 Rows must remain serializable across the Tauri bridge. Binary and database-specific values need an explicit serialization policy before they are added to the shared model.
 
+## Native Rust contract
+
+The native runtime mirrors the TypeScript boundary with an object-safe async trait:
+
+```rust
+#[async_trait]
+pub trait DatabaseDriver: Send + Sync {
+    fn kind(&self) -> DriverKind;
+    fn database(&self) -> &str;
+    fn capabilities(&self) -> Vec<DriverCapability>;
+    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
+    async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
+    async fn disconnect(&self) -> Result<(), AppError>;
+}
+```
+
+`DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; execute, metadata, transaction, and disconnect commands remain driver-neutral.
+
+Generic Tauri commands:
+
+- `connect_database`
+- `execute_query`
+- `execute_query_transaction`
+- `database_metadata`
+- `disconnect_database`
+
+Every native driver must pass the registry contract suite before it can be exposed in the UI.
+
 ## Safety
 
 Before an UPDATE or DELETE with no WHERE clause is executed, the query orchestration layer must produce a warning for Safe Mode. The UI can then choose Cancel, Run in Transaction, or Execute Anyway based on the user's explicit action.

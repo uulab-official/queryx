@@ -10,8 +10,10 @@ import type {
 
 interface ConnectionSummary {
   id: string;
+  name: string;
   driver: 'sqlite';
   database: string;
+  capabilities: DriverCapability[];
 }
 
 export class TauriSqliteDriver implements DatabaseDriver {
@@ -20,8 +22,12 @@ export class TauriSqliteDriver implements DatabaseDriver {
   private transactionMode = false;
 
   async connect(config: DriverConfig): Promise<void> {
-    const connection = await invoke<ConnectionSummary>('connect_sqlite', {
-      config: { path: config.database || ':memory:' },
+    const connection = await invoke<ConnectionSummary>('connect_database', {
+      config: {
+        kind: this.kind,
+        name: config.name,
+        database: config.database || ':memory:',
+      },
     });
     this.connectionId = connection.id;
   }
@@ -29,12 +35,12 @@ export class TauriSqliteDriver implements DatabaseDriver {
   async execute(sql: string, signal?: AbortSignal): Promise<QueryResult> {
     if (signal?.aborted) throw new DOMException('Query cancelled', 'AbortError');
     const connectionId = this.requireConnection();
-    const command = this.transactionMode ? 'execute_sqlite_transaction' : 'execute_sqlite';
+    const command = this.transactionMode ? 'execute_query_transaction' : 'execute_query';
     return invoke<QueryResult>(command, { connectionId, sql });
   }
 
   async metadata(): Promise<DatabaseMetadata> {
-    return invoke<DatabaseMetadata>('sqlite_metadata', {
+    return invoke<DatabaseMetadata>('database_metadata', {
       connectionId: this.requireConnection(),
     });
   }
@@ -50,7 +56,7 @@ export class TauriSqliteDriver implements DatabaseDriver {
 
   async disconnect(): Promise<void> {
     if (!this.connectionId) return;
-    await invoke('disconnect_sqlite', { connectionId: this.connectionId });
+    await invoke('disconnect_database', { connectionId: this.connectionId });
     this.connectionId = null;
   }
 

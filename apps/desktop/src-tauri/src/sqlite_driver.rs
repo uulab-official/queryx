@@ -1,93 +1,71 @@
 use std::{collections::HashMap, str::FromStr, time::Instant};
 
+use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     Column, Row, SqlitePool, TypeInfo, ValueRef,
 };
-use tokio::sync::RwLock;
-use uuid::Uuid;
 
 use crate::{
+    driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, ConnectionSummary, DatabaseMetadata, QueryColumn, QueryResult,
-        SqliteConnectionConfig, TableMetadata,
+        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, QueryColumn, QueryResult,
+        TableMetadata,
     },
 };
 
-pub struct SqliteDriverRegistry {
-    connections: RwLock<HashMap<Uuid, SqliteConnection>>,
-}
-
-#[derive(Clone)]
-struct SqliteConnection {
+pub struct SqliteDriver {
     path: String,
     pool: SqlitePool,
 }
 
-impl Default for SqliteDriverRegistry {
-    fn default() -> Self {
-        Self {
-            connections: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
-impl SqliteDriverRegistry {
-    pub async fn connect(
-        &self,
-        config: SqliteConnectionConfig,
-    ) -> Result<ConnectionSummary, AppError> {
-        let database_url = sqlite_url(&config.path)?;
+impl SqliteDriver {
+    pub async fn connect(path: &str) -> Result<Self, AppError> {
+        let database_url = sqlite_url(path)?;
         let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
-        let max_connections = if config.path == ":memory:" { 1 } else { 5 };
+        let max_connections = if path == ":memory:" { 1 } else { 5 };
         let pool = SqlitePoolOptions::new()
             .max_connections(max_connections)
             .connect_with(options)
             .await?;
 
-        if config.path == ":memory:" {
+        if path == ":memory:" {
             seed_demo_database(&pool).await?;
         }
 
-        let id = Uuid::new_v4();
-        self.connections.write().await.insert(
-            id,
-            SqliteConnection {
-                path: config.path.clone(),
-                pool,
-            },
-        );
-
-        Ok(ConnectionSummary {
-            id: id.to_string(),
-            driver: "sqlite",
-            database: config.path,
+        Ok(Self {
+            path: path.to_string(),
+            pool,
         })
     }
+}
 
-    pub async fn execute(&self, connection_id: &str, sql: &str) -> Result<QueryResult, AppError> {
-        let connection = self.connection(connection_id).await?;
-        execute_on_pool(&connection.pool, sql, false).await
+#[async_trait]
+impl DatabaseDriver for SqliteDriver {
+    fn kind(&self) -> DriverKind {
+        DriverKind::Sqlite
     }
 
-    pub async fn execute_transaction(
-        &self,
-        connection_id: &str,
-        sql: &str,
-    ) -> Result<QueryResult, AppError> {
-        let connection = self.connection(connection_id).await?;
-        execute_on_pool(&connection.pool, sql, true).await
+    fn database(&self) -> &str {
+        &self.path
     }
 
-    pub async fn metadata(&self, connection_id: &str) -> Result<DatabaseMetadata, AppError> {
-        let connection = self.connection(connection_id).await?;
+    fn capabilities(&self) -> Vec<DriverCapability> {
+        vec![DriverCapability::Transactions, DriverCapability::Explain]
+    }
+
+    async fn execute(&self, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError> {
+        execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
+    }
+
+    async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
         let table_rows = sqlx::query(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
         )
-        .fetch_all(&connection.pool)
+        .fetch_all(&self.pool)
         .await?;
 
         let mut tables = Vec::with_capacity(table_rows.len());
@@ -95,7 +73,7 @@ impl SqliteDriverRegistry {
             let name: String = table_row.try_get("name")?;
             let escaped_name = name.replace('"', "\"\"");
             let pragma = format!("PRAGMA table_info(\"{escaped_name}\")");
-            let column_rows = sqlx::query(&pragma).fetch_all(&connection.pool).await?;
+            let column_rows = sqlx::query(&pragma).fetch_all(&self.pool).await?;
             let columns = column_rows
                 .into_iter()
                 .map(|row| {
@@ -116,37 +94,16 @@ impl SqliteDriverRegistry {
         }
 
         Ok(DatabaseMetadata {
-            databases: vec![connection.path],
+            databases: vec![self.path.clone()],
             schemas: vec!["main".into()],
             tables,
         })
     }
 
-    pub async fn disconnect(&self, connection_id: &str) -> Result<(), AppError> {
-        let id = parse_connection_id(connection_id)?;
-        let connection = self
-            .connections
-            .write()
-            .await
-            .remove(&id)
-            .ok_or_else(|| AppError::ConnectionNotFound(connection_id.into()))?;
-        connection.pool.close().await;
+    async fn disconnect(&self) -> Result<(), AppError> {
+        self.pool.close().await;
         Ok(())
     }
-
-    async fn connection(&self, connection_id: &str) -> Result<SqliteConnection, AppError> {
-        let id = parse_connection_id(connection_id)?;
-        self.connections
-            .read()
-            .await
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| AppError::ConnectionNotFound(connection_id.into()))
-    }
-}
-
-fn parse_connection_id(connection_id: &str) -> Result<Uuid, AppError> {
-    Uuid::parse_str(connection_id).map_err(|_| AppError::ConnectionNotFound(connection_id.into()))
 }
 
 fn sqlite_url(path: &str) -> Result<String, AppError> {
@@ -292,46 +249,14 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn connects_executes_and_reads_metadata() {
-        let registry = SqliteDriverRegistry::default();
-        let connection = registry
-            .connect(SqliteConnectionConfig {
-                path: ":memory:".into(),
-            })
-            .await
-            .expect("connect sqlite memory database");
-
-        let result = registry
-            .execute(&connection.id, "SELECT COUNT(*) AS orders FROM orders")
-            .await
-            .expect("execute query");
-        let metadata = registry
-            .metadata(&connection.id)
-            .await
-            .expect("read metadata");
-
-        assert_eq!(result.rows[0]["orders"], Value::from(10));
-        assert!(metadata.tables.iter().any(|table| table.name == "orders"));
-        registry
-            .disconnect(&connection.id)
-            .await
-            .expect("disconnect sqlite database");
-    }
-
-    #[tokio::test]
     async fn reports_affected_rows_inside_a_transaction() {
-        let registry = SqliteDriverRegistry::default();
-        let connection = registry
-            .connect(SqliteConnectionConfig {
-                path: ":memory:".into(),
-            })
+        let driver = SqliteDriver::connect(":memory:")
             .await
             .expect("connect sqlite memory database");
-
-        let result = registry
-            .execute_transaction(
-                &connection.id,
+        let result = driver
+            .execute(
                 "UPDATE orders SET status = 'review' WHERE id = 1",
+                ExecutionMode::Transaction,
             )
             .await
             .expect("execute transaction");

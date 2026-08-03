@@ -34,7 +34,7 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 
 - [x] React/TypeScript/Vite workspace 구성
 - [x] Tauri 2 desktop shell
-- [ ] Rust `DatabaseDriver` 공통 인터페이스 정의
+- [x] Rust `DatabaseDriver` 공통 인터페이스와 contract test 정의
 - [x] SQLite driver 구현 및 연결 테스트
 - [ ] PostgreSQL driver 구현 및 연결 테스트
 - [ ] MySQL driver 구현 및 연결 테스트

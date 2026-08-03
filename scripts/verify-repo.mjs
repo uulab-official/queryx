@@ -46,6 +46,8 @@ const workspaceFiles = [
   'apps/desktop/src/store.ts',
   'apps/desktop/src/nativeDriver.ts',
   'apps/desktop/src-tauri/src/lib.rs',
+  'apps/desktop/src-tauri/src/driver.rs',
+  'apps/desktop/src-tauri/src/driver_registry.rs',
   'apps/desktop/src-tauri/src/sqlite_driver.rs',
   'packages/shared/src/index.ts',
   'packages/core/src/inMemoryDriver.ts',
