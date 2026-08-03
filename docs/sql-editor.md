@@ -16,6 +16,17 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
+## Result grid
+
+The table view supports spreadsheet-oriented copy without sending result data anywhere except the local clipboard:
+
+- Click a cell to select it; Shift-click extends a rectangular cell range.
+- Click a row number to select a full visible row; Shift-click extends the row range.
+- Press Cmd/Ctrl+C while the grid is focused, or choose **Copy**, to copy the selected cells/rows as TSV. With no selection, Copy includes the visible column headers and filtered/sorted rows.
+- Toggle **NULL** to switch between the literal `NULL` display and a blank display. Clipboard output follows the selected display mode; CSV export continues to use empty cells for null values.
+
+Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. The current grid still loads result rows in memory; virtualized streaming and server paging remain planned.
+
 ## DDL handoff
 
 From a relation, trigger, event-trigger, or function/procedure Inspector, choose **Edit in SQL** to open the reconstructed definition in a new tab. The handoff never executes automatically. Review and modify the statement like any other query, then choose **Run in Transaction** to execute the complete document through the native transaction path. A failed statement rolls back the transaction and keeps the SQL tab available for correction.
@@ -51,6 +62,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - Tabs are session state and are not restored after restart yet.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
 - Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
+- Result-grid copy operates on the currently visible filtered/sorted rows. Binary viewers, virtualized streaming, and server paging remain planned.
 
 ## Related
 

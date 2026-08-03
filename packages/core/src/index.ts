@@ -1,5 +1,7 @@
 export { serializeRowsToCsv } from "./csvExport";
 export type { CsvExportOptions } from "./csvExport";
+export { serializeRowsToTsv } from "./clipboard";
+export type { ClipboardExportOptions } from "./clipboard";
 export {
   buildDependencyIndex,
   databaseObjectRefKey,

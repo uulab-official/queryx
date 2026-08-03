@@ -11,6 +11,12 @@ QueryX normalizes driver output into ordered columns, rows, execution time, affe
 
 Filtering and sorting do not run another database query. They affect only the loaded result in the desktop UI.
 
+## Copy and NULL display
+
+Click a cell and Shift-click another cell to select a rectangular range. Click row numbers to select complete visible rows, then use Cmd/Ctrl+C or **Copy**. With no selection, **Copy** includes headers and copies the currently filtered/sorted rows. The shared clipboard serializer emits spreadsheet-safe TSV and quotes cells containing tabs, quotes, or line breaks.
+
+The **NULL** button toggles between a visible `NULL` literal and a blank display. Copy follows that choice; CSV export keeps SQL NULL as an empty field so exported files remain compatible with the existing CSV contract.
+
 ## Export CSV
 
 Choose **Export** after a query returns columns. QueryX exports the rows currently visible after local filtering and sorting, in the displayed column order.

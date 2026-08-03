@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type ClipboardEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import {
   buildDependencyIndex,
@@ -13,6 +15,7 @@ import {
   buildExplainQuery,
   inspectQuerySafety,
   serializeRowsToCsv,
+  serializeRowsToTsv,
 } from "@queryx/core";
 import type {
   ForeignKeyRelations,
@@ -49,6 +52,41 @@ function resultRowKey(row: Record<string, unknown>): string {
   const key = `query-result-row-${nextResultRowKey++}`;
   resultRowKeys.set(row, key);
   return key;
+}
+
+type GridPoint = { row: number; column: number };
+type GridSelection =
+  | { kind: "cells"; anchor: GridPoint; focus: GridPoint }
+  | { kind: "rows"; anchor: number; focus: number };
+
+function rangeBounds(first: number, second: number): [number, number] {
+  return first <= second ? [first, second] : [second, first];
+}
+
+function isCellInSelection(
+  selection: GridSelection | null,
+  row: number,
+  column: number,
+): boolean {
+  if (!selection) return false;
+  if (selection.kind === "rows") {
+    const [start, end] = rangeBounds(selection.anchor, selection.focus);
+    return row >= start && row <= end;
+  }
+  const [startRow, endRow] = rangeBounds(
+    selection.anchor.row,
+    selection.focus.row,
+  );
+  const [startColumn, endColumn] = rangeBounds(
+    selection.anchor.column,
+    selection.focus.column,
+  );
+  return (
+    row >= startRow &&
+    row <= endRow &&
+    column >= startColumn &&
+    column <= endColumn
+  );
 }
 
 function Icon({ children }: { children: string }) {
@@ -95,6 +133,12 @@ function App() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
+    "literal",
+  );
+  const [gridSelection, setGridSelection] = useState<GridSelection | null>(
+    null,
+  );
   const [pendingSafety, setPendingSafety] = useState<{
     report: QuerySafetyReport;
     sql: string;
@@ -124,6 +168,7 @@ function App() {
       }
     }
     setPendingSafety(null);
+    setGridSelection(null);
     void runQuery(mode, executableSql);
   };
   const handleExplain = () => {
@@ -137,6 +182,7 @@ function App() {
       return;
     }
     setPendingSafety(null);
+    setGridSelection(null);
     void runQuery("explain", explain.query.sql);
   };
   const requestCloseQuery = (id: string) => {
@@ -332,6 +378,10 @@ function App() {
       );
     });
   }, [filter, result, sortBy, sortDirection]);
+  const updateFilter = (value: string) => {
+    setGridSelection(null);
+    setFilter(value);
+  };
   const selectRelatedTable = (relation: RelationRef) => {
     const isVisible = tables.some(
       (table) =>
@@ -429,6 +479,7 @@ function App() {
   };
 
   const sort = (key: string) => {
+    setGridSelection(null);
     if (key === sortBy)
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     else {
@@ -464,6 +515,91 @@ function App() {
         `CSV export failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  };
+
+  const buildGridClipboard = (
+    selection: GridSelection | null,
+    includeHeaders: boolean,
+  ): string | null => {
+    if (!result || result.columns.length === 0) return null;
+    if (!selection) {
+      return serializeRowsToTsv(result.columns, visibleRows, {
+        includeHeaders,
+        nullValue: nullDisplay === "literal" ? "NULL" : "",
+      });
+    }
+    if (selection.kind === "rows") {
+      const [startRow, endRow] = rangeBounds(selection.anchor, selection.focus);
+      return serializeRowsToTsv(
+        result.columns,
+        visibleRows.slice(startRow, endRow + 1),
+        { nullValue: nullDisplay === "literal" ? "NULL" : "" },
+      );
+    }
+    const [startRow, endRow] = rangeBounds(
+      selection.anchor.row,
+      selection.focus.row,
+    );
+    const [startColumn, endColumn] = rangeBounds(
+      selection.anchor.column,
+      selection.focus.column,
+    );
+    return serializeRowsToTsv(
+      result.columns.slice(startColumn, endColumn + 1),
+      visibleRows.slice(startRow, endRow + 1),
+      { nullValue: nullDisplay === "literal" ? "NULL" : "" },
+    );
+  };
+
+  const copyGridSelection = async () => {
+    const hasSelection = gridSelection !== null;
+    const text = buildGridClipboard(gridSelection, !hasSelection);
+    if (text === null) {
+      notify("Run a query with tabular results before copying");
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      notify(
+        hasSelection
+          ? "Copied selected result range"
+          : "Copied visible results",
+      );
+    } catch {
+      notify("Could not copy result data");
+    }
+  };
+
+  const handleGridKeyDown = (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+      event.preventDefault();
+      void copyGridSelection();
+    }
+  };
+
+  const handleGridCopy = (event: ClipboardEvent<HTMLElement>) => {
+    if (!gridSelection) return;
+    const text = buildGridClipboard(gridSelection, false);
+    if (text === null) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", text);
+    notify("Copied selected result range");
+  };
+
+  const selectGridCell = (row: number, column: number, extend: boolean) => {
+    setGridSelection((current) =>
+      extend && current?.kind === "cells"
+        ? { kind: "cells", anchor: current.anchor, focus: { row, column } }
+        : { kind: "cells", anchor: { row, column }, focus: { row, column } },
+    );
+  };
+
+  const selectGridRow = (row: number, extend: boolean) => {
+    setGridSelection((current) =>
+      extend && current?.kind === "rows"
+        ? { kind: "rows", anchor: current.anchor, focus: row }
+        : { kind: "rows", anchor: row, focus: row },
+    );
   };
 
   return (
@@ -995,6 +1131,31 @@ function App() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => void copyGridSelection()}
+                  disabled={!result || result.columns.length === 0}
+                  title={
+                    gridSelection
+                      ? "Copy the selected cells or rows"
+                      : "Copy visible results with column headers"
+                  }
+                >
+                  ⇧ Copy
+                </button>
+                <button
+                  type="button"
+                  className={nullDisplay === "literal" ? "active" : ""}
+                  onClick={() =>
+                    setNullDisplay((current) =>
+                      current === "literal" ? "empty" : "literal",
+                    )
+                  }
+                  aria-pressed={nullDisplay === "literal"}
+                  title="Toggle whether NULL cells display as NULL or blank"
+                >
+                  {nullDisplay === "literal" ? "NULL" : "∅"}
+                </button>
+                <button
+                  type="button"
                   onClick={() => void exportResults()}
                   disabled={!result || result.columns.length === 0}
                 >
@@ -1025,18 +1186,23 @@ function App() {
                 <input
                   id="result-filter"
                   value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
+                  onChange={(event) => updateFilter(event.target.value)}
                   placeholder="Filter results..."
                 />
                 <kbd>⌘F</kbd>
               </label>
             </div>
             {resultView === "table" ? (
-              <div className="grid-wrap">
-                <table>
+              <div
+                className="grid-wrap"
+                aria-label="Query result grid. Click cells or row numbers, then use Shift-click or Command/Ctrl+C to copy a range."
+              >
+                <table onCopy={handleGridCopy}>
                   <thead>
                     <tr>
-                      <th className="row-number">#</th>
+                      <th className="row-number" aria-label="Select row">
+                        #
+                      </th>
                       {result?.columns.map((column) => (
                         <th key={column.name}>
                           <button
@@ -1060,15 +1226,45 @@ function App() {
                   <tbody>
                     {visibleRows.map((row, rowIndex) => (
                       <tr key={resultRowKey(row)}>
-                        <td className="row-number">{rowIndex + 1}</td>
-                        {result?.columns.map((column) => (
+                        <td
+                          className={`row-number selectable ${gridSelection?.kind === "rows" && isCellInSelection(gridSelection, rowIndex, 0) ? "selected" : ""}`}
+                          title="Select row; Shift-click to extend"
+                        >
+                          <button
+                            type="button"
+                            className="grid-cell-button row-select-button"
+                            onClick={(event) =>
+                              selectGridRow(rowIndex, event.shiftKey)
+                            }
+                            onKeyDown={handleGridKeyDown}
+                            title="Select row; Shift-click to extend"
+                          >
+                            {rowIndex + 1}
+                          </button>
+                        </td>
+                        {result?.columns.map((column, columnIndex) => (
                           <td
                             key={column.name}
-                            className={
-                              row[column.name] === null ? "null-value" : ""
-                            }
+                            className={`${row[column.name] === null ? "null-value" : ""} ${isCellInSelection(gridSelection, rowIndex, columnIndex) ? "selected" : ""}`}
                           >
-                            {formatCellValue(row[column.name])}
+                            <button
+                              type="button"
+                              className="grid-cell-button"
+                              onClick={(event) =>
+                                selectGridCell(
+                                  rowIndex,
+                                  columnIndex,
+                                  event.shiftKey,
+                                )
+                              }
+                              onKeyDown={handleGridKeyDown}
+                              title="Select cell; Shift-click to extend"
+                            >
+                              {formatCellValue(
+                                row[column.name],
+                                nullDisplay === "literal",
+                              )}
+                            </button>
                           </td>
                         ))}
                       </tr>
@@ -1229,8 +1425,9 @@ function relativeTime(value: string): string {
     : "Earlier today";
 }
 
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined) return "NULL";
+function formatCellValue(value: unknown, showNullLiteral = true): string {
+  if (value === null || value === undefined)
+    return showNullLiteral ? "NULL" : "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }

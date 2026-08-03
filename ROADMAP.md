@@ -52,7 +52,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
 - [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls
 - [ ] Virtualized result grid with incremental fetch, server paging, resize/reorder/freeze
-- [ ] Cell/row/range copy, NULL display controls, and binary/JSON viewers
+- [x] Cell/row/range copy, NULL display controls, and spreadsheet-safe TSV clipboard output
 - [ ] JSON and SQL INSERT export; progress, cancel, encoding, delimiter, and line-ending controls
 - [x] Metadata for views, indexes, and primary keys
 - [x] Composite foreign keys with outgoing/incoming relationship navigation

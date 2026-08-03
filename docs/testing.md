@@ -11,12 +11,14 @@ QueryX uses a small, explicit test pyramid:
 5. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 6. **Native matrix checks** test and build Tauri on Linux, macOS, and Windows.
 7. **Live PostgreSQL contract checks** execute catalog, query, and cancellation behavior against a disposable PostgreSQL service.
-8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort result → export → inspect and navigate object dependencies.
+8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export → inspect and navigate object dependencies.
 9. **Browser workflow checks** cover Monaco load, query-tab creation/switching/closing, document preservation, and keyboard execution.
 
 The desktop preview also has a Safe Mode smoke path: replace the editor query with an UPDATE or DELETE without WHERE, press Cmd/Ctrl+Enter, confirm the warning, then choose Cancel, Run in Transaction, or Execute Anyway. This is a UI contract preview; native transaction semantics belong to the Rust driver.
 
 The editor smoke path creates a second query with Cmd/Ctrl+T, enters distinct SQL in both tabs, switches between them, and confirms that each document and its undo history remain independent. Selecting SQL before Cmd/Ctrl+Enter must execute only the selection; with no selection it executes the complete active document. The browser smoke path also clicks **Explain**, confirms a plan result and the non-execution toast, and verifies the action is disabled when the driver lacks `explain`. The DDL smoke path selects a routine or trigger, confirms **Edit in SQL** creates a new tab without a result, verifies **Run in Transaction** is available, and uses **Refresh metadata** after the definition changes.
+
+The result-grid smoke path clicks a cell, Shift-clicks another cell, presses Cmd/Ctrl+C, and pastes into a spreadsheet or plain-text editor to verify rectangular TSV output. It repeats the check with a row-number selection and the **NULL** display toggle, then confirms Copy uses only the visible filtered/sorted rows when no range is selected.
 
 ## Local commands
 

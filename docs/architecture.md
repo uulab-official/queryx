@@ -59,6 +59,7 @@ The next integration steps are:
 4. Add MySQL through the same factory and contract suite.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to schema-aware DDL diffing and migration history. The current safe editor handoff is documented in [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
 6. Add structured plan trees and explicit `EXPLAIN ANALYZE` controls on top of the current non-executing Explain slice documented in [ADR-0012](decisions/ADR-0012-non-executing-explain-slice.md).
+7. Keep result-grid clipboard serialization in the shared core so browser preview, native results, and future virtualized grids share TSV quoting and null semantics.
 
 ## Related decisions
 
