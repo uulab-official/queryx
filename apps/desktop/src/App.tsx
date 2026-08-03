@@ -9,7 +9,12 @@ import {
 } from "react";
 import { inspectQuerySafety, serializeRowsToCsv } from "@queryx/core";
 import type { QuerySafetyReport } from "@queryx/core";
-import type { DriverConfig, DriverKind, TableMetadata } from "@queryx/shared";
+import type {
+  DriverConfig,
+  DriverKind,
+  TableMetadata,
+  ViewMetadata,
+} from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
 import { saveCsvFile } from "./exportCsv";
 import { useQueryStore, type RunMode } from "./store";
@@ -45,7 +50,7 @@ function App() {
     activeTabId,
     result,
     metadata,
-    selectedTable,
+    selectedRelation,
     resultView,
     filter,
     isRunning,
@@ -63,7 +68,7 @@ function App() {
     closeQuery,
     setFilter,
     setResultView,
-    setSelectedTable,
+    setSelectedRelation,
     runQuery,
     cancelQuery,
     loadMetadata,
@@ -153,10 +158,26 @@ function App() {
   });
 
   const tables = metadata?.tables ?? [];
+  const views = metadata?.views ?? [];
   const schemas = metadata?.schemas ?? [];
   const currentTable =
-    tables.find((table) => `${table.schema}.${table.name}` === selectedTable) ??
-    tables[0];
+    selectedRelation?.kind === "table"
+      ? tables.find(
+          (table) =>
+            table.schema === selectedRelation.schema &&
+            table.name === selectedRelation.name,
+        )
+      : selectedRelation
+        ? undefined
+        : tables[0];
+  const currentView =
+    selectedRelation?.kind === "view"
+      ? views.find(
+          (view) =>
+            view.schema === selectedRelation.schema &&
+            view.name === selectedRelation.name,
+        )
+      : undefined;
   const completions = useMemo<SqlCompletion[]>(() => {
     if (!metadata) return [];
     return [
@@ -174,6 +195,18 @@ function App() {
         ...table.columns.map((column) => ({
           label: column.name,
           detail: `${table.schema}.${table.name} · ${column.type}`,
+          kind: "column" as const,
+        })),
+      ]),
+      ...metadata.views.flatMap((view) => [
+        {
+          label: view.name,
+          detail: `${view.schema} view`,
+          kind: "table" as const,
+        },
+        ...view.columns.map((column) => ({
+          label: column.name,
+          detail: `${view.schema}.${view.name} view · ${column.type}`,
           kind: "column" as const,
         })),
       ]),
@@ -339,6 +372,9 @@ function App() {
                       const schemaTables = tables.filter(
                         (table) => table.schema === schema,
                       );
+                      const schemaViews = views.filter(
+                        (view) => view.schema === schema,
+                      );
                       return (
                         <div key={schema}>
                           <TreeRow
@@ -363,16 +399,52 @@ function App() {
                                     return (
                                       <button
                                         type="button"
-                                        className={`tree-row ${selectedTable === tableKey ? "selected" : ""}`}
+                                        className={`tree-row ${selectedRelation?.kind === "table" && selectedRelation.schema === table.schema && selectedRelation.name === table.name ? "selected" : ""}`}
                                         key={tableKey}
                                         onClick={() =>
-                                          setSelectedTable(tableKey)
+                                          setSelectedRelation({
+                                            kind: "table",
+                                            schema: table.schema,
+                                            name: table.name,
+                                          })
                                         }
                                       >
                                         <span className="tree-icon table">
                                           ▤
                                         </span>
                                         {table.name}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              <TreeRow
+                                label="Views"
+                                icon="▱"
+                                tone="folder"
+                                count={schemaViews.length}
+                              />
+                              {schemaViews.length > 0 && (
+                                <div className="tree-children">
+                                  {schemaViews.map((view) => {
+                                    const viewKey = `${view.schema}.${view.name}`;
+                                    return (
+                                      <button
+                                        type="button"
+                                        className={`tree-row ${selectedRelation?.kind === "view" && selectedRelation.schema === view.schema && selectedRelation.name === view.name ? "selected" : ""}`}
+                                        key={viewKey}
+                                        onClick={() =>
+                                          setSelectedRelation({
+                                            kind: "view",
+                                            schema: view.schema,
+                                            name: view.name,
+                                          })
+                                        }
+                                      >
+                                        <span className="tree-icon view">
+                                          ◫
+                                        </span>
+                                        {view.name}
                                       </button>
                                     );
                                   })}
@@ -704,7 +776,15 @@ function App() {
             <span>⌘ Enter to run</span>
           </div>
         </main>
-        <Inspector table={currentTable} />
+        <Inspector
+          key={
+            selectedRelation
+              ? `${selectedRelation.kind}:${selectedRelation.schema}.${selectedRelation.name}`
+              : "no-relation"
+          }
+          table={currentTable}
+          view={currentView}
+        />
       </div>
       {toast && <div className="toast">{toast}</div>}
       {pendingSafety && (
@@ -1039,7 +1119,16 @@ function ConnectionDialog({
   );
 }
 
-function Inspector({ table }: { table?: TableMetadata }) {
+function Inspector({
+  table,
+  view,
+}: {
+  table?: TableMetadata;
+  view?: ViewMetadata;
+}) {
+  const relation = table ?? view;
+  const [activeTab, setActiveTab] = useState<"columns" | "indexes">("columns");
+
   return (
     <aside className="inspector">
       <div className="panel-heading">
@@ -1048,61 +1137,114 @@ function Inspector({ table }: { table?: TableMetadata }) {
           ×
         </button>
       </div>
-      {table && (
+      {relation && (
         <>
           <div className="inspector-title">
-            <span className="table-symbol">▤</span>
+            <span className="table-symbol">{table ? "▤" : "◫"}</span>
             <span>
-              <strong>{table.name}</strong>
-              <small>{table.schema} · table</small>
+              <strong>{relation.name}</strong>
+              <small>
+                {relation.schema} · {table ? "table" : "view"}
+              </small>
             </span>
             <button type="button" className="mini-button">
               •••
             </button>
           </div>
           <div className="inspector-tabs">
-            <button type="button" className="active">
-              Columns <span>{table.columns.length}</span>
+            <button
+              type="button"
+              className={activeTab === "columns" ? "active" : ""}
+              onClick={() => setActiveTab("columns")}
+            >
+              Columns <span>{relation.columns.length}</span>
             </button>
-            <button type="button" disabled>
-              Indexes <span>soon</span>
-            </button>
+            {table && (
+              <button
+                type="button"
+                className={activeTab === "indexes" ? "active" : ""}
+                onClick={() => setActiveTab("indexes")}
+              >
+                Indexes <span>{table.indexes.length}</span>
+              </button>
+            )}
           </div>
-          <div className="column-list">
-            {table.columns.map((column) => (
-              <div className="column-row" key={column.name}>
-                <span
-                  className={
-                    column.primaryKey ? "key-symbol" : "key-symbol empty"
-                  }
-                >
-                  {column.primaryKey ? "⌁" : "•"}
-                </span>
-                <span>
-                  <strong>{column.name}</strong>
-                  <small>{column.type}</small>
-                </span>
-                {column.primaryKey && <b className="pk">PK</b>}
-              </div>
-            ))}
-          </div>
+          {activeTab === "columns" ? (
+            <div className="column-list">
+              {relation.columns.map((column) => (
+                <div className="column-row" key={column.name}>
+                  <span
+                    className={
+                      column.primaryKey ? "key-symbol" : "key-symbol empty"
+                    }
+                  >
+                    {column.primaryKey ? "⌁" : "•"}
+                  </span>
+                  <span>
+                    <strong>{column.name}</strong>
+                    <small>{column.type}</small>
+                  </span>
+                  {column.primaryKey && <b className="pk">PK</b>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="column-list">
+              {table?.indexes.map((index) => (
+                <div className="column-row index-row" key={index.name}>
+                  <span className="key-symbol">⌁</span>
+                  <span>
+                    <strong>{index.name}</strong>
+                    <small>
+                      {index.columns.join(", ")} · {index.type}
+                    </small>
+                  </span>
+                  <span className="index-badges">
+                    {index.primary && <b className="pk">PK</b>}
+                    {index.unique && !index.primary && (
+                      <b className="unique-badge">UQ</b>
+                    )}
+                  </span>
+                </div>
+              ))}
+              {table?.indexes.length === 0 && (
+                <div className="inspector-empty">No indexes reported</div>
+              )}
+            </div>
+          )}
           <div className="inspector-section">
             <div className="section-title">
-              TABLE DETAILS <span>⌃</span>
+              {table ? "TABLE" : "VIEW"} DETAILS <span>⌃</span>
             </div>
             <dl>
-              <dt>Rows</dt>
-              <dd>{table.rowCount.toLocaleString()}</dd>
+              {table && (
+                <>
+                  <dt>Estimated rows</dt>
+                  <dd>{table.rowCount.toLocaleString()}</dd>
+                </>
+              )}
               <dt>Schema</dt>
-              <dd>{table.schema}</dd>
+              <dd>{relation.schema}</dd>
               <dt>Columns</dt>
-              <dd>{table.columns.length}</dd>
-              <dt>Primary key</dt>
-              <dd>
-                {table.columns.filter((column) => column.primaryKey).length}
-              </dd>
+              <dd>{relation.columns.length}</dd>
+              {table && (
+                <>
+                  <dt>Indexes</dt>
+                  <dd>{table.indexes.length}</dd>
+                  <dt>Primary key</dt>
+                  <dd>
+                    {table.columns.filter((column) => column.primaryKey).length}
+                  </dd>
+                </>
+              )}
             </dl>
           </div>
+          {view?.definition && (
+            <div className="inspector-section">
+              <div className="section-title">VIEW DEFINITION</div>
+              <code className="definition-preview">{view.definition}</code>
+            </div>
+          )}
         </>
       )}
     </aside>

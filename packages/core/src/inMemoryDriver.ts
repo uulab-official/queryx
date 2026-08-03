@@ -36,6 +36,22 @@ const metadata: DatabaseMetadata = {
         { name: "created_at", type: "timestamptz", nullable: false },
         { name: "updated_at", type: "timestamptz", nullable: false },
       ],
+      indexes: [
+        {
+          name: "orders_pkey",
+          columns: ["id"],
+          unique: true,
+          primary: true,
+          type: "btree",
+        },
+        {
+          name: "idx_orders_status_created_at",
+          columns: ["status", "created_at"],
+          unique: false,
+          primary: false,
+          type: "btree",
+        },
+      ],
     },
     {
       schema: "public",
@@ -47,6 +63,7 @@ const metadata: DatabaseMetadata = {
         { name: "name", type: "varchar(120)", nullable: false },
         { name: "plan", type: "varchar(32)", nullable: false },
       ],
+      indexes: [],
     },
     {
       schema: "public",
@@ -58,6 +75,20 @@ const metadata: DatabaseMetadata = {
         { name: "name", type: "varchar(180)", nullable: false },
         { name: "price", type: "numeric(10,2)", nullable: false },
       ],
+      indexes: [],
+    },
+  ],
+  views: [
+    {
+      schema: "public",
+      name: "paid_orders",
+      columns: [
+        { name: "id", type: "uuid", nullable: true },
+        { name: "customer_id", type: "uuid", nullable: true },
+        { name: "total_amount", type: "numeric(12,2)", nullable: true },
+      ],
+      definition:
+        "SELECT id, customer_id, total_amount FROM orders WHERE status = 'paid'",
     },
   ],
 };

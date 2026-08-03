@@ -22,22 +22,42 @@ export interface QueryResult {
   error?: { code: string; message: string };
 }
 
+export interface ColumnMetadata {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primaryKey?: boolean;
+}
+
+export interface IndexMetadata {
+  name: string;
+  columns: string[];
+  unique: boolean;
+  primary: boolean;
+  type: string;
+  definition?: string;
+}
+
 export interface TableMetadata {
   schema: string;
   name: string;
   rowCount: number;
-  columns: Array<{
-    name: string;
-    type: string;
-    nullable: boolean;
-    primaryKey?: boolean;
-  }>;
+  columns: ColumnMetadata[];
+  indexes: IndexMetadata[];
+}
+
+export interface ViewMetadata {
+  schema: string;
+  name: string;
+  columns: ColumnMetadata[];
+  definition?: string;
 }
 
 export interface DatabaseMetadata {
   databases: string[];
   schemas: string[];
   tables: TableMetadata[];
+  views: ViewMetadata[];
 }
 
 export interface DriverConfig {

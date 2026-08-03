@@ -46,6 +46,12 @@ describe("InMemoryDriver", () => {
     expect(result.rows).toHaveLength(10);
     expect(result.warnings).toEqual([]);
     expect(database.tables.map((table) => table.name)).toContain("orders");
+    expect(
+      database.tables
+        .find((table) => table.name === "orders")
+        ?.indexes.map((index) => index.name),
+    ).toContain("idx_orders_status_created_at");
+    expect(database.views.map((view) => view.name)).toContain("paid_orders");
     expect(driver.capabilities().has("transactions")).toBe(true);
   });
 

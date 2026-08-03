@@ -13,8 +13,8 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, QueryColumn, QueryResult,
-        TableMetadata,
+        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, IndexMetadata, QueryColumn,
+        QueryResult, TableMetadata, ViewMetadata,
     },
 };
 
@@ -72,41 +72,90 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
-        let table_rows = sqlx::query(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+        let relation_rows = sqlx::query(
+            "SELECT type AS relation_type, name, sql AS definition FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let column_rows = sqlx::query(
+            "SELECT m.name AS relation_name, p.name AS column_name, p.type AS data_type, p.\"notnull\" AS is_not_null, p.pk AS primary_key FROM sqlite_master m JOIN pragma_table_info(m.name) p WHERE m.type IN ('table', 'view') AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, p.cid",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let index_rows = sqlx::query(
+            "SELECT m.name AS table_name, il.name AS index_name, il.\"unique\" AS is_unique, il.origin AS origin, COALESCE(ii.name, '<expression>') AS column_name, sm.sql AS definition FROM sqlite_master m JOIN pragma_index_list(m.name) il LEFT JOIN pragma_index_info(il.name) ii LEFT JOIN sqlite_master sm ON sm.type = 'index' AND sm.name = il.name WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, il.name, ii.seqno",
         )
         .fetch_all(&self.pool)
         .await?;
 
-        let mut tables = Vec::with_capacity(table_rows.len());
-        for table_row in table_rows {
-            let name: String = table_row.try_get("name")?;
-            let escaped_name = name.replace('"', "\"\"");
-            let pragma = format!("PRAGMA table_info(\"{escaped_name}\")");
-            let column_rows = sqlx::query(&pragma).fetch_all(&self.pool).await?;
-            let columns = column_rows
-                .into_iter()
-                .map(|row| {
-                    Ok(ColumnMetadata {
-                        name: row.try_get("name")?,
-                        r#type: row.try_get("type")?,
-                        nullable: row.try_get::<i64, _>("notnull")? == 0,
-                        primary_key: row.try_get::<i64, _>("pk")? > 0,
-                    })
-                })
-                .collect::<Result<Vec<_>, sqlx::Error>>()?;
-            tables.push(TableMetadata {
-                schema: "main".into(),
-                name,
-                row_count: 0,
-                columns,
-            });
+        let mut columns_by_relation: HashMap<String, Vec<ColumnMetadata>> = HashMap::new();
+        for row in column_rows {
+            columns_by_relation
+                .entry(row.try_get("relation_name")?)
+                .or_default()
+                .push(ColumnMetadata {
+                    name: row.try_get("column_name")?,
+                    r#type: row.try_get("data_type")?,
+                    nullable: row.try_get::<i64, _>("is_not_null")? == 0,
+                    primary_key: row.try_get::<i64, _>("primary_key")? > 0,
+                });
+        }
+
+        let mut indexes_by_key: HashMap<(String, String), IndexMetadata> = HashMap::new();
+        for row in index_rows {
+            let table_name: String = row.try_get("table_name")?;
+            let index_name: String = row.try_get("index_name")?;
+            let column_name: String = row.try_get("column_name")?;
+            indexes_by_key
+                .entry((table_name, index_name.clone()))
+                .and_modify(|index| index.columns.push(column_name.clone()))
+                .or_insert(IndexMetadata {
+                    name: index_name,
+                    columns: vec![column_name],
+                    unique: row.try_get::<i64, _>("is_unique")? != 0,
+                    primary: row.try_get::<String, _>("origin")? == "pk",
+                    r#type: "btree".into(),
+                    definition: row.try_get("definition")?,
+                });
+        }
+
+        let mut indexes_by_table: HashMap<String, Vec<IndexMetadata>> = HashMap::new();
+        for ((table_name, _), index) in indexes_by_key {
+            indexes_by_table.entry(table_name).or_default().push(index);
+        }
+        for indexes in indexes_by_table.values_mut() {
+            indexes.sort_by(|left, right| left.name.cmp(&right.name));
+        }
+
+        let mut tables = Vec::new();
+        let mut views = Vec::new();
+        for row in relation_rows {
+            let relation_type: String = row.try_get("relation_type")?;
+            let name: String = row.try_get("name")?;
+            let columns = columns_by_relation.remove(&name).unwrap_or_default();
+            if relation_type == "view" {
+                views.push(ViewMetadata {
+                    schema: "main".into(),
+                    name,
+                    columns,
+                    definition: row.try_get("definition")?,
+                });
+            } else {
+                tables.push(TableMetadata {
+                    schema: "main".into(),
+                    indexes: indexes_by_table.remove(&name).unwrap_or_default(),
+                    name,
+                    row_count: 0,
+                    columns,
+                });
+            }
         }
 
         Ok(DatabaseMetadata {
             databases: vec![self.path.clone()],
             schemas: vec!["main".into()],
             tables,
+            views,
         })
     }
 
@@ -239,6 +288,16 @@ async fn seed_demo_database(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     )
     .execute(pool)
     .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_orders_status_created_at ON orders (status, created_at)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE VIEW IF NOT EXISTS paid_orders AS SELECT id, total_amount, created_at FROM orders WHERE status = 'paid'",
+    )
+    .execute(pool)
+    .await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders")
         .fetch_one(pool)
         .await?;
@@ -273,5 +332,36 @@ mod tests {
             .expect("execute transaction");
 
         assert_eq!(result.affected_rows, 1);
+    }
+
+    #[tokio::test]
+    async fn loads_views_and_composite_indexes_in_one_metadata_snapshot() {
+        let driver = SqliteDriver::connect(":memory:")
+            .await
+            .expect("connect sqlite memory database");
+        let metadata = driver.metadata().await.expect("load sqlite metadata");
+        let orders = metadata
+            .tables
+            .iter()
+            .find(|table| table.name == "orders")
+            .expect("orders table metadata");
+        let index = orders
+            .indexes
+            .iter()
+            .find(|index| index.name == "idx_orders_status_created_at")
+            .expect("orders composite index metadata");
+        let view = metadata
+            .views
+            .iter()
+            .find(|view| view.name == "paid_orders")
+            .expect("paid orders view metadata");
+
+        assert_eq!(index.columns, ["status", "created_at"]);
+        assert!(!index.unique);
+        assert_eq!(view.columns.len(), 3);
+        assert!(view
+            .definition
+            .as_deref()
+            .is_some_and(|sql| sql.contains("CREATE VIEW")));
     }
 }

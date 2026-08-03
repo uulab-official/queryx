@@ -9,7 +9,7 @@ The SQLite implementation is exposed through generic commands:
 - `connect_database` — selects the SQLite factory, opens `:memory:` or a file, and returns an opaque connection ID
 - `execute_query` — executes a read or write statement and returns the common result model
 - `execute_query_transaction` — executes one statement inside a native transaction
-- `database_metadata` — returns schemas, tables, and columns for Explorer/Inspector
+- `database_metadata` — returns schemas, tables, views, columns, and indexes for Explorer/Inspector
 - `disconnect_database` — closes and removes the connection from managed state
 
 ## Demo runtime
@@ -32,5 +32,5 @@ The result also includes columns, execution time, affected rows, warnings, and a
 - SQLite deliberately does not advertise query cancellation yet; the UI keeps running state visible without offering a control that cannot safely interrupt SQLx execution.
 - A transaction invocation currently wraps one statement; multi-step transaction sessions need a dedicated transaction ID.
 - Empty SELECT results do not yet include described column metadata.
-- SQLite metadata currently covers tables and columns, not indexes, views, triggers, or DDL.
+- SQLite metadata covers tables, views, columns, primary-key markers, and indexes. Triggers and editable DDL are not exposed yet.
 - Safe Mode row estimates are still preview values; native parser/plan-backed estimation is required before production use.

@@ -22,6 +22,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Open-source project handbook: getting started, results/export, troubleshooting, contribution, conduct, and security documentation plus issue and pull request templates.
 - Least-privilege GitHub Actions with web quality gates and Linux, macOS, and Windows native build/test coverage.
 - Competitive, acceptance-gated roadmap toward a production database IDE.
+- Driver-neutral Views Explorer and table Indexes Inspector backed by batched SQLite/PostgreSQL catalog metadata.
 
 ## [0.1.0] — 2026-08-03
 

@@ -24,6 +24,7 @@ Available and tested:
 - [x] Native SQLite and PostgreSQL connection/query/transaction paths
 - [x] PostgreSQL TLS modes and server-side query cancellation
 - [x] Schema/table/column metadata Explorer
+- [x] View Explorer and table index inspection across SQLite/PostgreSQL
 - [x] Monaco SQL editor, metadata completion, multi-tab models, selected SQL execution
 - [x] Dynamic result table, JSON view, local filter and sort
 - [x] Native CSV save with UTF-8 BOM, escaping, visible-row semantics, and formula-injection protection
@@ -52,7 +53,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [ ] Virtualized result grid with incremental fetch, server paging, resize/reorder/freeze
 - [ ] Cell/row/range copy, NULL display controls, and binary/JSON viewers
 - [ ] JSON and SQL INSERT export; progress, cancel, encoding, delimiter, and line-ending controls
-- [ ] Complete metadata for views, indexes, primary/foreign keys, routines, and DDL
+- [x] Metadata for views, indexes, and primary keys
+- [ ] Foreign keys, routines, dependencies, and editable DDL
 - [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
 
 Release gates:

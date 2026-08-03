@@ -302,6 +302,9 @@ button:disabled {
 .tree-icon.table {
   color: #83aee9;
 }
+.tree-icon.view {
+  color: #77c7b5;
+}
 .count {
   margin-left: auto;
   border-radius: 8px;
@@ -974,6 +977,37 @@ button:disabled {
   color: #caa75c;
   font: 8px var(--mono);
 }
+.index-row > span:nth-child(2) {
+  min-width: 0;
+}
+.index-row strong,
+.index-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.index-badges {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.index-badges .pk {
+  margin-left: 0;
+}
+.unique-badge {
+  border: 1px solid #28514d;
+  border-radius: 3px;
+  padding: 2px 4px;
+  background: #1c302e;
+  color: #79c5ba;
+  font: 8px var(--mono);
+}
+.inspector-empty {
+  padding: 14px;
+  color: var(--dim);
+  font: 9px var(--mono);
+  text-align: center;
+}
 .inspector-section {
   padding: 13px 14px;
   border-bottom: 1px solid var(--line);
@@ -1002,6 +1036,15 @@ button:disabled {
 .inspector-section dd {
   margin: 0;
   color: #b7c0c8;
+}
+.definition-preview {
+  max-height: 132px;
+  display: block;
+  overflow: auto;
+  color: #8e9aa5;
+  font: 9px / 1.55 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .toast {
   position: fixed;

@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, columns, estimated row counts, and primary keys.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, and indexes.
 
 ## Connection behavior
 
@@ -46,7 +46,7 @@ Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, us
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Indexes, views, functions, triggers, and DDL are not yet part of the shared metadata model.
+- Foreign keys, functions, triggers, dependencies, and editable DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

@@ -92,6 +92,7 @@ pub struct DatabaseMetadata {
     pub databases: Vec<String>,
     pub schemas: Vec<String>,
     pub tables: Vec<TableMetadata>,
+    pub views: Vec<ViewMetadata>,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,6 +102,7 @@ pub struct TableMetadata {
     pub name: String,
     pub row_count: u64,
     pub columns: Vec<ColumnMetadata>,
+    pub indexes: Vec<IndexMetadata>,
 }
 
 #[derive(Debug, Serialize)]
@@ -110,4 +112,24 @@ pub struct ColumnMetadata {
     pub r#type: String,
     pub nullable: bool,
     pub primary_key: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IndexMetadata {
+    pub name: String,
+    pub columns: Vec<String>,
+    pub unique: bool,
+    pub primary: bool,
+    pub r#type: String,
+    pub definition: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewMetadata {
+    pub schema: String,
+    pub name: String,
+    pub columns: Vec<ColumnMetadata>,
+    pub definition: Option<String>,
 }

@@ -49,6 +49,7 @@ for (const required of [
   "docs/getting-started.md",
   "docs/connections.md",
   "docs/sql-editor.md",
+  "docs/metadata-explorer.md",
   "docs/results.md",
   "docs/troubleshooting.md",
   "docs/postgres-driver.md",

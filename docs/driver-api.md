@@ -19,7 +19,7 @@ interface DatabaseDriver {
 - `connect()` must be safe to call once during initialization and must fail with an actionable error.
 - `execute()` always returns the shared `QueryResult` shape for successful queries.
 - Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
-- `metadata()` returns vendor-neutral databases, schemas, and table/column information.
+- `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, and indexes.
 - `transaction()` must not silently commit a failed workflow.
 - `disconnect()` releases the connection and any driver-owned resources.
 - `capabilities()` describes optional behavior instead of making the UI infer support from vendor names.
@@ -76,6 +76,12 @@ Every native driver must pass the registry contract suite before it can be expos
 Cancellation is capability-driven. PostgreSQL reports `cancel`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
 
 Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md).
+
+## Metadata contract
+
+`DatabaseMetadata` is currently an eager connection snapshot. `views` and every table's `indexes` array are always present, including when empty. Drivers batch catalog queries and group results locally; the UI does not infer metadata behavior from the driver name.
+
+Indexes preserve ordered column or expression labels, uniqueness, primary status, access method, and an optional database-rendered definition. Views preserve ordered columns and an optional definition. See [ADR-0004](decisions/ADR-0004-additive-relation-metadata.md) for the measured boundary that triggers migration to lazy catalog commands.
 
 ## Safety
 

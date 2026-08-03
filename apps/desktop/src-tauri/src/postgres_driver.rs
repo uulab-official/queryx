@@ -17,7 +17,7 @@ use crate::{
     error::AppError,
     models::{
         ColumnMetadata, ConnectionConfig, DatabaseMetadata, DriverCapability, DriverKind,
-        QueryColumn, QueryResult, SslMode, TableMetadata,
+        IndexMetadata, QueryColumn, QueryResult, SslMode, TableMetadata, ViewMetadata,
     },
 };
 
@@ -515,6 +515,16 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     )
     .fetch_all(pool)
     .await?;
+    let view_rows = sqlx::query(
+        "SELECT table_schema, table_name, view_definition FROM information_schema.views WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_schema NOT LIKE 'pg_toast%' ORDER BY table_schema, table_name",
+    )
+    .fetch_all(pool)
+    .await?;
+    let index_rows = sqlx::query(
+        "SELECT ns.nspname AS table_schema, tbl.relname AS table_name, idx.relname AS index_name, i.indisunique AS is_unique, i.indisprimary AS is_primary, am.amname AS index_type, pg_get_indexdef(i.indexrelid) AS definition, COALESCE(att.attname, pg_get_indexdef(i.indexrelid, ord.ordinality::integer, true), '<expression>') AS column_name FROM pg_catalog.pg_index i JOIN pg_catalog.pg_class tbl ON tbl.oid = i.indrelid JOIN pg_catalog.pg_class idx ON idx.oid = i.indexrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = tbl.relnamespace JOIN pg_catalog.pg_am am ON am.oid = idx.relam JOIN LATERAL unnest(i.indkey) WITH ORDINALITY AS ord(attnum, ordinality) ON true LEFT JOIN pg_catalog.pg_attribute att ON att.attrelid = tbl.oid AND att.attnum = ord.attnum WHERE tbl.relkind IN ('r', 'p') AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' ORDER BY ns.nspname, tbl.relname, idx.relname, ord.ordinality",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut columns_by_table: HashMap<(String, String), Vec<ColumnMetadata>> = HashMap::new();
     for row in column_rows {
@@ -531,6 +541,36 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
             });
     }
 
+    let mut indexes_by_key: HashMap<(String, String, String), IndexMetadata> = HashMap::new();
+    for row in index_rows {
+        let schema: String = row.try_get("table_schema")?;
+        let table: String = row.try_get("table_name")?;
+        let index_name: String = row.try_get("index_name")?;
+        let column_name: String = row.try_get("column_name")?;
+        indexes_by_key
+            .entry((schema, table, index_name.clone()))
+            .and_modify(|index| index.columns.push(column_name.clone()))
+            .or_insert(IndexMetadata {
+                name: index_name,
+                columns: vec![column_name],
+                unique: row.try_get("is_unique")?,
+                primary: row.try_get("is_primary")?,
+                r#type: row.try_get("index_type")?,
+                definition: Some(row.try_get("definition")?),
+            });
+    }
+
+    let mut indexes_by_table: HashMap<(String, String), Vec<IndexMetadata>> = HashMap::new();
+    for ((schema, table, _), index) in indexes_by_key {
+        indexes_by_table
+            .entry((schema, table))
+            .or_default()
+            .push(index);
+    }
+    for indexes in indexes_by_table.values_mut() {
+        indexes.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+
     let tables = table_rows
         .into_iter()
         .map(|row| {
@@ -540,6 +580,9 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
                 .remove(&(schema.clone(), name.clone()))
                 .unwrap_or_default();
             Ok(TableMetadata {
+                indexes: indexes_by_table
+                    .remove(&(schema.clone(), name.clone()))
+                    .unwrap_or_default(),
                 schema,
                 name,
                 row_count: row.try_get::<i64, _>("row_count")?.max(0) as u64,
@@ -548,10 +591,27 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
+    let views = view_rows
+        .into_iter()
+        .map(|row| {
+            let schema: String = row.try_get("table_schema")?;
+            let name: String = row.try_get("table_name")?;
+            Ok(ViewMetadata {
+                columns: columns_by_table
+                    .remove(&(schema.clone(), name.clone()))
+                    .unwrap_or_default(),
+                schema,
+                name,
+                definition: row.try_get("view_definition")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
     Ok(DatabaseMetadata {
         databases,
         schemas,
         tables,
+        views,
     })
 }
 
