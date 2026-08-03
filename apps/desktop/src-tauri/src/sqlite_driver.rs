@@ -13,8 +13,9 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, IndexMetadata, QueryColumn,
-        QueryResult, TableMetadata, ViewMetadata,
+        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair,
+        ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult, RelationRef, TableMetadata,
+        ViewMetadata,
     },
 };
 
@@ -87,6 +88,11 @@ impl DatabaseDriver for SqliteDriver {
         )
         .fetch_all(&self.pool)
         .await?;
+        let foreign_key_rows = sqlx::query(
+            "SELECT m.name AS source_table, fk.id AS foreign_key_id, fk.seq AS ordinal, fk.\"table\" AS referenced_table, fk.\"from\" AS source_column, fk.\"to\" AS referenced_column, fk.on_update, fk.on_delete, fk.\"match\" AS match_type FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) fk WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, fk.id, fk.seq",
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut columns_by_relation: HashMap<String, Vec<ColumnMetadata>> = HashMap::new();
         for row in column_rows {
@@ -127,6 +133,51 @@ impl DatabaseDriver for SqliteDriver {
             indexes.sort_by(|left, right| left.name.cmp(&right.name));
         }
 
+        let mut foreign_keys_by_key: HashMap<(String, i64), ForeignKeyMetadata> = HashMap::new();
+        for row in foreign_key_rows {
+            let source_table: String = row.try_get("source_table")?;
+            let foreign_key_id: i64 = row.try_get("foreign_key_id")?;
+            let pair = ForeignKeyColumnPair {
+                ordinal: row.try_get::<i64, _>("ordinal")? as u32 + 1,
+                source_column: row.try_get("source_column")?,
+                referenced_column: row.try_get("referenced_column")?,
+            };
+            foreign_keys_by_key
+                .entry((source_table.clone(), foreign_key_id))
+                .and_modify(|foreign_key| foreign_key.columns.push(pair.clone()))
+                .or_insert(ForeignKeyMetadata {
+                    id: format!(
+                        "sqlite:main:{}:{source_table}:{foreign_key_id}",
+                        source_table.len()
+                    ),
+                    name: None,
+                    columns: vec![pair],
+                    referenced_relation: RelationRef {
+                        schema: "main".into(),
+                        name: row.try_get("referenced_table")?,
+                    },
+                    on_update: row.try_get("on_update")?,
+                    on_delete: row.try_get("on_delete")?,
+                    r#match: row.try_get("match_type")?,
+                    deferrable: None,
+                    initially_deferred: None,
+                });
+        }
+
+        let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKeyMetadata>> = HashMap::new();
+        for ((table_name, _), mut foreign_key) in foreign_keys_by_key {
+            foreign_key
+                .columns
+                .sort_by_key(|column_pair| column_pair.ordinal);
+            foreign_keys_by_table
+                .entry(table_name)
+                .or_default()
+                .push(foreign_key);
+        }
+        for foreign_keys in foreign_keys_by_table.values_mut() {
+            foreign_keys.sort_by(|left, right| left.id.cmp(&right.id));
+        }
+
         let mut tables = Vec::new();
         let mut views = Vec::new();
         for row in relation_rows {
@@ -144,6 +195,7 @@ impl DatabaseDriver for SqliteDriver {
                 tables.push(TableMetadata {
                     schema: "main".into(),
                     indexes: indexes_by_table.remove(&name).unwrap_or_default(),
+                    foreign_keys: foreign_keys_by_table.remove(&name).unwrap_or_default(),
                     name,
                     row_count: 0,
                     columns,
@@ -284,7 +336,12 @@ fn is_row_returning_query(sql: &str) -> bool {
 
 async fn seed_demo_database(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL, total_amount REAL NOT NULL, created_at TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, customer_id INTEGER, status TEXT NOT NULL, total_amount REAL NOT NULL, created_at TEXT NOT NULL, FOREIGN KEY (customer_id) REFERENCES customers (id) ON UPDATE CASCADE ON DELETE RESTRICT)",
     )
     .execute(pool)
     .await?;
@@ -302,8 +359,11 @@ async fn seed_demo_database(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .fetch_one(pool)
         .await?;
     if count == 0 {
+        sqlx::query("INSERT INTO customers (id, name) VALUES (1, 'Ada')")
+            .execute(pool)
+            .await?;
         for offset in 1..=10 {
-            sqlx::query("INSERT INTO orders (status, total_amount, created_at) VALUES ('paid', ?1, datetime('now', ?2))")
+            sqlx::query("INSERT INTO orders (customer_id, status, total_amount, created_at) VALUES (1, 'paid', ?1, datetime('now', ?2))")
                 .bind(125.50 + f64::from(offset) * 19.75)
                 .bind(format!("-{offset} days"))
                 .execute(pool)
@@ -363,5 +423,51 @@ mod tests {
             .definition
             .as_deref()
             .is_some_and(|sql| sql.contains("CREATE VIEW")));
+    }
+
+    #[tokio::test]
+    async fn preserves_composite_foreign_key_column_pairing() {
+        let driver = SqliteDriver::connect(":memory:")
+            .await
+            .expect("connect sqlite memory database");
+        sqlx::query(
+            "CREATE TABLE account_versions (tenant_id INTEGER NOT NULL, account_id INTEGER NOT NULL, PRIMARY KEY (tenant_id, account_id))",
+        )
+        .execute(&driver.pool)
+        .await
+        .expect("create composite parent");
+        sqlx::query(
+            "CREATE TABLE invoices (tenant_id INTEGER NOT NULL, account_id INTEGER NOT NULL, FOREIGN KEY (tenant_id, account_id) REFERENCES account_versions (tenant_id, account_id) ON UPDATE CASCADE ON DELETE RESTRICT)",
+        )
+        .execute(&driver.pool)
+        .await
+        .expect("create composite child");
+
+        let metadata = driver.metadata().await.expect("load sqlite metadata");
+        let invoices = metadata
+            .tables
+            .iter()
+            .find(|table| table.name == "invoices")
+            .expect("invoices metadata");
+        let foreign_key = invoices
+            .foreign_keys
+            .first()
+            .expect("composite foreign key");
+
+        assert_eq!(foreign_key.name, None);
+        assert_eq!(foreign_key.referenced_relation.name, "account_versions");
+        assert_eq!(foreign_key.columns.len(), 2);
+        assert_eq!(foreign_key.columns[0].source_column, "tenant_id");
+        assert_eq!(
+            foreign_key.columns[0].referenced_column.as_deref(),
+            Some("tenant_id")
+        );
+        assert_eq!(foreign_key.columns[1].source_column, "account_id");
+        assert_eq!(
+            foreign_key.columns[1].referenced_column.as_deref(),
+            Some("account_id")
+        );
+        assert_eq!(foreign_key.on_update, "CASCADE");
+        assert_eq!(foreign_key.on_delete, "RESTRICT");
     }
 }

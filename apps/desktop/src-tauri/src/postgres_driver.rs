@@ -17,7 +17,8 @@ use crate::{
     error::AppError,
     models::{
         ColumnMetadata, ConnectionConfig, DatabaseMetadata, DriverCapability, DriverKind,
-        IndexMetadata, QueryColumn, QueryResult, SslMode, TableMetadata, ViewMetadata,
+        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
+        RelationRef, SslMode, TableMetadata, ViewMetadata,
     },
 };
 
@@ -525,6 +526,11 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     )
     .fetch_all(pool)
     .await?;
+    let foreign_key_rows = sqlx::query(
+        "SELECT con.oid::text AS constraint_id, source_ns.nspname AS source_schema, source_table.relname AS source_table, con.conname AS constraint_name, target_ns.nspname AS referenced_schema, target_table.relname AS referenced_table, source_column.attname AS source_column, target_column.attname AS referenced_column, ordinal.ordinality AS ordinal, CASE con.confupdtype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' ELSE con.confupdtype::text END AS on_update, CASE con.confdeltype WHEN 'a' THEN 'NO ACTION' WHEN 'r' THEN 'RESTRICT' WHEN 'c' THEN 'CASCADE' WHEN 'n' THEN 'SET NULL' WHEN 'd' THEN 'SET DEFAULT' ELSE con.confdeltype::text END AS on_delete, CASE con.confmatchtype WHEN 's' THEN 'SIMPLE' WHEN 'f' THEN 'FULL' WHEN 'p' THEN 'PARTIAL' ELSE con.confmatchtype::text END AS match_type, con.condeferrable AS deferrable, con.condeferred AS initially_deferred FROM pg_catalog.pg_constraint con JOIN pg_catalog.pg_class source_table ON source_table.oid = con.conrelid JOIN pg_catalog.pg_namespace source_ns ON source_ns.oid = source_table.relnamespace JOIN pg_catalog.pg_class target_table ON target_table.oid = con.confrelid JOIN pg_catalog.pg_namespace target_ns ON target_ns.oid = target_table.relnamespace JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS ordinal(source_attnum, target_attnum, ordinality) ON true JOIN pg_catalog.pg_attribute source_column ON source_column.attrelid = source_table.oid AND source_column.attnum = ordinal.source_attnum JOIN pg_catalog.pg_attribute target_column ON target_column.attrelid = target_table.oid AND target_column.attnum = ordinal.target_attnum WHERE con.contype = 'f' AND source_ns.nspname NOT IN ('pg_catalog', 'information_schema') AND source_ns.nspname NOT LIKE 'pg_toast%' ORDER BY source_ns.nspname, source_table.relname, con.conname, ordinal.ordinality",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut columns_by_table: HashMap<(String, String), Vec<ColumnMetadata>> = HashMap::new();
     for row in column_rows {
@@ -571,6 +577,51 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         indexes.sort_by(|left, right| left.name.cmp(&right.name));
     }
 
+    let mut foreign_keys_by_key: HashMap<(String, String, String), ForeignKeyMetadata> =
+        HashMap::new();
+    for row in foreign_key_rows {
+        let schema: String = row.try_get("source_schema")?;
+        let table: String = row.try_get("source_table")?;
+        let constraint_id: String = row.try_get("constraint_id")?;
+        let pair = ForeignKeyColumnPair {
+            ordinal: row.try_get::<i64, _>("ordinal")? as u32,
+            source_column: row.try_get("source_column")?,
+            referenced_column: Some(row.try_get("referenced_column")?),
+        };
+        foreign_keys_by_key
+            .entry((schema, table, constraint_id.clone()))
+            .and_modify(|foreign_key| foreign_key.columns.push(pair.clone()))
+            .or_insert(ForeignKeyMetadata {
+                id: format!("postgres:{constraint_id}"),
+                name: Some(row.try_get("constraint_name")?),
+                columns: vec![pair],
+                referenced_relation: RelationRef {
+                    schema: row.try_get("referenced_schema")?,
+                    name: row.try_get("referenced_table")?,
+                },
+                on_update: row.try_get("on_update")?,
+                on_delete: row.try_get("on_delete")?,
+                r#match: Some(row.try_get("match_type")?),
+                deferrable: Some(row.try_get("deferrable")?),
+                initially_deferred: Some(row.try_get("initially_deferred")?),
+            });
+    }
+
+    let mut foreign_keys_by_table: HashMap<(String, String), Vec<ForeignKeyMetadata>> =
+        HashMap::new();
+    for ((schema, table, _), mut foreign_key) in foreign_keys_by_key {
+        foreign_key
+            .columns
+            .sort_by_key(|column_pair| column_pair.ordinal);
+        foreign_keys_by_table
+            .entry((schema, table))
+            .or_default()
+            .push(foreign_key);
+    }
+    for foreign_keys in foreign_keys_by_table.values_mut() {
+        foreign_keys.sort_by(|left, right| left.id.cmp(&right.id));
+    }
+
     let tables = table_rows
         .into_iter()
         .map(|row| {
@@ -581,6 +632,9 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
                 .unwrap_or_default();
             Ok(TableMetadata {
                 indexes: indexes_by_table
+                    .remove(&(schema.clone(), name.clone()))
+                    .unwrap_or_default(),
+                foreign_keys: foreign_keys_by_table
                     .remove(&(schema.clone(), name.clone()))
                     .unwrap_or_default(),
                 schema,
@@ -685,6 +739,78 @@ mod tests {
         assert_eq!(result.rows[0]["id"], Value::from(1));
         assert_eq!(result.rows[0]["product"], Value::from("QueryX"));
         assert!(metadata.databases.contains(&config.database));
+        driver.disconnect().await.expect("disconnect postgres");
+    }
+
+    #[tokio::test]
+    async fn loads_composite_foreign_keys_when_test_database_is_available() {
+        let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
+            return;
+        };
+        let mut config = postgres_config();
+        config.database = database;
+        config.host = std::env::var("QUERYX_TEST_POSTGRES_HOST").ok();
+        config.port = std::env::var("QUERYX_TEST_POSTGRES_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok());
+        config.username = std::env::var("QUERYX_TEST_POSTGRES_USERNAME").ok();
+        config.password = std::env::var("QUERYX_TEST_POSTGRES_PASSWORD").ok();
+
+        let driver = PostgresDriver::connect(&config)
+            .await
+            .expect("connect postgres metadata database");
+        let schema = format!("queryx_contract_{}", Uuid::new_v4().simple());
+        sqlx::query(&format!(r#"CREATE SCHEMA "{schema}""#))
+            .execute(&driver.pool)
+            .await
+            .expect("create contract schema");
+        sqlx::query(&format!(
+            r#"CREATE TABLE "{schema}".accounts (tenant_id bigint NOT NULL, account_id bigint NOT NULL, PRIMARY KEY (tenant_id, account_id))"#
+        ))
+        .execute(&driver.pool)
+        .await
+        .expect("create contract parent");
+        sqlx::query(&format!(
+            r#"CREATE TABLE "{schema}".invoices (tenant_id bigint NOT NULL, account_id bigint NOT NULL, CONSTRAINT invoices_account_fkey FOREIGN KEY (tenant_id, account_id) REFERENCES "{schema}".accounts (tenant_id, account_id) ON UPDATE CASCADE ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED)"#
+        ))
+        .execute(&driver.pool)
+        .await
+        .expect("create contract child");
+
+        let metadata = driver.metadata().await.expect("load postgres metadata");
+        let invoices = metadata
+            .tables
+            .iter()
+            .find(|table| table.schema == schema && table.name == "invoices")
+            .expect("invoices metadata");
+        let foreign_key = invoices
+            .foreign_keys
+            .iter()
+            .find(|foreign_key| foreign_key.name.as_deref() == Some("invoices_account_fkey"))
+            .expect("composite postgres foreign key");
+
+        assert_eq!(foreign_key.referenced_relation.schema, schema);
+        assert_eq!(foreign_key.referenced_relation.name, "accounts");
+        assert_eq!(foreign_key.columns.len(), 2);
+        assert_eq!(foreign_key.columns[0].source_column, "tenant_id");
+        assert_eq!(
+            foreign_key.columns[0].referenced_column.as_deref(),
+            Some("tenant_id")
+        );
+        assert_eq!(foreign_key.columns[1].source_column, "account_id");
+        assert_eq!(
+            foreign_key.columns[1].referenced_column.as_deref(),
+            Some("account_id")
+        );
+        assert_eq!(foreign_key.on_update, "CASCADE");
+        assert_eq!(foreign_key.on_delete, "RESTRICT");
+        assert_eq!(foreign_key.deferrable, Some(true));
+        assert_eq!(foreign_key.initially_deferred, Some(true));
+
+        sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
+            .execute(&driver.pool)
+            .await
+            .expect("drop contract schema");
         driver.disconnect().await.expect("disconnect postgres");
     }
 

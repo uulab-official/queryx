@@ -7,11 +7,16 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { inspectQuerySafety, serializeRowsToCsv } from "@queryx/core";
-import type { QuerySafetyReport } from "@queryx/core";
+import {
+  buildForeignKeyIndex,
+  inspectQuerySafety,
+  serializeRowsToCsv,
+} from "@queryx/core";
+import type { ForeignKeyRelations, QuerySafetyReport } from "@queryx/core";
 import type {
   DriverConfig,
   DriverKind,
+  RelationRef,
   TableMetadata,
   ViewMetadata,
 } from "@queryx/shared";
@@ -178,6 +183,10 @@ function App() {
             view.name === selectedRelation.name,
         )
       : undefined;
+  const foreignKeyIndex = useMemo(() => buildForeignKeyIndex(tables), [tables]);
+  const currentForeignKeys = currentTable
+    ? foreignKeyIndex.get(currentTable)
+    : undefined;
   const completions = useMemo<SqlCompletion[]>(() => {
     if (!metadata) return [];
     return [
@@ -228,6 +237,19 @@ function App() {
       );
     });
   }, [filter, result, sortBy, sortDirection]);
+  const selectRelatedTable = (relation: RelationRef) => {
+    const isVisible = tables.some(
+      (table) =>
+        table.schema === relation.schema && table.name === relation.name,
+    );
+    if (!isVisible) {
+      notify(
+        `Referenced table ${relation.schema}.${relation.name} is not visible`,
+      );
+      return;
+    }
+    setSelectedRelation({ kind: "table", ...relation });
+  };
 
   const sort = (key: string) => {
     if (key === sortBy)
@@ -784,6 +806,8 @@ function App() {
           }
           table={currentTable}
           view={currentView}
+          foreignKeys={currentForeignKeys}
+          onSelectTable={selectRelatedTable}
         />
       </div>
       {toast && <div className="toast">{toast}</div>}
@@ -1122,12 +1146,20 @@ function ConnectionDialog({
 function Inspector({
   table,
   view,
+  foreignKeys,
+  onSelectTable,
 }: {
   table?: TableMetadata;
   view?: ViewMetadata;
+  foreignKeys?: ForeignKeyRelations;
+  onSelectTable: (relation: RelationRef) => void;
 }) {
   const relation = table ?? view;
-  const [activeTab, setActiveTab] = useState<"columns" | "indexes">("columns");
+  const [activeTab, setActiveTab] = useState<
+    "columns" | "indexes" | "relations"
+  >("columns");
+  const relationCount =
+    (foreignKeys?.outgoing.length ?? 0) + (foreignKeys?.incoming.length ?? 0);
 
   return (
     <aside className="inspector">
@@ -1160,13 +1192,22 @@ function Inspector({
               Columns <span>{relation.columns.length}</span>
             </button>
             {table && (
-              <button
-                type="button"
-                className={activeTab === "indexes" ? "active" : ""}
-                onClick={() => setActiveTab("indexes")}
-              >
-                Indexes <span>{table.indexes.length}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  className={activeTab === "indexes" ? "active" : ""}
+                  onClick={() => setActiveTab("indexes")}
+                >
+                  Indexes <span>{table.indexes.length}</span>
+                </button>
+                <button
+                  type="button"
+                  className={activeTab === "relations" ? "active" : ""}
+                  onClick={() => setActiveTab("relations")}
+                >
+                  Relations <span>{relationCount}</span>
+                </button>
+              </>
             )}
           </div>
           {activeTab === "columns" ? (
@@ -1188,7 +1229,7 @@ function Inspector({
                 </div>
               ))}
             </div>
-          ) : (
+          ) : activeTab === "indexes" ? (
             <div className="column-list">
               {table?.indexes.map((index) => (
                 <div className="column-row index-row" key={index.name}>
@@ -1211,6 +1252,81 @@ function Inspector({
                 <div className="inspector-empty">No indexes reported</div>
               )}
             </div>
+          ) : (
+            <div className="relation-list">
+              <div className="relation-group-title">
+                Outgoing <span>{foreignKeys?.outgoing.length ?? 0}</span>
+              </div>
+              {foreignKeys?.outgoing.map((foreignKey) => (
+                <button
+                  type="button"
+                  className="relation-row"
+                  key={foreignKey.id}
+                  onClick={() => onSelectTable(foreignKey.referencedRelation)}
+                >
+                  <span className="relation-arrow">→</span>
+                  <span>
+                    <strong>{foreignKey.name ?? "Unnamed foreign key"}</strong>
+                    <small>
+                      {foreignKey.columns
+                        .map((column) => column.sourceColumn)
+                        .join(", ")}{" "}
+                      → {foreignKey.referencedRelation.schema}.
+                      {foreignKey.referencedRelation.name} (
+                      {foreignKey.columns
+                        .map(
+                          (column) => column.referencedColumn ?? "primary key",
+                        )
+                        .join(", ")}
+                      )
+                    </small>
+                    <em>
+                      ON UPDATE {foreignKey.onUpdate} · ON DELETE{" "}
+                      {foreignKey.onDelete}
+                    </em>
+                  </span>
+                </button>
+              ))}
+              {foreignKeys?.outgoing.length === 0 && (
+                <div className="inspector-empty">No outgoing foreign keys</div>
+              )}
+              <div className="relation-group-title">
+                Incoming <span>{foreignKeys?.incoming.length ?? 0}</span>
+              </div>
+              {foreignKeys?.incoming.map(({ sourceRelation, foreignKey }) => (
+                <button
+                  type="button"
+                  className="relation-row incoming"
+                  key={`${sourceRelation.schema}.${sourceRelation.name}:${foreignKey.id}`}
+                  onClick={() => onSelectTable(sourceRelation)}
+                >
+                  <span className="relation-arrow">←</span>
+                  <span>
+                    <strong>{foreignKey.name ?? "Unnamed foreign key"}</strong>
+                    <small>
+                      {sourceRelation.schema}.{sourceRelation.name} (
+                      {foreignKey.columns
+                        .map((column) => column.sourceColumn)
+                        .join(", ")}
+                      ) →{" "}
+                      {foreignKey.columns
+                        .map(
+                          (column) => column.referencedColumn ?? "primary key",
+                        )
+                        .join(", ")}
+                    </small>
+                  </span>
+                </button>
+              ))}
+              {foreignKeys?.incoming.length === 0 && (
+                <div className="inspector-empty">No incoming foreign keys</div>
+              )}
+              {foreignKeys?.completeness === "partial" && (
+                <div className="relation-notice">
+                  Incoming relationships may be incomplete for unloaded tables.
+                </div>
+              )}
+            </div>
           )}
           <div className="inspector-section">
             <div className="section-title">
@@ -1231,6 +1347,8 @@ function Inspector({
                 <>
                   <dt>Indexes</dt>
                   <dd>{table.indexes.length}</dd>
+                  <dt>Relations</dt>
+                  <dd>{relationCount}</dd>
                   <dt>Primary key</dt>
                   <dd>
                     {table.columns.filter((column) => column.primaryKey).length}

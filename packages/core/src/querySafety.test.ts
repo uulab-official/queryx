@@ -52,6 +52,11 @@ describe("InMemoryDriver", () => {
         ?.indexes.map((index) => index.name),
     ).toContain("idx_orders_status_created_at");
     expect(database.views.map((view) => view.name)).toContain("paid_orders");
+    expect(
+      database.tables
+        .find((table) => table.name === "orders")
+        ?.foreignKeys.map((foreignKey) => foreignKey.name),
+    ).toContain("orders_customer_id_fkey");
     expect(driver.capabilities().has("transactions")).toBe(true);
   });
 

@@ -57,7 +57,7 @@ The next integration steps are:
 2. Store saved profile secrets in the OS keychain.
 3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
-5. Expand the metadata contract to indexes, views, triggers, and DDL.
+5. Expand the metadata contract from current indexes, views, and foreign keys to routines, triggers, dependencies, and editable DDL.
 
 ## Related decisions
 

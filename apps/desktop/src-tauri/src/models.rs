@@ -103,6 +103,7 @@ pub struct TableMetadata {
     pub row_count: u64,
     pub columns: Vec<ColumnMetadata>,
     pub indexes: Vec<IndexMetadata>,
+    pub foreign_keys: Vec<ForeignKeyMetadata>,
 }
 
 #[derive(Debug, Serialize)]
@@ -132,4 +133,33 @@ pub struct ViewMetadata {
     pub name: String,
     pub columns: Vec<ColumnMetadata>,
     pub definition: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationRef {
+    pub schema: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyColumnPair {
+    pub ordinal: u32,
+    pub source_column: String,
+    pub referenced_column: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ForeignKeyMetadata {
+    pub id: String,
+    pub name: Option<String>,
+    pub columns: Vec<ForeignKeyColumnPair>,
+    pub referenced_relation: RelationRef,
+    pub on_update: String,
+    pub on_delete: String,
+    pub r#match: Option<String>,
+    pub deferrable: Option<bool>,
+    pub initially_deferred: Option<bool>,
 }

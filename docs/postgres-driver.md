@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, and indexes.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, and composite foreign keys.
 
 ## Connection behavior
 
@@ -40,13 +40,13 @@ export QUERYX_TEST_POSTGRES_PASSWORD=local-test-only
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_driver
 ```
 
-Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it, and requires completion within three seconds.
+Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates an isolated schema to verify composite foreign-key catalog mapping. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
 
 ## Known limitations
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Foreign keys, functions, triggers, dependencies, and editable DDL are not yet part of the shared metadata model.
+- Functions, triggers, dependencies, and editable DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

@@ -38,12 +38,36 @@ export interface IndexMetadata {
   definition?: string;
 }
 
+export interface RelationRef {
+  schema: string;
+  name: string;
+}
+
+export interface ForeignKeyColumnPair {
+  ordinal: number;
+  sourceColumn: string;
+  referencedColumn: string | null;
+}
+
+export interface ForeignKeyMetadata {
+  id: string;
+  name: string | null;
+  columns: ForeignKeyColumnPair[];
+  referencedRelation: RelationRef;
+  onUpdate: string;
+  onDelete: string;
+  match: string | null;
+  deferrable: boolean | null;
+  initiallyDeferred: boolean | null;
+}
+
 export interface TableMetadata {
   schema: string;
   name: string;
   rowCount: number;
   columns: ColumnMetadata[];
   indexes: IndexMetadata[];
+  foreignKeys: ForeignKeyMetadata[];
 }
 
 export interface ViewMetadata {

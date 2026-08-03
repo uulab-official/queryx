@@ -103,6 +103,7 @@ const workspaceFiles = [
   "apps/desktop/src-tauri/src/sqlite_driver.rs",
   "packages/shared/src/index.ts",
   "packages/core/src/inMemoryDriver.ts",
+  "packages/core/src/foreignKeyIndex.ts",
   "packages/core/src/csvExport.ts",
 ];
 for (const file of workspaceFiles)

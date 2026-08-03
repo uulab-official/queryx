@@ -23,6 +23,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Least-privilege GitHub Actions with web quality gates and Linux, macOS, and Windows native build/test coverage.
 - Competitive, acceptance-gated roadmap toward a production database IDE.
 - Driver-neutral Views Explorer and table Indexes Inspector backed by batched SQLite/PostgreSQL catalog metadata.
+- Bidirectional foreign-key Inspector with composite column pairing, referential actions, and live PostgreSQL contract coverage.
 
 ## [0.1.0] — 2026-08-03
 

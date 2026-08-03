@@ -52,6 +52,25 @@ const metadata: DatabaseMetadata = {
           type: "btree",
         },
       ],
+      foreignKeys: [
+        {
+          id: "demo:public:orders:customers",
+          name: "orders_customer_id_fkey",
+          columns: [
+            {
+              ordinal: 1,
+              sourceColumn: "customer_id",
+              referencedColumn: "id",
+            },
+          ],
+          referencedRelation: { schema: "public", name: "customers" },
+          onUpdate: "NO ACTION",
+          onDelete: "RESTRICT",
+          match: "SIMPLE",
+          deferrable: false,
+          initiallyDeferred: false,
+        },
+      ],
     },
     {
       schema: "public",
@@ -64,6 +83,7 @@ const metadata: DatabaseMetadata = {
         { name: "plan", type: "varchar(32)", nullable: false },
       ],
       indexes: [],
+      foreignKeys: [],
     },
     {
       schema: "public",
@@ -76,6 +96,7 @@ const metadata: DatabaseMetadata = {
         { name: "price", type: "numeric(10,2)", nullable: false },
       ],
       indexes: [],
+      foreignKeys: [],
     },
   ],
   views: [
