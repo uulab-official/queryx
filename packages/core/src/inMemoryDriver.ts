@@ -5,6 +5,7 @@ import type {
   DriverConfig,
   QueryResult,
 } from '@queryx/shared';
+import { inspectQuerySafety } from './querySafety';
 
 const revenueRows = [
   { day: '2024-03-30', orders: 1284, revenue: '$186,942.00' },
@@ -80,7 +81,7 @@ export class InMemoryDriver implements DatabaseDriver {
       throw new DOMException('Query cancelled', 'AbortError');
     }
     await new Promise((resolve) => setTimeout(resolve, 120));
-    const isDangerous = /\b(update|delete)\b/i.test(sql) && !/\bwhere\b/i.test(sql);
+    const safety = inspectQuerySafety(sql);
     return {
       columns: [
         { name: 'day', type: 'date', nullable: false },
@@ -89,8 +90,8 @@ export class InMemoryDriver implements DatabaseDriver {
       ],
       rows: revenueRows,
       executionTime: 182,
-      affectedRows: isDangerous ? 1_248_521 : 0,
-      warnings: isDangerous ? ['No WHERE clause detected'] : [],
+      affectedRows: safety.isDangerous ? 1_248_521 : 0,
+      warnings: safety.isDangerous ? [safety.reason] : [],
     };
   }
 

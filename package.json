@@ -7,9 +7,12 @@
     "dev": "pnpm --filter @queryx/desktop dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "verify": "node scripts/verify-repo.mjs",
     "format": "pnpm exec biome format --write ."
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4"
+    "@biomejs/biome": "^1.9.4",
+    "vitest": "^2.1.8"
   }
 }
