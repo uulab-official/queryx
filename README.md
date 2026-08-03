@@ -1,18 +1,23 @@
 # QueryX
 
-QueryX is a dependency-free interactive prototype for the local-first database IDE described in the product brief.
+QueryX is a local-first database IDE in active construction. The repository includes the first interactive UI slice plus a real pnpm workspace with typed driver and query-result contracts.
 
 The product direction and implementation gates are tracked in [ROADMAP.md](ROADMAP.md). The documentation structure and writing plan live in [docs/DOCUMENTATION_PLAN.md](docs/DOCUMENTATION_PLAN.md).
 
+The implementation foundation is documented in [docs/architecture.md](docs/architecture.md) and [docs/driver-api.md](docs/driver-api.md).
+
 ## Run locally
 
-Open `index.html` directly, or serve the folder for a browser-friendly local origin:
+Install dependencies and start the actual React/Vite desktop frontend:
 
 ```bash
-python3 -m http.server 4173
+pnpm install
+pnpm dev
 ```
 
-Then visit `http://localhost:4173`.
+Then visit the Vite URL shown in the terminal.
+
+The original dependency-free preview can still be opened directly from `index.html`.
 
 ## Included in this slice
 
@@ -25,4 +30,4 @@ Then visit `http://localhost:4173`.
 
 ## Project direction
 
-This prototype is intentionally frontend-only. The next implementation milestone adds the Tauri 2 desktop shell, Rust driver contract, SQLite/PostgreSQL connectivity, shared result models, and local storage boundaries described in the roadmap.
+The desktop frontend currently uses an in-memory PostgreSQL-shaped driver so the workflow is real without pretending a database connection is already production-ready. The next milestone adds the Tauri 2 shell, Rust driver bridge, SQLite/PostgreSQL connectivity, and local storage boundaries described in the roadmap.

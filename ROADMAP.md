@@ -13,13 +13,24 @@ QueryX는 “The VS Code of Databases”를 목표로 하는 오픈소스 로컬
 - 스키마 트리 collapse/expand와 테이블별 컬럼 Inspector
 - local-first 상태 메시지와 기본 제품 메타데이터
 
-현재 프로토타입은 브라우저에서 동작하는 dependency-free UI slice입니다. 실제 Tauri/Rust 런타임과 DB 연결은 다음 단계의 구현 대상입니다.
+루트의 dependency-free preview는 빠른 UI 확인용으로 유지하고, 실제 개발 진입점은 `apps/desktop` React/Vite 앱입니다. Tauri/Rust 런타임과 실제 DB 연결은 다음 단계의 구현 대상입니다.
+
+### Foundation — in progress
+
+- [x] pnpm workspace와 `apps/desktop` React/TypeScript/Vite 앱
+- [x] Zustand 기반 query/editor/result UI 상태
+- [x] shared `DatabaseDriver`와 `QueryResult` 타입 계약
+- [x] deterministic `InMemoryDriver`로 연결·metadata·query 실행 workflow
+- [x] 실제 `apps/desktop` production build 검증
+- [ ] Tauri 2와 Rust command bridge
+- [ ] 실제 SQLite/PostgreSQL connection
 
 ## v0.1 — Local database workflow
 
 목표: 로컬 환경에서 안전하게 연결하고 SQL을 실행하는 첫 usable release.
 
-- [ ] Tauri 2 desktop shell과 React/TypeScript/Vite workspace 구성
+- [x] React/TypeScript/Vite workspace 구성
+- [ ] Tauri 2 desktop shell
 - [ ] Rust `DatabaseDriver` 공통 인터페이스 정의
 - [ ] SQLite driver 구현 및 연결 테스트
 - [ ] PostgreSQL driver 구현 및 연결 테스트
