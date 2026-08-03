@@ -52,6 +52,46 @@ describe("query tabs", () => {
     expect(secondTab.title).toBe("Query 2");
   });
 
+  it("returns the id of a new editable document", () => {
+    const newTabId = useQueryStore.getState().newQuery();
+    const state = useQueryStore.getState();
+
+    expect(newTabId).toBe(state.activeTabId);
+    expect(state.tabs.find((tab) => tab.id === newTabId)?.sql).toBe("");
+  });
+
+  it("keeps an existing Inspector selection when metadata refreshes", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    const metadata = await driver.metadata();
+    const routine = metadata.routines[0];
+
+    useQueryStore.setState({
+      driver,
+      selectedObject: routine
+        ? {
+            kind: "routine",
+            id: routine.id,
+            schema: routine.schema,
+            name: routine.name,
+            identityArguments: routine.identityArguments,
+            routineKind: routine.kind,
+          }
+        : null,
+    });
+    await useQueryStore.getState().loadMetadata();
+
+    const selected = useQueryStore.getState().selectedObject;
+    expect(selected?.kind).toBe("routine");
+    expect(selected && "id" in selected ? selected.id : undefined).toBe(
+      routine?.id,
+    );
+  });
+
   it("selects a neighboring document when the active tab closes", () => {
     useQueryStore.getState().newQuery();
     const activeId = useQueryStore.getState().activeTabId;

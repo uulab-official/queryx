@@ -29,4 +29,4 @@ PostgreSQL supplies identifier and literal quoting for reconstructed DDL. The UI
 - SQLite proves compatibility by returning `eventTriggers: []`.
 - The eager snapshot adds one batched catalog query and one dependency edge per event trigger.
 - Definition reconstruction does not retain comments, original formatting, or activation-alter statements.
-- Editing remains deferred until permission checks, generated-SQL preview, confirmation, transaction limits, and recovery behavior are designed.
+- Definition handoff is governed by [ADR-0011](ADR-0011-safe-ddl-editor-handoff.md); object-specific mutation controls remain deferred until permission checks, generated-SQL diff, confirmation, transaction limits, and migration-history behavior are designed.

@@ -12,7 +12,7 @@ PostgreSQL database-wide event triggers are a distinct object type under the con
 2. Select a trigger. The owning relation appears beside the trigger in Explorer.
 3. Review activation and event details in Inspector.
 4. Select the owner link to navigate to its table or view.
-5. Use **Copy DDL** when needed. Copying never inserts or executes the text.
+5. Use **Copy DDL** when needed, or **Edit in SQL** to review the definition in a separate tab. Neither action executes the text.
 
 ## Driver behavior
 
@@ -24,6 +24,8 @@ SQLite reads trigger ownership and SQL from `main.sqlite_master`. SQLite has no 
 
 Trigger definitions can contain business logic and literals. They travel only between the connected database, native driver, and local UI. QueryX treats definitions as untrusted read-only text, does not log their bodies, and never executes them automatically.
 
+Run an edited definition with **Run in Transaction** after review. On failure, the transaction rolls back and the SQL tab stays open. Refresh the metadata snapshot after changing triggers outside the current QueryX snapshot.
+
 Database-rendered DDL is not guaranteed to preserve the original comments or formatting. PostgreSQL reconstructs definitions; SQLite can normalize stored schema SQL.
 
 ## Troubleshooting
@@ -33,6 +35,7 @@ Database-rendered DDL is not guaranteed to preserve the original comments or for
 - **`unknown` timing/event:** QueryX could not safely parse the SQLite header; inspect the complete DDL.
 - **Owner link unavailable:** the relation is outside the loaded catalog or unsupported relation kind.
 - **Copy fails:** grant clipboard permission and retry; the DDL remains selectable.
+- **The trigger change is not visible:** use **Refresh metadata** after the transaction succeeds or after the object was changed elsewhere.
 
 ## Related
 

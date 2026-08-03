@@ -7,6 +7,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Getting Started](getting-started.md) — prerequisites, native startup, first connection, first query
 - [Connections](connections.md) — SQLite/PostgreSQL fields, TLS, credential behavior
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
+- [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, routines, triggers, and dependency navigation
 - [Routine Inspector](routine-inspector.md) — overload identity, functions/procedures/aggregates/window functions, read-only PostgreSQL DDL, safety, and recovery

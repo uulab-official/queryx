@@ -581,6 +581,10 @@ button:disabled {
 .run-button:hover {
   background: #efff9b;
 }
+.transaction-button {
+  border-color: #4f6d64;
+  color: #a7d4c4;
+}
 .run-button kbd,
 .cancel-button kbd,
 .toolbar-button kbd {
@@ -1218,6 +1222,10 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
 }
+.ddl-actions {
+  display: flex;
+  gap: 4px;
+}
 .copy-ddl-button {
   border: 1px solid #3c4853;
   border-radius: 3px;
@@ -1226,6 +1234,10 @@ button:disabled {
   color: #b7c0c8;
   font: 8px var(--mono);
   letter-spacing: 0;
+}
+.edit-ddl-button {
+  border-color: #4f6d64;
+  color: #a7d4c4;
 }
 .copy-ddl-button:hover {
   border-color: #667481;

@@ -65,7 +65,7 @@ interface QueryState {
   connectionStatus: "connecting" | "connected" | "error";
   connectionError: string | null;
   setSql: (sql: string) => void;
-  newQuery: () => void;
+  newQuery: () => string;
   selectQuery: (id: string) => void;
   closeQuery: (id: string) => void;
   setFilter: (filter: string) => void;
@@ -110,6 +110,32 @@ function defaultObject(
   return eventTrigger
     ? { kind: "eventTrigger", id: eventTrigger.id, name: eventTrigger.name }
     : null;
+}
+
+function objectStillExists(
+  metadata: DatabaseMetadata,
+  selected: SelectedDatabaseObject,
+): boolean {
+  if (selected.kind === "table" || selected.kind === "view") {
+    const relations =
+      selected.kind === "table" ? metadata.tables : metadata.views;
+    return relations.some(
+      (relation) =>
+        relation.schema === selected.schema && relation.name === selected.name,
+    );
+  }
+  if (selected.kind === "routine") {
+    return metadata.routines.some((routine) => routine.id === selected.id);
+  }
+  if (selected.kind === "trigger") {
+    return metadata.triggers.some((trigger) => trigger.id === selected.id);
+  }
+  if (selected.kind === "eventTrigger") {
+    return metadata.eventTriggers.some(
+      (eventTrigger) => eventTrigger.id === selected.id,
+    );
+  }
+  return false;
 }
 
 function readHistory(): QueryHistoryEntry[] {
@@ -214,6 +240,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         activeTabId: id,
         sql: tab.sql,
       }));
+      return id;
     },
     selectQuery: (id) => {
       const tab = get().tabs.find((candidate) => candidate.id === id);
@@ -316,10 +343,14 @@ export const useQueryStore = create<QueryState>((set, get) => {
       try {
         await driverReady;
         const metadata = await get().driver.metadata();
+        const selected = get().selectedObject;
         set({
           metadata,
           canCancel: get().driver.capabilities().has("cancel"),
-          selectedObject: defaultObject(metadata),
+          selectedObject:
+            selected && objectStillExists(metadata, selected)
+              ? selected
+              : defaultObject(metadata),
           connectionStatus: "connected",
           connectionError: null,
         });

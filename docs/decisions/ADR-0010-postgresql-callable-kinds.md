@@ -26,7 +26,7 @@ The Inspector labels callable kinds, shows aggregate-specific metadata when avai
 - Existing ordinary routine consumers only see new values when PostgreSQL exposes those catalog kinds; current function/procedure fields are unchanged.
 - The shared contract remains driver-neutral: unsupported drivers return the existing explicit empty routine array.
 - Aggregate invocation as a window expression is documented as query-level behavior, preventing an incorrect mutual-exclusion model.
-- Aggregate/window definitions are not currently editable. Editable DDL needs a separate preview, privilege, transaction, and rollback decision.
+- Aggregate/window definitions are not currently editable because PostgreSQL does not expose the same executable routine-definition contract. Ordinary function/procedure definitions can be handed off to a SQL tab under [ADR-0011](ADR-0011-safe-ddl-editor-handoff.md); object-specific preview and privilege controls remain future work.
 
 ## Verification
 

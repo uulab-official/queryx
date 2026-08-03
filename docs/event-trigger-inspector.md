@@ -4,7 +4,7 @@
 
 QueryX lists PostgreSQL event triggers under the connection-level **Event Triggers** group. Event triggers observe database-wide DDL events, so they are intentionally separated from schema-level relation triggers.
 
-Selecting an event trigger shows its activation status, event, optional command-tag filter, execution function, direct dependency edge, and catalog-reconstructed read-only DDL.
+Selecting an event trigger shows its activation status, event, optional command-tag filter, execution function, direct dependency edge, and catalog-reconstructed DDL for inspection.
 
 ## Quick start
 
@@ -12,7 +12,7 @@ Selecting an event trigger shows its activation status, event, optional command-
 2. Open **Event Triggers** and select an item.
 3. Review the event and command tags before changing related database objects.
 4. Select the function link or dependency row to open its overload-safe routine Inspector.
-5. Use **Copy DDL** when needed. QueryX never inserts or executes the text automatically.
+5. Use **Copy DDL** when needed, or **Edit in SQL** to open a separate review tab. QueryX never inserts or executes the text automatically.
 
 SQLite returns an empty event-trigger collection, so no synthetic objects are shown.
 
@@ -45,7 +45,7 @@ Activation state is displayed separately and is not appended as an automatic `AL
 
 ## Safety and privacy
 
-Event triggers can affect DDL across the complete database. This alpha feature is inspection-only: there are no create, alter, enable, disable, or drop controls. Metadata and function bodies remain between the database, local native process, and local UI.
+Event triggers can affect DDL across the complete database. This alpha feature has no object-specific create, alter, enable, disable, or drop controls. **Edit in SQL** is a safe handoff to the normal SQL editor; review the reconstructed statement and use **Run in Transaction** explicitly. Metadata and function bodies remain between the database, local native process, and local UI.
 
 Use a least-privilege account. Catalog visibility and the ability to create event triggers are controlled by PostgreSQL, not bypassed by QueryX.
 
@@ -55,7 +55,7 @@ Use a least-privilege account. Catalog visibility and the ability to create even
 - **The function cannot be opened:** it is outside the loaded routine catalog. The dependency remains visible but navigation reports the missing object.
 - **Status is disabled:** the object exists but PostgreSQL will not fire it until explicitly enabled outside this read-only Inspector.
 - **Copied DDL differs from source:** QueryX reconstructs canonical SQL from catalog values; comments and original whitespace are not retained.
-- **Changes made elsewhere are missing:** reconnect to refresh the eager metadata snapshot.
+- **Changes made elsewhere are missing:** use **Refresh metadata** to reload the eager metadata snapshot.
 
 ## Related
 

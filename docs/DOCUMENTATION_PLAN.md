@@ -13,6 +13,7 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 - `docs/getting-started.md` — 설치, 첫 연결, 첫 query 실행
 - `docs/connections.md` — 연결 생성·복제·테스트·삭제와 keychain 동작
 - `docs/sql-editor.md` — tabs, autocomplete, shortcuts, format, explain
+- `docs/ddl-workflow.md` — inspect, edit, preview, transaction execution, rollback, and metadata refresh
 - `docs/results.md` — grid, filter, sort, copy, JSON view, pagination
 - `docs/metadata-explorer.md` — schemas, tables, views, columns, indexes, foreign keys, routines
 - `docs/routine-inspector.md` — overload identity, functions/procedures/aggregates/window functions, database-rendered DDL, safety boundary
@@ -66,8 +67,9 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 4. [x] Results and CSV Export
 5. [x] Troubleshooting
 6. [x] Security policy and local-first boundaries
-7. [ ] Native packaging, signing, and update guide
-8. [ ] Workspace persistence and keychain guide when those features land
+7. [x] Safe DDL handoff and recovery workflow
+8. [ ] Native packaging, signing, and update guide
+9. [ ] Workspace persistence and keychain guide when those features land
 
 ### Phase C — extensibility docs
 

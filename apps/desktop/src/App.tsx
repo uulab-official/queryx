@@ -517,6 +517,17 @@ function App() {
             >
               ＋
             </button>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Refresh metadata"
+              onClick={() => {
+                void loadMetadata();
+                notify("Refreshing metadata…");
+              }}
+            >
+              ↻
+            </button>
           </div>
           <button
             type="button"
@@ -885,6 +896,15 @@ function App() {
                 >
                   Explain
                 </button>
+                <button
+                  type="button"
+                  className="toolbar-button transaction-button"
+                  onClick={() => handleRun("transaction")}
+                  disabled={isRunning}
+                  title="Execute the full SQL document in one transaction"
+                >
+                  Run in Transaction
+                </button>
               </div>
               <div className="toolbar-right">
                 <button type="button" className="toolbar-button">
@@ -1101,6 +1121,11 @@ function App() {
               .writeText(definition)
               .then(() => notify("DDL copied"))
               .catch(() => notify("Could not copy DDL"));
+          }}
+          onEditDefinition={(definition, label) => {
+            newQuery();
+            setSql(definition);
+            notify(`Opened ${label} DDL in a new SQL tab`);
           }}
         />
       </div>
@@ -1449,6 +1474,7 @@ function Inspector({
   onSelectTriggerRelation,
   onSelectDependency,
   onCopyDefinition,
+  onEditDefinition,
 }: {
   table?: TableMetadata;
   view?: ViewMetadata;
@@ -1461,6 +1487,7 @@ function Inspector({
   onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
   onSelectDependency: (object: DatabaseObjectRef) => void;
   onCopyDefinition: (definition: string) => void;
+  onEditDefinition: (definition: string, label: string) => void;
 }) {
   const relation = table ?? view;
   const [activeTab, setActiveTab] = useState<
@@ -1521,13 +1548,24 @@ function Inspector({
           <div className="section-title routine-definition-heading">
             CATALOG-RECONSTRUCTED DDL
             {definition && (
-              <button
-                type="button"
-                className="copy-ddl-button"
-                onClick={() => onCopyDefinition(definition)}
-              >
-                Copy DDL
-              </button>
+              <span className="ddl-actions">
+                <button
+                  type="button"
+                  className="copy-ddl-button"
+                  onClick={() => onCopyDefinition(definition)}
+                >
+                  Copy DDL
+                </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() =>
+                    onEditDefinition(definition, eventTrigger.name)
+                  }
+                >
+                  Edit in SQL
+                </button>
+              </span>
             )}
           </div>
           {definition ? (
@@ -1543,8 +1581,8 @@ function Inspector({
             </div>
           )}
           <p className="ddl-safety-note">
-            Reconstructed from catalog values for inspection only. QueryX never
-            executes this text automatically.
+            Reconstructed from catalog values for inspection only. Edit in SQL
+            opens a separate tab; QueryX never executes this text automatically.
           </p>
         </div>
       </aside>
@@ -1616,13 +1654,22 @@ function Inspector({
           <div className="section-title routine-definition-heading">
             DATABASE-RENDERED DDL
             {definition && (
-              <button
-                type="button"
-                className="copy-ddl-button"
-                onClick={() => onCopyDefinition(definition)}
-              >
-                Copy DDL
-              </button>
+              <span className="ddl-actions">
+                <button
+                  type="button"
+                  className="copy-ddl-button"
+                  onClick={() => onCopyDefinition(definition)}
+                >
+                  Copy DDL
+                </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() => onEditDefinition(definition, trigger.name)}
+                >
+                  Edit in SQL
+                </button>
+              </span>
             )}
           </div>
           {definition ? (
@@ -1638,8 +1685,8 @@ function Inspector({
             </div>
           )}
           <p className="ddl-safety-note">
-            Displayed for inspection only. QueryX never executes this text
-            automatically.
+            Displayed for inspection only. Edit in SQL opens a separate tab;
+            QueryX never executes this text automatically.
           </p>
         </div>
       </aside>
@@ -1698,13 +1745,22 @@ function Inspector({
           <div className="inspector-section routine-definition-section">
             <div className="section-title routine-definition-heading">
               DATABASE-RENDERED DDL
-              <button
-                type="button"
-                className="copy-ddl-button"
-                onClick={() => onCopyDefinition(definition)}
-              >
-                Copy DDL
-              </button>
+              <span className="ddl-actions">
+                <button
+                  type="button"
+                  className="copy-ddl-button"
+                  onClick={() => onCopyDefinition(definition)}
+                >
+                  Copy DDL
+                </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() => onEditDefinition(definition, signature)}
+                >
+                  Edit in SQL
+                </button>
+              </span>
             </div>
             <code
               className="definition-preview routine-definition"
@@ -1713,8 +1769,8 @@ function Inspector({
               {definition}
             </code>
             <p className="ddl-safety-note">
-              Displayed for inspection only. QueryX never executes this text
-              automatically.
+              Displayed for inspection only. Edit in SQL opens a separate tab;
+              QueryX never executes this text automatically.
             </p>
           </div>
         ) : (

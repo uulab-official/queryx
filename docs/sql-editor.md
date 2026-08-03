@@ -14,6 +14,10 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 4. On a driver with cancellation support, choose **Cancel** or press Escape while a query is running.
 5. Close the active tab with Cmd/Ctrl+W or its close button. QueryX confirms before discarding modified SQL and always keeps at least one editable tab open.
 
+## DDL handoff
+
+From a relation, trigger, event-trigger, or function/procedure Inspector, choose **Edit in SQL** to open the reconstructed definition in a new tab. The handoff never executes automatically. Review and modify the statement like any other query, then choose **Run in Transaction** to execute the complete document through the native transaction path. A failed statement rolls back the transaction and keeps the SQL tab available for correction.
+
 ## Keyboard behavior
 
 - Cmd/Ctrl+Enter — execute selection or complete active document
@@ -24,6 +28,7 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 - Cmd/Ctrl+F outside the editor — focus result filtering
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation
+- Run in Transaction — execute the complete active document in one native transaction
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available
 
 ## Safety and privacy

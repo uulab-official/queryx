@@ -26,7 +26,7 @@ View, table, and routine names are also available to Monaco metadata completion.
 
 Routines are displayed as `name(identity arguments)`, so overloads remain distinct. Selection resolves through an opaque snapshot ID rather than the visible name or argument text. Functions and procedures show PostgreSQL's reconstructed `CREATE OR REPLACE` statement. Aggregate and window-function entries remain catalog metadata: PostgreSQL does not expose executable DDL for them through the same routine-definition function, so QueryX does not invent or execute a definition.
 
-The DDL panel is read only. **Copy DDL** is an explicit clipboard action and never executes or inserts the definition into an editor. See [Routine Inspector](routine-inspector.md) for identity, privacy, and recovery details.
+The DDL panel is an inspection boundary. **Copy DDL** copies the reconstructed definition, while **Edit in SQL** opens a new editable SQL tab without executing it. Review the generated statement, then use **Run in Transaction** when the database supports transactional DDL. After an external schema change, use **Refresh metadata** to load a new snapshot. See [DDL Workflow](ddl-workflow.md) for identity, privacy, and recovery details.
 
 ## Inspect triggers
 
@@ -77,7 +77,7 @@ The alpha loads one metadata snapshot per connection. Catalog queries are batche
 ## Troubleshooting
 
 - Missing objects usually indicate database catalog visibility or account permissions.
-- Refresh currently happens when connecting; reconnect after creating or dropping an object outside QueryX.
+- **Refresh metadata** reloads the active connection snapshot after creating or dropping an object outside QueryX.
 - An empty Indexes tab means the driver reported no physical indexes for that table.
 - Incoming relationships are derived from catalog-visible tables. Database permissions can make the list incomplete.
 - Routine definitions are reconstructed by PostgreSQL; compare semantics rather than original whitespace or comments.
