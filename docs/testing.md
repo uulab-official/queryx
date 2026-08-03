@@ -38,7 +38,7 @@ pnpm --filter @queryx/desktop tauri build --no-bundle
 
 CSV unit tests cover column order, control-character escaping, NULL handling, UTF-8 BOM output, object serialization, and spreadsheet-formula protection. The manual export smoke test filters and sorts a result, exports it, opens the CSV in a text editor and spreadsheet, and confirms that the visible row order and count match without evaluating formula-like cells.
 
-The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, and overload-safe function/procedure DDL metadata. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
+The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, overload-safe routine DDL, and trigger status/timing/DDL metadata. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
 
 ## Driver contract checklist
 
@@ -49,7 +49,8 @@ Every driver must test:
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior
 - cancel-before-start, duplicate cancel, completion/cancel races, and unsupported-driver capability behavior
-- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, and explicit routines arrays
+- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, routines, and triggers
+- real SQLite and PostgreSQL trigger ownership, timing/events, activation status, conditions, and DDL
 - overloaded function identity, procedure/null return behavior, TABLE returns, and read-only database-rendered DDL where supported
 - transaction success, rollback on failure, and disconnect cleanup
 - capability reporting without vendor checks in the UI

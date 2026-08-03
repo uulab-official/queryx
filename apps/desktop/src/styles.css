@@ -309,6 +309,19 @@ button:disabled {
   color: #d4a66f;
   font: 600 13px Georgia, serif;
 }
+.tree-icon.trigger {
+  color: #efb85e;
+  font-size: 11px;
+}
+.trigger-tree-row small {
+  max-width: 66px;
+  overflow: hidden;
+  margin-left: auto;
+  color: #697581;
+  font: 8px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .routine-tree-row {
   min-width: 0;
 }
@@ -919,6 +932,12 @@ button:disabled {
   color: #e1ad72;
   font: 600 17px Georgia, serif;
 }
+.trigger-symbol {
+  border-color: #5a4930;
+  background: #30281b;
+  color: #efb85e;
+  font-size: 14px;
+}
 .routine-title > span:nth-child(2) {
   min-width: 0;
 }
@@ -1154,6 +1173,36 @@ button:disabled {
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.relation-link {
+  padding: 0;
+  background: transparent;
+  color: #83aee9;
+  font: inherit;
+}
+.relation-link:hover {
+  color: #b8d2f4;
+}
+.trigger-status {
+  border-radius: 3px;
+  padding: 2px 4px;
+  background: #273127;
+  color: #9fca8c;
+  font-size: 8px;
+  text-transform: uppercase;
+}
+.trigger-status.disabled {
+  background: #382326;
+  color: #e28a8a;
+}
+.trigger-status.replica,
+.trigger-status.always {
+  background: #293044;
+  color: #9bb9e8;
+}
+.trigger-condition {
+  max-height: 82px;
+  color: #d2b681;
 }
 .routine-definition-section {
   min-height: 0;

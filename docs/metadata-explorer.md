@@ -1,10 +1,10 @@
 # Metadata Explorer
 
-QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, and routines. Database-specific catalog queries remain inside the SQLite and PostgreSQL drivers.
+QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, routines, and relation triggers. Database-specific catalog queries remain inside the SQLite and PostgreSQL drivers.
 
 ## Browse relations
 
-Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, or **Routines** group. Selecting an object updates the Inspector without executing SQL.
+Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, **Routines**, or **Triggers** group. Selecting an object updates the Inspector without executing SQL.
 
 The Inspector shows:
 
@@ -15,6 +15,7 @@ The Inspector shows:
 - table index name, ordered key columns, access method, and primary/unique badges.
 - outgoing and incoming foreign keys with ordered source/target column pairs and update/delete actions.
 - overload-safe function/procedure signatures, language, return shape, and read-only database-rendered DDL.
+- trigger activation mode, timing/events, owner navigation, condition, and read-only DDL.
 
 View, table, and routine names are also available to Monaco metadata completion. Routine suggestions use the Function icon and insert the unqualified routine name.
 
@@ -23,6 +24,10 @@ View, table, and routine names are also available to Monaco metadata completion.
 Routines are displayed as `name(identity arguments)`, so overloads remain distinct. Selection resolves through an opaque snapshot ID rather than the visible name or argument text. PostgreSQL reconstructs the displayed `CREATE OR REPLACE` statement; original comments and formatting may differ.
 
 The DDL panel is read only. **Copy DDL** is an explicit clipboard action and never executes or inserts the definition into an editor. See [Routine Inspector](routine-inspector.md) for identity, privacy, and recovery details.
+
+## Inspect triggers
+
+Trigger rows show the trigger name and owning relation. Selection uses an opaque snapshot ID. Inspector preserves PostgreSQL replication activation modes and links directly to the owning table or view. See [Trigger Inspector](trigger-inspector.md).
 
 ## Navigate relationships
 
@@ -34,7 +39,7 @@ Composite keys remain paired in database ordinal order. SQLite constraints can b
 
 ### SQLite
 
-QueryX excludes internal `sqlite_%` objects. It reads tables and views from `sqlite_master`, then uses table-valued PRAGMA queries to collect columns, indexes, and foreign keys in batches. SQLite auto-indexes may not include a SQL definition. An `INTEGER PRIMARY KEY` aliases the rowid and may not appear as a separate index.
+QueryX excludes internal `sqlite_%` objects. It reads tables, views, and relation triggers from `sqlite_master`, then uses table-valued PRAGMA queries to collect columns, indexes, and foreign keys in batches. SQLite auto-indexes may not include a SQL definition. An `INTEGER PRIMARY KEY` aliases the rowid and may not appear as a separate index.
 
 SQLite returns `routines: []` because it has no stored function/procedure catalog equivalent to PostgreSQL. This is an explicit supported contract rather than an error.
 
@@ -45,6 +50,8 @@ SQLite returns `routines: []` because it has no stored function/procedure catalo
 QueryX excludes `pg_catalog`, `information_schema`, TOAST, and temporary schemas. It combines `information_schema` relation data with `pg_catalog` index, constraint, and routine metadata. PostgreSQL constraint and routine OIDs provide snapshot identities, while paired `conkey`/`confkey` ordinals preserve composite relationships. Estimated row counts come from PostgreSQL catalog statistics and can differ from an exact `COUNT(*)`.
 
 One `pg_proc` query loads ordinary functions and procedures, identity arguments, result text, language, and `pg_get_functiondef` output. Aggregates and window functions are intentionally excluded until they receive a separate model.
+
+A separate batched `pg_trigger` query loads non-internal relation triggers, activation modes, UPDATE columns, conditions, and reconstructed DDL.
 
 Expression index entries use the database-rendered expression when no physical column name exists. Partial index predicates and complete definitions remain available in metadata even though the alpha Inspector currently presents only the compact summary.
 

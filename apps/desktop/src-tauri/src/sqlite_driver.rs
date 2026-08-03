@@ -15,7 +15,8 @@ use crate::{
     models::{
         ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair,
         ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult, RelationRef, TableMetadata,
-        ViewMetadata,
+        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -90,6 +91,11 @@ impl DatabaseDriver for SqliteDriver {
         .await?;
         let foreign_key_rows = sqlx::query(
             "SELECT m.name AS source_table, fk.id AS foreign_key_id, fk.seq AS ordinal, fk.\"table\" AS referenced_table, fk.\"from\" AS source_column, fk.\"to\" AS referenced_column, fk.on_update, fk.on_delete, fk.\"match\" AS match_type FROM sqlite_master m JOIN pragma_foreign_key_list(m.name) fk WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' ORDER BY m.name, fk.id, fk.seq",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let trigger_rows = sqlx::query(
+            "SELECT trigger_object.name AS trigger_name, trigger_object.tbl_name AS relation_name, trigger_object.sql AS definition, relation_object.type = 'view' AS is_view FROM sqlite_master trigger_object LEFT JOIN sqlite_master relation_object ON relation_object.name = trigger_object.tbl_name AND relation_object.type IN ('table', 'view') WHERE trigger_object.type = 'trigger' ORDER BY trigger_object.name",
         )
         .fetch_all(&self.pool)
         .await?;
@@ -203,12 +209,52 @@ impl DatabaseDriver for SqliteDriver {
             }
         }
 
+        let triggers = trigger_rows
+            .into_iter()
+            .map(|row| {
+                let name: String = row.try_get("trigger_name")?;
+                let relation_name: String = row.try_get("relation_name")?;
+                let definition: Option<String> = row.try_get("definition")?;
+                let (timing, events) = definition
+                    .as_deref()
+                    .map(parse_sqlite_trigger_header)
+                    .unwrap_or((TriggerTiming::Unknown, vec![TriggerEvent::Unknown]));
+                Ok(TriggerMetadata {
+                    id: format!(
+                        "sqlite:trigger:{}:main:{}:{}",
+                        "main".len(),
+                        name.len(),
+                        name
+                    ),
+                    schema: "main".into(),
+                    name,
+                    relation: TriggerRelationRef {
+                        schema: "main".into(),
+                        name: relation_name,
+                        kind: if row.try_get("is_view")? {
+                            TriggerRelationKind::View
+                        } else {
+                            TriggerRelationKind::Table
+                        },
+                    },
+                    timing,
+                    events,
+                    update_columns: None,
+                    orientation: TriggerOrientation::Row,
+                    status: TriggerStatus::Enabled,
+                    condition: None,
+                    definition,
+                })
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
         Ok(DatabaseMetadata {
             databases: vec![self.path.clone()],
             schemas: vec!["main".into()],
             tables,
             views,
             routines: Vec::new(),
+            triggers,
         })
     }
 
@@ -216,6 +262,36 @@ impl DatabaseDriver for SqliteDriver {
         self.pool.close().await;
         Ok(())
     }
+}
+
+fn parse_sqlite_trigger_header(sql: &str) -> (TriggerTiming, Vec<TriggerEvent>) {
+    let normalized = sql
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_uppercase();
+    let header = normalized.split(" BEGIN").next().unwrap_or(&normalized);
+    let timing = if header.contains(" INSTEAD OF ") {
+        TriggerTiming::InsteadOf
+    } else if header.contains(" AFTER ") {
+        TriggerTiming::After
+    } else {
+        TriggerTiming::Before
+    };
+    let mut events = Vec::new();
+    if header.contains(" INSERT ") {
+        events.push(TriggerEvent::Insert);
+    }
+    if header.contains(" UPDATE ") {
+        events.push(TriggerEvent::Update);
+    }
+    if header.contains(" DELETE ") {
+        events.push(TriggerEvent::Delete);
+    }
+    if events.is_empty() {
+        events.push(TriggerEvent::Unknown);
+    }
+    (timing, events)
 }
 
 fn sqlite_url(path: &str) -> Result<String, AppError> {
@@ -400,6 +476,10 @@ mod tests {
         let driver = SqliteDriver::connect(":memory:")
             .await
             .expect("connect sqlite memory database");
+        sqlx::query("CREATE TRIGGER orders_status_audit AFTER UPDATE OF status ON orders FOR EACH ROW WHEN NEW.status = 'paid' BEGIN SELECT NEW.id; END")
+            .execute(&driver.pool)
+            .await
+            .expect("create sqlite trigger");
         let metadata = driver.metadata().await.expect("load sqlite metadata");
         let orders = metadata
             .tables
@@ -421,6 +501,20 @@ mod tests {
         assert!(!index.unique);
         assert_eq!(view.columns.len(), 3);
         assert!(metadata.routines.is_empty());
+        let trigger = metadata
+            .triggers
+            .iter()
+            .find(|trigger| trigger.name == "orders_status_audit")
+            .expect("sqlite trigger metadata");
+        assert_eq!(trigger.relation.name, "orders");
+        assert_eq!(trigger.timing, TriggerTiming::After);
+        assert_eq!(trigger.events, [TriggerEvent::Update]);
+        assert_eq!(trigger.orientation, TriggerOrientation::Row);
+        assert_eq!(trigger.status, TriggerStatus::Enabled);
+        assert!(trigger
+            .definition
+            .as_deref()
+            .is_some_and(|definition| definition.contains("CREATE TRIGGER")));
         assert!(view
             .definition
             .as_deref()

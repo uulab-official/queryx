@@ -19,6 +19,7 @@ import type {
   RelationRef,
   RoutineMetadata,
   TableMetadata,
+  TriggerMetadata,
   ViewMetadata,
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
@@ -166,6 +167,7 @@ function App() {
   const tables = metadata?.tables ?? [];
   const views = metadata?.views ?? [];
   const routines = metadata?.routines ?? [];
+  const triggers = metadata?.triggers ?? [];
   const schemas = metadata?.schemas ?? [];
   const currentTable =
     selectedObject?.kind === "table"
@@ -188,6 +190,10 @@ function App() {
   const currentRoutine =
     selectedObject?.kind === "routine"
       ? routines.find((routine) => routine.id === selectedObject.id)
+      : undefined;
+  const currentTrigger =
+    selectedObject?.kind === "trigger"
+      ? triggers.find((trigger) => trigger.id === selectedObject.id)
       : undefined;
   const foreignKeyIndex = useMemo(() => buildForeignKeyIndex(tables), [tables]);
   const currentForeignKeys = currentTable
@@ -260,6 +266,29 @@ function App() {
       return;
     }
     setSelectedObject({ kind: "table", ...relation });
+  };
+  const selectTriggerRelation = (relation: TriggerMetadata["relation"]) => {
+    const visible =
+      relation.kind === "table"
+        ? tables.some(
+            (table) =>
+              table.schema === relation.schema && table.name === relation.name,
+          )
+        : views.some(
+            (view) =>
+              view.schema === relation.schema && view.name === relation.name,
+          );
+    if (!visible) {
+      notify(
+        `Owning ${relation.kind} ${relation.schema}.${relation.name} is not visible`,
+      );
+      return;
+    }
+    setSelectedObject({
+      kind: relation.kind,
+      schema: relation.schema,
+      name: relation.name,
+    });
   };
 
   const sort = (key: string) => {
@@ -411,6 +440,9 @@ function App() {
                       const schemaRoutines = routines.filter(
                         (routine) => routine.schema === schema,
                       );
+                      const schemaTriggers = triggers.filter(
+                        (trigger) => trigger.schema === schema,
+                      );
                       return (
                         <div key={schema}>
                           <TreeRow
@@ -524,6 +556,40 @@ function App() {
                                           ? "proc"
                                           : "fn"}
                                       </small>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              <TreeRow
+                                label="Triggers"
+                                icon="▱"
+                                tone="folder"
+                                count={schemaTriggers.length}
+                              />
+                              {schemaTriggers.length > 0 && (
+                                <div className="tree-children">
+                                  {schemaTriggers.map((trigger) => (
+                                    <button
+                                      type="button"
+                                      className={`tree-row trigger-tree-row ${selectedObject?.kind === "trigger" && selectedObject.id === trigger.id ? "selected" : ""}`}
+                                      key={trigger.id}
+                                      title={`${trigger.name} on ${trigger.relation.schema}.${trigger.relation.name}`}
+                                      onClick={() =>
+                                        setSelectedObject({
+                                          kind: "trigger",
+                                          id: trigger.id,
+                                          schema: trigger.schema,
+                                          name: trigger.name,
+                                        })
+                                      }
+                                    >
+                                      <span className="tree-icon trigger">
+                                        ⚡
+                                      </span>
+                                      <span className="routine-tree-label">
+                                        {trigger.name}
+                                      </span>
+                                      <small>{trigger.relation.name}</small>
                                     </button>
                                   ))}
                                 </div>
@@ -859,18 +925,22 @@ function App() {
             selectedObject
               ? selectedObject.kind === "routine"
                 ? `routine:${selectedObject.id}`
-                : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
+                : selectedObject.kind === "trigger"
+                  ? `trigger:${selectedObject.id}`
+                  : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
               : "no-object"
           }
           table={currentTable}
           view={currentView}
           routine={currentRoutine}
+          trigger={currentTrigger}
           foreignKeys={currentForeignKeys}
           onSelectTable={selectRelatedTable}
+          onSelectTriggerRelation={selectTriggerRelation}
           onCopyDefinition={(definition) => {
             void navigator.clipboard
               .writeText(definition)
-              .then(() => notify("Routine DDL copied"))
+              .then(() => notify("DDL copied"))
               .catch(() => notify("Could not copy routine DDL"));
           }}
         />
@@ -1212,15 +1282,19 @@ function Inspector({
   table,
   view,
   routine,
+  trigger,
   foreignKeys,
   onSelectTable,
+  onSelectTriggerRelation,
   onCopyDefinition,
 }: {
   table?: TableMetadata;
   view?: ViewMetadata;
   routine?: RoutineMetadata;
+  trigger?: TriggerMetadata;
   foreignKeys?: ForeignKeyRelations;
   onSelectTable: (relation: RelationRef) => void;
+  onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
   onCopyDefinition: (definition: string) => void;
 }) {
   const relation = table ?? view;
@@ -1229,6 +1303,97 @@ function Inspector({
   >("columns");
   const relationCount =
     (foreignKeys?.outgoing.length ?? 0) + (foreignKeys?.incoming.length ?? 0);
+
+  if (trigger) {
+    const definition = trigger.definition;
+    return (
+      <aside className="inspector">
+        <div className="panel-heading">
+          INSPECTOR <span className="read-only-badge">READ ONLY</span>
+        </div>
+        <div className="inspector-title trigger-title">
+          <span className="table-symbol trigger-symbol">⚡</span>
+          <span>
+            <strong title={trigger.name}>{trigger.name}</strong>
+            <small>{trigger.schema} · trigger</small>
+          </span>
+        </div>
+        <div className="inspector-section routine-details">
+          <div className="section-title">TRIGGER DETAILS</div>
+          <dl>
+            <dt>Status</dt>
+            <dd>
+              <span className={`trigger-status ${trigger.status}`}>
+                {trigger.status}
+              </span>
+            </dd>
+            <dt>Timing</dt>
+            <dd>{trigger.timing}</dd>
+            <dt>Events</dt>
+            <dd>{trigger.events.join(", ")}</dd>
+            <dt>Orientation</dt>
+            <dd>{trigger.orientation}</dd>
+            <dt>Owner</dt>
+            <dd>
+              <button
+                type="button"
+                className="relation-link"
+                onClick={() => onSelectTriggerRelation(trigger.relation)}
+              >
+                {trigger.relation.name} ↗
+              </button>
+            </dd>
+            {trigger.updateColumns && (
+              <>
+                <dt>Update columns</dt>
+                <dd title={trigger.updateColumns.join(", ")}>
+                  {trigger.updateColumns.join(", ")}
+                </dd>
+              </>
+            )}
+          </dl>
+        </div>
+        {trigger.condition && (
+          <div className="inspector-section">
+            <div className="section-title">WHEN CONDITION</div>
+            <code className="definition-preview trigger-condition">
+              {trigger.condition}
+            </code>
+          </div>
+        )}
+        <div className="inspector-section routine-definition-section">
+          <div className="section-title routine-definition-heading">
+            DATABASE-RENDERED DDL
+            {definition && (
+              <button
+                type="button"
+                className="copy-ddl-button"
+                onClick={() => onCopyDefinition(definition)}
+              >
+                Copy DDL
+              </button>
+            )}
+          </div>
+          {definition ? (
+            <code
+              className="definition-preview routine-definition"
+              aria-label={`${trigger.name} read-only DDL`}
+            >
+              {definition}
+            </code>
+          ) : (
+            <div className="inspector-empty">
+              Definition is unavailable for this trigger.
+            </div>
+          )}
+          <p className="ddl-safety-note">
+            Displayed for inspection only. QueryX never executes this text
+            automatically.
+          </p>
+        </div>
+      </aside>
+    );
+  }
 
   if (routine) {
     const signature = `${routine.name}(${routine.identityArguments})`;

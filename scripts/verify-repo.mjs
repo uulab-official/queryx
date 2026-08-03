@@ -51,6 +51,7 @@ for (const required of [
   "docs/sql-editor.md",
   "docs/metadata-explorer.md",
   "docs/routine-inspector.md",
+  "docs/trigger-inspector.md",
   "docs/results.md",
   "docs/troubleshooting.md",
   "docs/postgres-driver.md",

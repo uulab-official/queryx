@@ -19,7 +19,7 @@ interface DatabaseDriver {
 - `connect()` must be safe to call once during initialization and must fail with an actionable error.
 - `execute()` always returns the shared `QueryResult` shape for successful queries.
 - Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
-- `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, indexes, foreign keys, and routines.
+- `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, indexes, foreign keys, routines, and triggers.
 - `transaction()` must not silently commit a failed workflow.
 - `disconnect()` releases the connection and any driver-owned resources.
 - `capabilities()` describes optional behavior instead of making the UI infer support from vendor names.
@@ -79,13 +79,15 @@ Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` e
 
 ## Metadata contract
 
-`DatabaseMetadata` is currently an eager connection snapshot. `views`, `routines`, and every table's `indexes` and `foreignKeys` arrays are always present, including when empty. Drivers batch catalog queries and group results locally; the UI does not infer metadata behavior from the driver name.
+`DatabaseMetadata` is currently an eager connection snapshot. `views`, `routines`, `triggers`, and every table's `indexes` and `foreignKeys` arrays are always present, including when empty. Drivers batch catalog queries and group results locally; the UI does not infer metadata behavior from the driver name.
 
 Indexes preserve ordered column or expression labels, uniqueness, primary status, access method, and an optional database-rendered definition. Views preserve ordered columns and an optional definition. See [ADR-0004](decisions/ADR-0004-additive-relation-metadata.md) for the measured boundary that triggers migration to lazy catalog commands.
 
 Foreign keys are owned by the source table and preserve an opaque snapshot ID, optional database name, ordered source/reference column pairs, target relation, referential actions, match mode, and optional deferrability. Incoming relationships are derived by the core reverse index rather than duplicated in the IPC payload. See [ADR-0005](decisions/ADR-0005-table-owned-foreign-keys.md).
 
 Routines preserve an opaque snapshot ID, schema/name, function or procedure kind, identity arguments, optional return text, language, and optional database-rendered definition. Selection uses only the opaque ID; it is not a durable identifier across reconnects. Drivers that have no compatible routine catalog return an empty array. See [ADR-0006](decisions/ADR-0006-overload-safe-routine-metadata.md).
+
+Triggers preserve opaque snapshot identity, typed owner relation, timing/events, optional UPDATE columns, orientation, activation status, optional condition, and nullable database-rendered DDL. See [ADR-0007](decisions/ADR-0007-driver-neutral-trigger-metadata.md).
 
 ## Safety
 

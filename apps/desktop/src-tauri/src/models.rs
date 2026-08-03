@@ -94,6 +94,7 @@ pub struct DatabaseMetadata {
     pub tables: Vec<TableMetadata>,
     pub views: Vec<ViewMetadata>,
     pub routines: Vec<RoutineMetadata>,
+    pub triggers: Vec<TriggerMetadata>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -114,6 +115,73 @@ pub struct RoutineMetadata {
     pub return_type: Option<String>,
     pub language: String,
     pub definition: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TriggerTiming {
+    Before,
+    After,
+    InsteadOf,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TriggerEvent {
+    Insert,
+    Update,
+    Delete,
+    Truncate,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TriggerOrientation {
+    Row,
+    Statement,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TriggerStatus {
+    Enabled,
+    Origin,
+    Replica,
+    Always,
+    Disabled,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerMetadata {
+    pub id: String,
+    pub schema: String,
+    pub name: String,
+    pub relation: TriggerRelationRef,
+    pub timing: TriggerTiming,
+    pub events: Vec<TriggerEvent>,
+    pub update_columns: Option<Vec<String>>,
+    pub orientation: TriggerOrientation,
+    pub status: TriggerStatus,
+    pub condition: Option<String>,
+    pub definition: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TriggerRelationRef {
+    pub schema: String,
+    pub name: String,
+    pub kind: TriggerRelationKind,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TriggerRelationKind {
+    Table,
+    View,
 }
 
 #[derive(Debug, Serialize)]

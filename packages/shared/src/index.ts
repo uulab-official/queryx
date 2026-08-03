@@ -90,12 +90,42 @@ export interface RoutineMetadata {
   definition: string | null;
 }
 
+export type TriggerTiming = "before" | "after" | "insteadOf" | "unknown";
+export type TriggerEvent =
+  | "insert"
+  | "update"
+  | "delete"
+  | "truncate"
+  | "unknown";
+export type TriggerOrientation = "row" | "statement";
+export type TriggerStatus =
+  | "enabled"
+  | "origin"
+  | "replica"
+  | "always"
+  | "disabled";
+
+export interface TriggerMetadata {
+  id: string;
+  schema: string;
+  name: string;
+  relation: RelationRef & { kind: "table" | "view" };
+  timing: TriggerTiming;
+  events: TriggerEvent[];
+  updateColumns: string[] | null;
+  orientation: TriggerOrientation;
+  status: TriggerStatus;
+  condition: string | null;
+  definition: string | null;
+}
+
 export interface DatabaseMetadata {
   databases: string[];
   schemas: string[];
   tables: TableMetadata[];
   views: ViewMetadata[];
   routines: RoutineMetadata[];
+  triggers: TriggerMetadata[];
 }
 
 export interface DriverConfig {

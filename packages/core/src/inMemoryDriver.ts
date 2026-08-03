@@ -134,6 +134,22 @@ AS $function$
 $function$`,
     },
   ],
+  triggers: [
+    {
+      id: "demo:trigger:orders_audit",
+      schema: "public",
+      name: "orders_audit",
+      relation: { schema: "public", name: "orders", kind: "table" },
+      timing: "after",
+      events: ["insert", "update"],
+      updateColumns: null,
+      orientation: "row",
+      status: "origin",
+      condition: "NEW.status = 'paid'",
+      definition:
+        "CREATE TRIGGER orders_audit AFTER INSERT OR UPDATE ON public.orders FOR EACH ROW WHEN (NEW.status = 'paid') EXECUTE FUNCTION public.audit_order()",
+    },
+  ],
 };
 
 export class InMemoryDriver implements DatabaseDriver {

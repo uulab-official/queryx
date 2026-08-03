@@ -10,6 +10,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, indexes, routines, and foreign-key navigation
 - [Routine Inspector](routine-inspector.md) — overload identity, read-only PostgreSQL DDL, safety, and recovery
+- [Trigger Inspector](trigger-inspector.md) — activation modes, events, owner navigation, and read-only DDL
 - [Troubleshooting](troubleshooting.md) — setup, connection, rendering, export, and build recovery
 
 ## Understand the system

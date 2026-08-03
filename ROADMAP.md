@@ -56,7 +56,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Metadata for views, indexes, and primary keys
 - [x] Composite foreign keys with outgoing/incoming relationship navigation
 - [x] PostgreSQL functions/procedures with overload-safe selection and read-only DDL inspection
-- [ ] Triggers, dependencies, aggregates/window functions, and editable DDL
+- [x] PostgreSQL/SQLite relation triggers with status, events, owner navigation, and read-only DDL
+- [ ] Object dependencies, PostgreSQL event triggers, aggregates/window functions, and editable DDL
 - [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
 
 Release gates:

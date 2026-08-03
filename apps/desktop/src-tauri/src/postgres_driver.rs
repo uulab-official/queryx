@@ -18,7 +18,9 @@ use crate::{
     models::{
         ColumnMetadata, ConnectionConfig, DatabaseMetadata, DriverCapability, DriverKind,
         ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
-        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, ViewMetadata,
+        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, TriggerEvent,
+        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -536,6 +538,11 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     )
     .fetch_all(pool)
     .await?;
+    let trigger_rows = sqlx::query(
+        "SELECT t.oid::text AS trigger_id, ns.nspname AS trigger_schema, t.tgname AS trigger_name, relation.relname AS relation_name, relation.relkind = 'v' AS is_view, t.tgtype::integer AS trigger_type, t.tgenabled::text AS trigger_status, pg_get_expr(t.tgqual, t.tgrelid, true) AS condition, pg_get_triggerdef(t.oid, true) AS definition, ARRAY(SELECT attribute.attname FROM unnest(t.tgattr::smallint[]) WITH ORDINALITY AS trigger_attribute(attnum, ordinality) JOIN pg_catalog.pg_attribute attribute ON attribute.attrelid = t.tgrelid AND attribute.attnum = trigger_attribute.attnum ORDER BY trigger_attribute.ordinality)::text[] AS update_columns FROM pg_catalog.pg_trigger t JOIN pg_catalog.pg_class relation ON relation.oid = t.tgrelid JOIN pg_catalog.pg_namespace ns ON ns.oid = relation.relnamespace WHERE NOT t.tgisinternal AND relation.relkind IN ('r', 'p', 'v') AND relation.relpersistence <> 't' AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, t.tgname, relation.relname",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut columns_by_table: HashMap<(String, String), Vec<ColumnMetadata>> = HashMap::new();
     for row in column_rows {
@@ -687,12 +694,72 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
+    let triggers = trigger_rows
+        .into_iter()
+        .map(|row| {
+            let id: String = row.try_get("trigger_id")?;
+            let trigger_type: i32 = row.try_get("trigger_type")?;
+            let update_columns: Vec<String> = row.try_get("update_columns")?;
+            let status: String = row.try_get("trigger_status")?;
+            let mut events = Vec::new();
+            if trigger_type & 4 != 0 {
+                events.push(TriggerEvent::Insert);
+            }
+            if trigger_type & 16 != 0 {
+                events.push(TriggerEvent::Update);
+            }
+            if trigger_type & 8 != 0 {
+                events.push(TriggerEvent::Delete);
+            }
+            if trigger_type & 32 != 0 {
+                events.push(TriggerEvent::Truncate);
+            }
+            Ok(TriggerMetadata {
+                id: format!("postgres:trigger:{id}"),
+                schema: row.try_get("trigger_schema")?,
+                name: row.try_get("trigger_name")?,
+                relation: TriggerRelationRef {
+                    schema: row.try_get("trigger_schema")?,
+                    name: row.try_get("relation_name")?,
+                    kind: if row.try_get("is_view")? {
+                        TriggerRelationKind::View
+                    } else {
+                        TriggerRelationKind::Table
+                    },
+                },
+                timing: if trigger_type & 64 != 0 {
+                    TriggerTiming::InsteadOf
+                } else if trigger_type & 2 != 0 {
+                    TriggerTiming::Before
+                } else {
+                    TriggerTiming::After
+                },
+                events,
+                update_columns: (!update_columns.is_empty()).then_some(update_columns),
+                orientation: if trigger_type & 1 != 0 {
+                    TriggerOrientation::Row
+                } else {
+                    TriggerOrientation::Statement
+                },
+                status: match status.as_str() {
+                    "D" => TriggerStatus::Disabled,
+                    "R" => TriggerStatus::Replica,
+                    "A" => TriggerStatus::Always,
+                    _ => TriggerStatus::Origin,
+                },
+                condition: row.try_get("condition")?,
+                definition: Some(row.try_get("definition")?),
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
     Ok(DatabaseMetadata {
         databases,
         schemas,
         tables,
         views,
         routines,
+        triggers,
     })
 }
 
@@ -842,7 +909,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn loads_overload_safe_routine_ddl_when_test_database_is_available() {
+    async fn loads_overload_safe_routine_and_trigger_ddl_when_test_database_is_available() {
         let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
             return;
         };
@@ -864,6 +931,7 @@ mod tests {
             .await
             .expect("create routine contract schema");
         for statement in [
+            format!(r#"CREATE TABLE "{schema}".orders (id bigint PRIMARY KEY, status text)"#),
             format!(
                 r#"CREATE FUNCTION "{schema}".calculate_total(amount numeric) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT amount $$"#
             ),
@@ -876,6 +944,17 @@ mod tests {
             format!(
                 r#"CREATE PROCEDURE "{schema}".refresh_orders() LANGUAGE sql AS $$ SELECT 1 $$"#
             ),
+            format!(
+                r#"CREATE FUNCTION "{schema}".audit_order() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$"#
+            ),
+            format!(
+                r#"CREATE TRIGGER orders_audit BEFORE INSERT OR UPDATE OF status ON "{schema}".orders FOR EACH ROW WHEN (NEW.status IS NOT NULL) EXECUTE FUNCTION "{schema}".audit_order()"#
+            ),
+            format!(r#"ALTER TABLE "{schema}".orders ENABLE ALWAYS TRIGGER orders_audit"#),
+            format!(
+                r#"CREATE TRIGGER orders_truncate AFTER TRUNCATE ON "{schema}".orders FOR EACH STATEMENT EXECUTE FUNCTION "{schema}".audit_order()"#
+            ),
+            format!(r#"ALTER TABLE "{schema}".orders DISABLE TRIGGER orders_truncate"#),
         ] {
             sqlx::query(&statement)
                 .execute(&driver.pool)
@@ -928,6 +1007,39 @@ mod tests {
             .definition
             .as_deref()
             .is_some_and(|ddl| ddl.contains("CREATE OR REPLACE PROCEDURE")));
+        let audit_trigger = metadata
+            .triggers
+            .iter()
+            .find(|trigger| trigger.schema == schema && trigger.name == "orders_audit")
+            .expect("postgres audit trigger metadata");
+        assert_eq!(audit_trigger.relation.name, "orders");
+        assert_eq!(audit_trigger.timing, TriggerTiming::Before);
+        assert_eq!(
+            audit_trigger.events,
+            [TriggerEvent::Insert, TriggerEvent::Update]
+        );
+        assert_eq!(
+            audit_trigger.update_columns.as_ref(),
+            Some(&vec!["status".to_string()])
+        );
+        assert_eq!(audit_trigger.orientation, TriggerOrientation::Row);
+        assert_eq!(audit_trigger.status, TriggerStatus::Always);
+        assert!(audit_trigger
+            .condition
+            .as_deref()
+            .is_some_and(|value| value.contains("NEW.status")));
+        assert!(audit_trigger
+            .definition
+            .as_deref()
+            .is_some_and(|ddl| ddl.contains("CREATE TRIGGER")));
+        let truncate_trigger = metadata
+            .triggers
+            .iter()
+            .find(|trigger| trigger.schema == schema && trigger.name == "orders_truncate")
+            .expect("postgres truncate trigger metadata");
+        assert_eq!(truncate_trigger.events, [TriggerEvent::Truncate]);
+        assert_eq!(truncate_trigger.orientation, TriggerOrientation::Statement);
+        assert_eq!(truncate_trigger.status, TriggerStatus::Disabled);
 
         sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
             .execute(&driver.pool)

@@ -2,13 +2,17 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, and procedures.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, and relation triggers.
 
 ## Routine catalog
 
 One batched `pg_proc` query loads visible ordinary functions and procedures. QueryX uses routine OIDs only as opaque identities for the active metadata snapshot, identity arguments to distinguish overloads in the UI, `pg_get_function_result` for return shapes, and `pg_get_functiondef` for read-only database-rendered DDL. Aggregates and window functions are excluded.
 
 The DDL is reconstructed by PostgreSQL and may not preserve original comments, whitespace, or formatting. QueryX displays and copies it but never executes it automatically. Routine bodies remain within the local desktop process and the connected database boundary.
+
+## Trigger catalog
+
+One `pg_trigger` query returns non-internal triggers for loaded table, partition, and view kinds. QueryX derives timing/events/orientation from `tgtype`, UPDATE columns from `tgattr`, preserves every `tgenabled` mode, and displays `pg_get_expr` conditions plus `pg_get_triggerdef` DDL.
 
 ## Connection behavior
 
@@ -52,7 +56,7 @@ Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, us
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Triggers, dependencies, aggregates/window functions, and editable DDL are not yet part of the shared metadata model.
+- Event triggers, dependencies, aggregates/window functions, and editable DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 
