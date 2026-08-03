@@ -93,6 +93,27 @@ pub struct DatabaseMetadata {
     pub schemas: Vec<String>,
     pub tables: Vec<TableMetadata>,
     pub views: Vec<ViewMetadata>,
+    pub routines: Vec<RoutineMetadata>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RoutineKind {
+    Function,
+    Procedure,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoutineMetadata {
+    pub id: String,
+    pub schema: String,
+    pub name: String,
+    pub kind: RoutineKind,
+    pub identity_arguments: String,
+    pub return_type: Option<String>,
+    pub language: String,
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

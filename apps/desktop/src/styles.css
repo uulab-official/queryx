@@ -305,6 +305,26 @@ button:disabled {
 .tree-icon.view {
   color: #77c7b5;
 }
+.tree-icon.routine {
+  color: #d4a66f;
+  font: 600 13px Georgia, serif;
+}
+.routine-tree-row {
+  min-width: 0;
+}
+.routine-tree-label {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.routine-tree-row small {
+  margin-left: auto;
+  color: #697581;
+  font: 8px var(--mono);
+  text-transform: uppercase;
+}
 .count {
   margin-left: auto;
   border-radius: 8px;
@@ -893,6 +913,30 @@ button:disabled {
   background: #1c2c41;
   color: var(--blue);
 }
+.routine-symbol {
+  border-color: #5b4631;
+  background: #31261c;
+  color: #e1ad72;
+  font: 600 17px Georgia, serif;
+}
+.routine-title > span:nth-child(2) {
+  min-width: 0;
+}
+.routine-title strong {
+  overflow: hidden;
+  font-family: var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.read-only-badge {
+  float: right;
+  border: 1px solid #3d5143;
+  border-radius: 3px;
+  padding: 2px 4px;
+  color: #8fba99;
+  font: 7px var(--mono);
+  letter-spacing: .5px;
+}
 .inspector-title strong,
 .inspector-title small {
   display: block;
@@ -1104,6 +1148,37 @@ button:disabled {
   margin: 0;
   color: #b7c0c8;
 }
+.routine-details dd {
+  max-width: 128px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.routine-definition-section {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.routine-definition-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.copy-ddl-button {
+  border: 1px solid #3c4853;
+  border-radius: 3px;
+  padding: 3px 6px;
+  background: #20272d;
+  color: #b7c0c8;
+  font: 8px var(--mono);
+  letter-spacing: 0;
+}
+.copy-ddl-button:hover {
+  border-color: #667481;
+  color: #e3e9ed;
+}
 .definition-preview {
   max-height: 132px;
   display: block;
@@ -1112,6 +1187,21 @@ button:disabled {
   font: 9px / 1.55 var(--mono);
   white-space: pre-wrap;
   word-break: break-word;
+}
+.routine-definition {
+  max-height: none;
+  flex: 1;
+  padding: 9px;
+  border: 1px solid #293139;
+  border-radius: 4px;
+  background: #11161a;
+  color: #aeb8c1;
+  white-space: pre;
+}
+.ddl-safety-note {
+  margin: 9px 0 0;
+  color: #65717b;
+  font: 8px / 1.45 var(--mono);
 }
 .toast {
   position: fixed;

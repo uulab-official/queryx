@@ -32,11 +32,16 @@ export interface QueryTab {
   isDirty: boolean;
 }
 
-export interface SelectedRelation {
-  kind: "table" | "view";
-  schema: string;
-  name: string;
-}
+export type SelectedDatabaseObject =
+  | { kind: "table" | "view"; schema: string; name: string }
+  | {
+      kind: "routine";
+      id: string;
+      schema: string;
+      name: string;
+      identityArguments: string;
+      routineKind: "function" | "procedure";
+    };
 
 interface QueryState {
   sql: string;
@@ -44,7 +49,7 @@ interface QueryState {
   activeTabId: string;
   result: QueryResult | null;
   metadata: DatabaseMetadata | null;
-  selectedRelation: SelectedRelation | null;
+  selectedObject: SelectedDatabaseObject | null;
   resultView: ResultView;
   filter: string;
   isRunning: boolean;
@@ -63,7 +68,7 @@ interface QueryState {
   closeQuery: (id: string) => void;
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
-  setSelectedRelation: (relation: SelectedRelation) => void;
+  setSelectedObject: (object: SelectedDatabaseObject) => void;
   runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<void>;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
@@ -74,11 +79,24 @@ interface QueryState {
 
 const historyStorageKey = "queryx:query-history";
 
-function defaultRelation(metadata: DatabaseMetadata): SelectedRelation | null {
+function defaultObject(
+  metadata: DatabaseMetadata,
+): SelectedDatabaseObject | null {
   const table = metadata.tables[0];
   if (table) return { kind: "table", schema: table.schema, name: table.name };
   const view = metadata.views[0];
-  return view ? { kind: "view", schema: view.schema, name: view.name } : null;
+  if (view) return { kind: "view", schema: view.schema, name: view.name };
+  const routine = metadata.routines[0];
+  return routine
+    ? {
+        kind: "routine",
+        id: routine.id,
+        schema: routine.schema,
+        name: routine.name,
+        identityArguments: routine.identityArguments,
+        routineKind: routine.kind,
+      }
+    : null;
 }
 
 function readHistory(): QueryHistoryEntry[] {
@@ -149,7 +167,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     activeTabId: "query-1",
     result: null,
     metadata: null,
-    selectedRelation: null,
+    selectedObject: null,
     resultView: "table",
     filter: "",
     isRunning: false,
@@ -216,7 +234,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     },
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
-    setSelectedRelation: (selectedRelation) => set({ selectedRelation }),
+    setSelectedObject: (selectedObject) => set({ selectedObject }),
     runQuery: async (mode = "normal", sqlOverride?: string) => {
       if (get().isRunning) return;
       const controller = new AbortController();
@@ -288,7 +306,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         set({
           metadata,
           canCancel: get().driver.capabilities().has("cancel"),
-          selectedRelation: defaultRelation(metadata),
+          selectedObject: defaultObject(metadata),
           connectionStatus: "connected",
           connectionError: null,
         });
@@ -327,7 +345,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           connectionStatus: "connected",
           connectionError: null,
           metadata,
-          selectedRelation: defaultRelation(metadata),
+          selectedObject: defaultObject(metadata),
           sql: shouldReplaceSql ? nextSql : get().sql,
           tabs: shouldReplaceSql
             ? get().tabs.map((tab) =>

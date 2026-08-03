@@ -14,7 +14,8 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 - `docs/connections.md` — 연결 생성·복제·테스트·삭제와 keychain 동작
 - `docs/sql-editor.md` — tabs, autocomplete, shortcuts, format, explain
 - `docs/results.md` — grid, filter, sort, copy, JSON view, pagination
-- `docs/metadata-explorer.md` — schemas, tables, views, columns, indexes, foreign keys
+- `docs/metadata-explorer.md` — schemas, tables, views, columns, indexes, foreign keys, routines
+- `docs/routine-inspector.md` — overload identity, database-rendered DDL, safety boundary
 - `docs/export.md` — CSV/JSON/Excel/SQL export와 대용량 데이터 주의사항
 - `docs/safe-mode.md` — 위험 쿼리 감지, transaction, estimated affected rows
 - `docs/workspaces.md` — `queries/`, favorites, history, settings 관리

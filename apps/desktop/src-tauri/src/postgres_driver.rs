@@ -18,7 +18,7 @@ use crate::{
     models::{
         ColumnMetadata, ConnectionConfig, DatabaseMetadata, DriverCapability, DriverKind,
         ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
-        RelationRef, SslMode, TableMetadata, ViewMetadata,
+        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, ViewMetadata,
     },
 };
 
@@ -531,6 +531,11 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
     )
     .fetch_all(pool)
     .await?;
+    let routine_rows = sqlx::query(
+        "SELECT p.oid::text AS routine_id, ns.nspname AS routine_schema, p.proname AS routine_name, p.prokind = 'p' AS is_procedure, pg_get_function_identity_arguments(p.oid) AS identity_arguments, CASE WHEN p.prokind = 'p' THEN NULL::text ELSE pg_get_function_result(p.oid) END AS return_type, language.lanname AS language, pg_get_functiondef(p.oid) AS definition FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace ns ON ns.oid = p.pronamespace JOIN pg_catalog.pg_language language ON language.oid = p.prolang WHERE p.prokind IN ('f', 'p') AND ns.nspname NOT IN ('pg_catalog', 'information_schema') AND ns.nspname NOT LIKE 'pg_toast%' AND ns.nspname NOT LIKE 'pg_temp_%' ORDER BY ns.nspname, p.proname, pg_get_function_identity_arguments(p.oid)",
+    )
+    .fetch_all(pool)
+    .await?;
 
     let mut columns_by_table: HashMap<(String, String), Vec<ColumnMetadata>> = HashMap::new();
     for row in column_rows {
@@ -661,11 +666,33 @@ async fn load_metadata(pool: &PgPool) -> Result<DatabaseMetadata, AppError> {
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
 
+    let routines = routine_rows
+        .into_iter()
+        .map(|row| {
+            let id: String = row.try_get("routine_id")?;
+            Ok(RoutineMetadata {
+                id: format!("postgres:routine:{id}"),
+                schema: row.try_get("routine_schema")?,
+                name: row.try_get("routine_name")?,
+                kind: if row.try_get("is_procedure")? {
+                    RoutineKind::Procedure
+                } else {
+                    RoutineKind::Function
+                },
+                identity_arguments: row.try_get("identity_arguments")?,
+                return_type: row.try_get("return_type")?,
+                language: row.try_get("language")?,
+                definition: Some(row.try_get("definition")?),
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
     Ok(DatabaseMetadata {
         databases,
         schemas,
         tables,
         views,
+        routines,
     })
 }
 
@@ -811,6 +838,101 @@ mod tests {
             .execute(&driver.pool)
             .await
             .expect("drop contract schema");
+        driver.disconnect().await.expect("disconnect postgres");
+    }
+
+    #[tokio::test]
+    async fn loads_overload_safe_routine_ddl_when_test_database_is_available() {
+        let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
+            return;
+        };
+        let mut config = postgres_config();
+        config.database = database;
+        config.host = std::env::var("QUERYX_TEST_POSTGRES_HOST").ok();
+        config.port = std::env::var("QUERYX_TEST_POSTGRES_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok());
+        config.username = std::env::var("QUERYX_TEST_POSTGRES_USERNAME").ok();
+        config.password = std::env::var("QUERYX_TEST_POSTGRES_PASSWORD").ok();
+
+        let driver = PostgresDriver::connect(&config)
+            .await
+            .expect("connect postgres routine metadata database");
+        let schema = format!("queryx_routines_{}", Uuid::new_v4().simple());
+        sqlx::query(&format!(r#"CREATE SCHEMA "{schema}""#))
+            .execute(&driver.pool)
+            .await
+            .expect("create routine contract schema");
+        for statement in [
+            format!(
+                r#"CREATE FUNCTION "{schema}".calculate_total(amount numeric) RETURNS numeric LANGUAGE sql IMMUTABLE AS $$ SELECT amount $$"#
+            ),
+            format!(
+                r#"CREATE FUNCTION "{schema}".calculate_total(amount integer) RETURNS integer LANGUAGE sql IMMUTABLE AS $$ SELECT amount $$"#
+            ),
+            format!(
+                r#"CREATE FUNCTION "{schema}".order_ids(prefix text DEFAULT '') RETURNS TABLE(order_id bigint) LANGUAGE sql STABLE AS $$ SELECT 1::bigint $$"#
+            ),
+            format!(
+                r#"CREATE PROCEDURE "{schema}".refresh_orders() LANGUAGE sql AS $$ SELECT 1 $$"#
+            ),
+        ] {
+            sqlx::query(&statement)
+                .execute(&driver.pool)
+                .await
+                .expect("create routine contract object");
+        }
+
+        let metadata = driver.metadata().await.expect("load routine metadata");
+        let overloads = metadata
+            .routines
+            .iter()
+            .filter(|routine| routine.schema == schema && routine.name == "calculate_total")
+            .collect::<Vec<_>>();
+        let table_function = metadata
+            .routines
+            .iter()
+            .find(|routine| routine.schema == schema && routine.name == "order_ids")
+            .expect("table-returning function metadata");
+        let procedure = metadata
+            .routines
+            .iter()
+            .find(|routine| routine.schema == schema && routine.name == "refresh_orders")
+            .expect("procedure metadata");
+
+        assert_eq!(overloads.len(), 2);
+        assert_ne!(overloads[0].id, overloads[1].id);
+        assert!(overloads
+            .iter()
+            .any(|routine| routine.identity_arguments == "amount integer"));
+        assert!(overloads
+            .iter()
+            .any(|routine| routine.identity_arguments == "amount numeric"));
+        assert!(overloads.iter().all(|routine| {
+            routine.kind == RoutineKind::Function
+                && routine.language == "sql"
+                && routine
+                    .definition
+                    .as_deref()
+                    .is_some_and(|ddl| ddl.contains("CREATE OR REPLACE FUNCTION"))
+        }));
+        assert_eq!(table_function.identity_arguments, "prefix text");
+        assert!(table_function
+            .return_type
+            .as_deref()
+            .is_some_and(|value| value.starts_with("TABLE(")));
+        assert_eq!(procedure.kind, RoutineKind::Procedure);
+        assert_eq!(procedure.identity_arguments, "");
+        assert_eq!(procedure.return_type, None);
+        assert!(procedure
+            .definition
+            .as_deref()
+            .is_some_and(|ddl| ddl.contains("CREATE OR REPLACE PROCEDURE")));
+
+        sqlx::query(&format!(r#"DROP SCHEMA "{schema}" CASCADE"#))
+            .execute(&driver.pool)
+            .await
+            .expect("drop routine contract schema");
         driver.disconnect().await.expect("disconnect postgres");
     }
 

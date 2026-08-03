@@ -112,6 +112,28 @@ const metadata: DatabaseMetadata = {
         "SELECT id, customer_id, total_amount FROM orders WHERE status = 'paid'",
     },
   ],
+  routines: [
+    {
+      id: "demo:public:daily_revenue:date",
+      schema: "public",
+      name: "daily_revenue",
+      kind: "function",
+      identityArguments: "start_date date",
+      returnType: "TABLE(day date, orders bigint, revenue numeric)",
+      language: "sql",
+      definition: `CREATE OR REPLACE FUNCTION public.daily_revenue(start_date date)
+RETURNS TABLE(day date, orders bigint, revenue numeric)
+LANGUAGE sql
+STABLE
+AS $function$
+  SELECT created_at::date, COUNT(*), SUM(total_amount)
+  FROM public.orders
+  WHERE created_at >= start_date AND status = 'paid'
+  GROUP BY created_at::date
+  ORDER BY created_at::date DESC;
+$function$`,
+    },
+  ],
 };
 
 export class InMemoryDriver implements DatabaseDriver {

@@ -8,7 +8,8 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Connections](connections.md) — SQLite/PostgreSQL fields, TLS, credential behavior
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
-- [Metadata Explorer](metadata-explorer.md) — schemas, tables, views, columns, indexes, and foreign-key navigation
+- [Metadata Explorer](metadata-explorer.md) — schemas, relations, indexes, routines, and foreign-key navigation
+- [Routine Inspector](routine-inspector.md) — overload identity, read-only PostgreSQL DDL, safety, and recovery
 - [Troubleshooting](troubleshooting.md) — setup, connection, rendering, export, and build recovery
 
 ## Understand the system

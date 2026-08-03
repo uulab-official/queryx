@@ -77,11 +77,25 @@ export interface ViewMetadata {
   definition?: string;
 }
 
+export type RoutineKind = "function" | "procedure";
+
+export interface RoutineMetadata {
+  id: string;
+  schema: string;
+  name: string;
+  kind: RoutineKind;
+  identityArguments: string;
+  returnType: string | null;
+  language: string;
+  definition: string | null;
+}
+
 export interface DatabaseMetadata {
   databases: string[];
   schemas: string[];
   tables: TableMetadata[];
   views: ViewMetadata[];
+  routines: RoutineMetadata[];
 }
 
 export interface DriverConfig {

@@ -2,7 +2,13 @@
 
 ## What it does
 
-The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, and composite foreign keys.
+The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, and procedures.
+
+## Routine catalog
+
+One batched `pg_proc` query loads visible ordinary functions and procedures. QueryX uses routine OIDs only as opaque identities for the active metadata snapshot, identity arguments to distinguish overloads in the UI, `pg_get_function_result` for return shapes, and `pg_get_functiondef` for read-only database-rendered DDL. Aggregates and window functions are excluded.
+
+The DDL is reconstructed by PostgreSQL and may not preserve original comments, whitespace, or formatting. QueryX displays and copies it but never executes it automatically. Routine bodies remain within the local desktop process and the connected database boundary.
 
 ## Connection behavior
 
@@ -40,13 +46,13 @@ export QUERYX_TEST_POSTGRES_PASSWORD=local-test-only
 cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml postgres_driver
 ```
 
-Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates an isolated schema to verify composite foreign-key catalog mapping. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
+Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, username, and password fall back to the driver's local defaults when omitted. The live harness also runs `pg_sleep(10)`, cancels it within three seconds, and creates isolated schemas to verify composite foreign keys plus overloaded functions, default arguments, TABLE returns, procedures, opaque IDs, and reconstructed DDL. GitHub Actions runs this harness against a disposable PostgreSQL 17 service.
 
 ## Known limitations
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Functions, triggers, dependencies, and editable DDL are not yet part of the shared metadata model.
+- Triggers, dependencies, aggregates/window functions, and editable DDL are not yet part of the shared metadata model.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

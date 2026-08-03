@@ -208,6 +208,7 @@ impl DatabaseDriver for SqliteDriver {
             schemas: vec!["main".into()],
             tables,
             views,
+            routines: Vec::new(),
         })
     }
 
@@ -419,6 +420,7 @@ mod tests {
         assert_eq!(index.columns, ["status", "created_at"]);
         assert!(!index.unique);
         assert_eq!(view.columns.len(), 3);
+        assert!(metadata.routines.is_empty());
         assert!(view
             .definition
             .as_deref()

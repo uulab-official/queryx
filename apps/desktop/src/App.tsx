@@ -17,6 +17,7 @@ import type {
   DriverConfig,
   DriverKind,
   RelationRef,
+  RoutineMetadata,
   TableMetadata,
   ViewMetadata,
 } from "@queryx/shared";
@@ -55,7 +56,7 @@ function App() {
     activeTabId,
     result,
     metadata,
-    selectedRelation,
+    selectedObject,
     resultView,
     filter,
     isRunning,
@@ -73,7 +74,7 @@ function App() {
     closeQuery,
     setFilter,
     setResultView,
-    setSelectedRelation,
+    setSelectedObject,
     runQuery,
     cancelQuery,
     loadMetadata,
@@ -164,24 +165,29 @@ function App() {
 
   const tables = metadata?.tables ?? [];
   const views = metadata?.views ?? [];
+  const routines = metadata?.routines ?? [];
   const schemas = metadata?.schemas ?? [];
   const currentTable =
-    selectedRelation?.kind === "table"
+    selectedObject?.kind === "table"
       ? tables.find(
           (table) =>
-            table.schema === selectedRelation.schema &&
-            table.name === selectedRelation.name,
+            table.schema === selectedObject.schema &&
+            table.name === selectedObject.name,
         )
-      : selectedRelation
+      : selectedObject
         ? undefined
         : tables[0];
   const currentView =
-    selectedRelation?.kind === "view"
+    selectedObject?.kind === "view"
       ? views.find(
           (view) =>
-            view.schema === selectedRelation.schema &&
-            view.name === selectedRelation.name,
+            view.schema === selectedObject.schema &&
+            view.name === selectedObject.name,
         )
+      : undefined;
+  const currentRoutine =
+    selectedObject?.kind === "routine"
+      ? routines.find((routine) => routine.id === selectedObject.id)
       : undefined;
   const foreignKeyIndex = useMemo(() => buildForeignKeyIndex(tables), [tables]);
   const currentForeignKeys = currentTable
@@ -219,6 +225,11 @@ function App() {
           kind: "column" as const,
         })),
       ]),
+      ...metadata.routines.map((routine) => ({
+        label: routine.name,
+        detail: `${routine.schema} ${routine.kind}(${routine.identityArguments})${routine.returnType ? ` → ${routine.returnType}` : ""}`,
+        kind: "function" as const,
+      })),
     ];
   }, [metadata]);
   const visibleRows = useMemo(() => {
@@ -248,7 +259,7 @@ function App() {
       );
       return;
     }
-    setSelectedRelation({ kind: "table", ...relation });
+    setSelectedObject({ kind: "table", ...relation });
   };
 
   const sort = (key: string) => {
@@ -397,6 +408,9 @@ function App() {
                       const schemaViews = views.filter(
                         (view) => view.schema === schema,
                       );
+                      const schemaRoutines = routines.filter(
+                        (routine) => routine.schema === schema,
+                      );
                       return (
                         <div key={schema}>
                           <TreeRow
@@ -421,10 +435,10 @@ function App() {
                                     return (
                                       <button
                                         type="button"
-                                        className={`tree-row ${selectedRelation?.kind === "table" && selectedRelation.schema === table.schema && selectedRelation.name === table.name ? "selected" : ""}`}
+                                        className={`tree-row ${selectedObject?.kind === "table" && selectedObject.schema === table.schema && selectedObject.name === table.name ? "selected" : ""}`}
                                         key={tableKey}
                                         onClick={() =>
-                                          setSelectedRelation({
+                                          setSelectedObject({
                                             kind: "table",
                                             schema: table.schema,
                                             name: table.name,
@@ -453,10 +467,10 @@ function App() {
                                     return (
                                       <button
                                         type="button"
-                                        className={`tree-row ${selectedRelation?.kind === "view" && selectedRelation.schema === view.schema && selectedRelation.name === view.name ? "selected" : ""}`}
+                                        className={`tree-row ${selectedObject?.kind === "view" && selectedObject.schema === view.schema && selectedObject.name === view.name ? "selected" : ""}`}
                                         key={viewKey}
                                         onClick={() =>
-                                          setSelectedRelation({
+                                          setSelectedObject({
                                             kind: "view",
                                             schema: view.schema,
                                             name: view.name,
@@ -470,6 +484,48 @@ function App() {
                                       </button>
                                     );
                                   })}
+                                </div>
+                              )}
+                              <TreeRow
+                                label="Routines"
+                                icon="▱"
+                                tone="folder"
+                                count={schemaRoutines.length}
+                              />
+                              {schemaRoutines.length > 0 && (
+                                <div className="tree-children">
+                                  {schemaRoutines.map((routine) => (
+                                    <button
+                                      type="button"
+                                      className={`tree-row routine-tree-row ${selectedObject?.kind === "routine" && selectedObject.id === routine.id ? "selected" : ""}`}
+                                      key={routine.id}
+                                      title={`${routine.schema}.${routine.name}(${routine.identityArguments})`}
+                                      onClick={() =>
+                                        setSelectedObject({
+                                          kind: "routine",
+                                          id: routine.id,
+                                          schema: routine.schema,
+                                          name: routine.name,
+                                          identityArguments:
+                                            routine.identityArguments,
+                                          routineKind: routine.kind,
+                                        })
+                                      }
+                                    >
+                                      <span className="tree-icon routine">
+                                        ƒ
+                                      </span>
+                                      <span className="routine-tree-label">
+                                        {routine.name}(
+                                        {routine.identityArguments})
+                                      </span>
+                                      <small>
+                                        {routine.kind === "procedure"
+                                          ? "proc"
+                                          : "fn"}
+                                      </small>
+                                    </button>
+                                  ))}
                                 </div>
                               )}
                             </div>
@@ -800,14 +856,23 @@ function App() {
         </main>
         <Inspector
           key={
-            selectedRelation
-              ? `${selectedRelation.kind}:${selectedRelation.schema}.${selectedRelation.name}`
-              : "no-relation"
+            selectedObject
+              ? selectedObject.kind === "routine"
+                ? `routine:${selectedObject.id}`
+                : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
+              : "no-object"
           }
           table={currentTable}
           view={currentView}
+          routine={currentRoutine}
           foreignKeys={currentForeignKeys}
           onSelectTable={selectRelatedTable}
+          onCopyDefinition={(definition) => {
+            void navigator.clipboard
+              .writeText(definition)
+              .then(() => notify("Routine DDL copied"))
+              .catch(() => notify("Could not copy routine DDL"));
+          }}
         />
       </div>
       {toast && <div className="toast">{toast}</div>}
@@ -1146,13 +1211,17 @@ function ConnectionDialog({
 function Inspector({
   table,
   view,
+  routine,
   foreignKeys,
   onSelectTable,
+  onCopyDefinition,
 }: {
   table?: TableMetadata;
   view?: ViewMetadata;
+  routine?: RoutineMetadata;
   foreignKeys?: ForeignKeyRelations;
   onSelectTable: (relation: RelationRef) => void;
+  onCopyDefinition: (definition: string) => void;
 }) {
   const relation = table ?? view;
   const [activeTab, setActiveTab] = useState<
@@ -1160,6 +1229,76 @@ function Inspector({
   >("columns");
   const relationCount =
     (foreignKeys?.outgoing.length ?? 0) + (foreignKeys?.incoming.length ?? 0);
+
+  if (routine) {
+    const signature = `${routine.name}(${routine.identityArguments})`;
+    const definition = routine.definition;
+    return (
+      <aside className="inspector">
+        <div className="panel-heading">
+          INSPECTOR <span className="read-only-badge">READ ONLY</span>
+        </div>
+        <div className="inspector-title routine-title">
+          <span className="table-symbol routine-symbol">ƒ</span>
+          <span>
+            <strong title={signature}>{signature}</strong>
+            <small>
+              {routine.schema} · {routine.kind}
+            </small>
+          </span>
+        </div>
+        <div className="inspector-section routine-details">
+          <div className="section-title">ROUTINE DETAILS</div>
+          <dl>
+            <dt>Schema</dt>
+            <dd>{routine.schema}</dd>
+            <dt>Kind</dt>
+            <dd>{routine.kind}</dd>
+            <dt>Language</dt>
+            <dd>{routine.language}</dd>
+            <dt>Arguments</dt>
+            <dd title={routine.identityArguments}>
+              {routine.identityArguments || "None"}
+            </dd>
+            <dt>Returns</dt>
+            <dd title={routine.returnType ?? undefined}>
+              {routine.returnType ?? "None"}
+            </dd>
+          </dl>
+        </div>
+        <div className="inspector-section routine-definition-section">
+          <div className="section-title routine-definition-heading">
+            DATABASE-RENDERED DDL
+            {definition && (
+              <button
+                type="button"
+                className="copy-ddl-button"
+                onClick={() => onCopyDefinition(definition)}
+              >
+                Copy DDL
+              </button>
+            )}
+          </div>
+          {definition ? (
+            <code
+              className="definition-preview routine-definition"
+              aria-label={`${signature} read-only DDL`}
+            >
+              {definition}
+            </code>
+          ) : (
+            <div className="inspector-empty">
+              Definition is unavailable for this routine.
+            </div>
+          )}
+          <p className="ddl-safety-note">
+            Displayed for inspection only. QueryX never executes this text
+            automatically.
+          </p>
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside className="inspector">

@@ -24,6 +24,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Competitive, acceptance-gated roadmap toward a production database IDE.
 - Driver-neutral Views Explorer and table Indexes Inspector backed by batched SQLite/PostgreSQL catalog metadata.
 - Bidirectional foreign-key Inspector with composite column pairing, referential actions, and live PostgreSQL contract coverage.
+- Overload-safe PostgreSQL function/procedure Explorer, read-only database-rendered DDL Inspector, routine completion, and SQLite's explicit empty routine contract.
 
 ## [0.1.0] — 2026-08-03
 

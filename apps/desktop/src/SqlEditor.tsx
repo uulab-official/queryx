@@ -33,7 +33,7 @@ import type { QueryTab } from "./store";
 export interface SqlCompletion {
   label: string;
   detail: string;
-  kind: "schema" | "table" | "column";
+  kind: "schema" | "table" | "column" | "function";
 }
 
 export interface SqlEditorHandle {
@@ -244,5 +244,6 @@ function completionKind(
 ): monaco.languages.CompletionItemKind {
   if (kind === "schema") return monaco.languages.CompletionItemKind.Module;
   if (kind === "table") return monaco.languages.CompletionItemKind.Class;
+  if (kind === "function") return monaco.languages.CompletionItemKind.Function;
   return monaco.languages.CompletionItemKind.Field;
 }

@@ -55,7 +55,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [ ] JSON and SQL INSERT export; progress, cancel, encoding, delimiter, and line-ending controls
 - [x] Metadata for views, indexes, and primary keys
 - [x] Composite foreign keys with outgoing/incoming relationship navigation
-- [ ] Routines, dependencies, and editable DDL
+- [x] PostgreSQL functions/procedures with overload-safe selection and read-only DDL inspection
+- [ ] Triggers, dependencies, aggregates/window functions, and editable DDL
 - [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
 
 Release gates:
