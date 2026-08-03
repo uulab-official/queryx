@@ -805,6 +805,15 @@ mod tests {
         assert!(!is_row_returning_query("DELETE FROM users WHERE id = 1"));
     }
 
+    #[test]
+    fn extracts_trigger_condition_from_database_rendered_ddl() {
+        let definition = "CREATE TRIGGER audit BEFORE UPDATE ON public.orders FOR EACH ROW WHEN ((new.status IS NOT NULL)) EXECUTE FUNCTION audit_order()";
+        assert_eq!(
+            trigger_condition_from_definition(definition).as_deref(),
+            Some("(new.status IS NOT NULL)")
+        );
+    }
+
     #[tokio::test]
     async fn satisfies_contract_when_test_database_is_available() {
         let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
@@ -1034,7 +1043,7 @@ mod tests {
         assert!(audit_trigger
             .condition
             .as_deref()
-            .is_some_and(|value| value.contains("NEW.status")));
+            .is_some_and(|value| value.to_ascii_lowercase().contains("new.status")));
         assert!(audit_trigger
             .definition
             .as_deref()
