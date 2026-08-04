@@ -172,6 +172,7 @@ describe("query tabs", () => {
         migrationSql: "CREATE TABLE public.audit (id integer);",
         rollbackSql: "DROP TABLE public.audit;",
         privilegePreflightSql: "SELECT current_user;",
+        status: "preview" as const,
       };
       useQueryStore.setState({ migrationHistory: [] });
       useQueryStore.getState().addMigrationHistory(entry);
@@ -184,6 +185,10 @@ describe("query tabs", () => {
       expect(
         JSON.parse(values.get("queryx:migration-history") ?? "[]"),
       ).toHaveLength(1);
+      useQueryStore.getState().markMigrationApplied("migration-2");
+      expect(useQueryStore.getState().migrationHistory[0]?.status).toBe(
+        "applied",
+      );
       useQueryStore.getState().clearMigrationHistory();
       expect(useQueryStore.getState().migrationHistory).toEqual([]);
       expect(values.has("queryx:migration-history")).toBe(false);

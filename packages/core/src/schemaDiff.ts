@@ -683,6 +683,71 @@ export function buildSchemaMigrationSql(diff: SchemaDiff): string {
     .join("\n\n");
 }
 
+function splitSqlStatements(sql: string): string[] {
+  const statements: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | "`" | null = null;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = 0; index < sql.length; index += 1) {
+    const character = sql[index];
+    const next = sql[index + 1];
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (!quote && character === "-" && next === "-") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (!quote && character === "/" && next === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      current += character;
+      if (character === quote && sql[index - 1] !== "\\") {
+        if (sql[index + 1] === quote) {
+          current += sql[index + 1];
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === ";") {
+      if (current.trim()) statements.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) statements.push(current.trim());
+  return statements;
+}
+
+export function buildSchemaMigrationStatements(diff: SchemaDiff): string[] {
+  return diff.changes.flatMap((change) =>
+    change.sql ? splitSqlStatements(change.sql) : [],
+  );
+}
+
 export function buildSchemaRollbackSql(diff: SchemaDiff): string {
   return [...diff.changes]
     .reverse()

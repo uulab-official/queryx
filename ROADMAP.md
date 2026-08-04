@@ -74,7 +74,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL database-scoped event triggers with tags, activation status, function navigation, and reconstructed DDL
 - [x] PostgreSQL aggregates/window functions with catalog-specific Inspector metadata
 - [x] DDL Inspector handoff to editable SQL tabs with explicit transaction execution, rollback-on-error, and metadata refresh
-- [x] Session-local and same-dialect cross-connection schema compare with dependency-ordered table/column/index/FK/view migration and rollback SQL preview, driver-specific privilege preflight, local preview history, and manual-review markers; object-specific forms and applied/native-durable migration history remain planned
+- [x] Session-local and same-dialect cross-connection schema compare with dependency-ordered table/column/index/FK/view migration, rollback SQL preview, driver-specific privilege preflight, explicit transactional apply, native applied history, local preview history, and manual-review markers; object-specific forms remain planned
 - [x] Searchable command palette and Quick Open for core query/editor/result actions; complete keyboard map and full accessibility audit remain planned
 - [x] Inspector close behavior, modal Escape handling, and accessible labels for primary navigation controls
 
@@ -93,8 +93,8 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [ ] Parser-backed destructive-statement analysis and database-backed affected-row estimates
 - [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state remains separate work
 - [ ] Table data editor with filters, ordering, pagination, and optimistic conflict detection
-- [ ] Object creation/editing for tables, columns, indexes, views, and constraints
-- [ ] Schema compare applied-migration confirmation and native durable migration history on top of the current metadata dependency graph, privilege preflight, and forward/rollback preview
+- [x] Table creation form with schema/column/type/required/primary-key validation, SQL preview, and explicit transaction apply; alter/drop/view/index/constraint forms remain planned
+- [x] Schema compare applied-migration confirmation and native durable migration history on top of the metadata dependency graph, privilege preflight, and forward/rollback preview; object-specific DDL forms remain planned
 - [ ] Session audit trail stored locally with configurable retention and redaction
 - [ ] Backup/export warning flows before high-risk schema operations
 

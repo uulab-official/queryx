@@ -1,6 +1,6 @@
 # Schema Compare and Migration Preview
 
-QueryX can compare a captured metadata baseline with a later metadata refresh, or inspect a saved same-dialect connection through a temporary read-only connection. This is a review workflow: it generates migration SQL but never executes it automatically.
+QueryX can compare a captured metadata baseline with a later metadata refresh, or inspect a saved same-dialect connection through a temporary read-only connection. This is a review workflow: it generates migration SQL but never executes it without an explicit confirmation.
 
 ## Workflow
 
@@ -9,7 +9,7 @@ QueryX can compare a captured metadata baseline with a later metadata refresh, o
 3. Apply or inspect a schema change outside the baseline, then choose **Refresh metadata**.
 4. Choose **⇄** again or **Compare schema** from the command palette.
 5. Review additive, destructive, dependency-ordered, and manual-review changes. Choose **Open SQL preview** to put the generated migration text in a new SQL tab, or **Open rollback** to inspect the reverse preview.
-6. Review, edit, and execute the SQL through the existing Safe Mode or **Run in Transaction** workflow.
+6. Review and edit the SQL through the existing Safe Mode or **Run in Transaction** workflow, or choose **Apply in transaction** when every change is executable and the active connection is writable.
 
 To compare another saved connection, choose **Compare connection** in the diff dialog. Select a saved profile for the active driver and enter its password for the current session when needed. QueryX reads only metadata, disconnects the temporary driver, and keeps the active query connection unchanged.
 
@@ -19,7 +19,7 @@ The comparison engine detects added/removed tables, added/removed/changed column
 
 Table creation includes the available primary-key columns. Preview statements use the metadata dependency graph: additive changes wait for referenced tables/views, while destructive changes remove dependent foreign keys/views before their referenced objects. Category priorities remain the deterministic fallback for independent changes. Rollback preview is generated in reverse dependency order when the driver can express the inverse operation; unavailable inverses are marked for manual review.
 
-**Privilege preflight** opens a read-only inspection tab: PostgreSQL checks `has_*_privilege`, MySQL/MariaDB shows `SHOW GRANTS`, and SQLite reports its file-permission boundary. **Migration history** stores the generated forward, rollback, and preflight previews in local app storage. It is an auditable preview ledger, not a claim that QueryX applied the SQL; native SQLite-backed durable workspace history is still planned.
+**Privilege preflight** opens a read-only inspection tab: PostgreSQL checks `has_*_privilege`, MySQL/MariaDB shows `SHOW GRANTS`, and SQLite reports its file-permission boundary. **Migration history** stores generated previews and applied status in local app storage. Tauri persists it in the native app-local workspace snapshot; browser preview persists it in local storage. An `Applied` entry means QueryX completed every executable statement in its transaction batch at that time; refresh metadata after external changes.
 
 The baseline lives in the active desktop session only. Switching the active connection clears it so a snapshot from one database cannot accidentally be compared with another. Cross-dialect comparison is intentionally blocked because generated migration SQL must target a known dialect.
 

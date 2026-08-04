@@ -8,6 +8,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Connections](connections.md) — SQLite/PostgreSQL/MySQL fields, TLS, credential behavior
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
 - [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
+- [Object Forms](object-forms.md) — table creation form, validation, SQL preview, and safe apply boundaries
 - [Schema Compare](schema-compare.md) — capture a baseline, review metadata changes, and open migration SQL safely
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [CSV Import](import.md) — header mapping, typed preview, validation, and transactional batch import

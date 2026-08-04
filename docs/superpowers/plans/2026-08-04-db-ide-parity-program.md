@@ -254,7 +254,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add foreign-key/view diffing, dialect-aware SQL/manual-review markers, and deterministic create/remove object-category ordering.
 - [x] Add metadata dependency-graph ordering and reverse rollback SQL preview with manual-review fallbacks.
 - [x] Add driver-specific read-only privilege preflight SQL and local preview history with forward/rollback recall.
-- [ ] Add applied-migration confirmation and native durable migration history.
+- [x] Add explicit transactional apply, applied-status confirmation, and native durable migration history in the app-local workspace snapshot.
 
 ### Task 8: CSV import vertical slice
 
@@ -269,6 +269,12 @@ git commit -m "docs: add database ide parity gates"
 - [x] Build a deterministic bounded graph from table/view metadata, foreign keys, and direct view dependencies.
 - [x] Add command-palette access, search, zoom, keyboard navigation, and click-through to the Inspector.
 - [x] Document the 120-relation bound and keep lazy loading, layout persistence, export, and editing as planned scope.
+
+### Task 10: Deliver the first object-specific DDL form
+
+- [x] Add a validated table creation plan for PostgreSQL, MySQL/MariaDB, and SQLite with quoted identifiers and composite primary keys.
+- [x] Add command-palette access, editable column rows, SQL preview, explicit transaction apply, read-only gating, and metadata refresh.
+- [x] Document the table-form boundary while keeping alteration, drop, view, index, and constraint forms planned.
 
 ## Final verification for this plan
 

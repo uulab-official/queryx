@@ -1,5 +1,10 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { QueryFavorite, QueryHistoryEntry, QueryTab } from "./store";
+import type {
+  MigrationHistoryEntry,
+  QueryFavorite,
+  QueryHistoryEntry,
+  QueryTab,
+} from "./store";
 
 export interface WorkspaceSnapshot {
   version: 1;
@@ -7,6 +12,7 @@ export interface WorkspaceSnapshot {
   activeTabId: string;
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
+  migrationHistory: MigrationHistoryEntry[];
 }
 
 export interface WorkspaceLoadResult {
@@ -18,6 +24,7 @@ export interface WorkspaceLoadResult {
 const workspaceTabsStorageKey = "queryx:workspace-tabs";
 const historyStorageKey = "queryx:query-history";
 const favoritesStorageKey = "queryx:query-favorites";
+const migrationHistoryStorageKey = "queryx:migration-history";
 const nativeWorkspacePath = "queryx/workspace.json";
 
 function normalizeTabs(value: unknown, fallback: QueryTab[]): QueryTab[] {
@@ -67,6 +74,41 @@ function normalizeFavorites(value: unknown): QueryFavorite[] {
     .slice(0, 50);
 }
 
+function normalizeMigrationHistory(value: unknown): MigrationHistoryEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (entry): entry is MigrationHistoryEntry =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof entry.id === "string" &&
+        typeof entry.baselineLabel === "string" &&
+        typeof entry.targetLabel === "string" &&
+        (entry.driver === "sqlite" ||
+          entry.driver === "postgres" ||
+          entry.driver === "mysql") &&
+        typeof entry.createdAt === "string" &&
+        typeof entry.changeCount === "number" &&
+        typeof entry.added === "number" &&
+        typeof entry.removed === "number" &&
+        typeof entry.manual === "number" &&
+        typeof entry.migrationSql === "string" &&
+        typeof entry.rollbackSql === "string" &&
+        typeof entry.privilegePreflightSql === "string",
+    )
+    .map((entry) => ({
+      ...entry,
+      status:
+        entry.status === "applied"
+          ? ("applied" as const)
+          : ("preview" as const),
+      ...(typeof entry.appliedAt === "string"
+        ? { appliedAt: entry.appliedAt }
+        : {}),
+    }))
+    .slice(0, 30);
+}
+
 function fallbackSnapshot(fallbackTabs: QueryTab[]): WorkspaceSnapshot {
   return {
     version: 1,
@@ -74,6 +116,7 @@ function fallbackSnapshot(fallbackTabs: QueryTab[]): WorkspaceSnapshot {
     activeTabId: fallbackTabs[0]?.id ?? "query-1",
     history: [],
     favorites: [],
+    migrationHistory: [],
   };
 }
 
@@ -94,6 +137,7 @@ function normalizeSnapshot(
     activeTabId,
     history: normalizeHistory(candidate.history),
     favorites: normalizeFavorites(candidate.favorites),
+    migrationHistory: normalizeMigrationHistory(candidate.migrationHistory),
   };
 }
 
@@ -112,10 +156,14 @@ function readBrowserSnapshot(
     const favorites = JSON.parse(
       window.localStorage.getItem(favoritesStorageKey) ?? "[]",
     );
+    const migrationHistory = JSON.parse(
+      window.localStorage.getItem(migrationHistoryStorageKey) ?? "[]",
+    );
     if (
       (!tabsSnapshot || tabsSnapshot.version !== 1) &&
       (!Array.isArray(history) || history.length === 0) &&
-      (!Array.isArray(favorites) || favorites.length === 0)
+      (!Array.isArray(favorites) || favorites.length === 0) &&
+      (!Array.isArray(migrationHistory) || migrationHistory.length === 0)
     ) {
       return null;
     }
@@ -130,6 +178,7 @@ function readBrowserSnapshot(
             }),
         history,
         favorites,
+        migrationHistory,
       },
       fallback,
     );
@@ -202,6 +251,14 @@ export async function persistWorkspaceSnapshot(
         favoritesStorageKey,
         JSON.stringify(normalized.favorites),
       );
+      if (normalized.migrationHistory.length === 0) {
+        window.localStorage.removeItem(migrationHistoryStorageKey);
+      } else {
+        window.localStorage.setItem(
+          migrationHistoryStorageKey,
+          JSON.stringify(normalized.migrationHistory),
+        );
+      }
     } catch {
       // Local persistence is best-effort and never contains connection secrets.
     }

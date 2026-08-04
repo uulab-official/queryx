@@ -28,6 +28,12 @@ export type {
   IncomingForeignKey,
 } from "./foreignKeyIndex";
 export { InMemoryDriver } from "./inMemoryDriver";
+export { buildCreateTablePlan } from "./ddlForms";
+export type {
+  CreateTableColumnInput,
+  CreateTableInput,
+  CreateTablePlan,
+} from "./ddlForms";
 export { buildErdDiagram, erdObjectId } from "./erd";
 export type {
   ErdColumn,
@@ -55,6 +61,7 @@ export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
 export { formatSql } from "./sqlFormatter";
 export {
+  buildSchemaMigrationStatements,
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,

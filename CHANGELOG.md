@@ -63,6 +63,8 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added a CSV import wizard with target/type mapping, typed validation, first-row preview, and transactional edit batches.
 - Extended import to JSON arrays/NDJSON and driver-specific ignore-conflict policies.
 - Added a bounded ERD explorer with deterministic table/view layout, foreign-key and view-reference edges, relation filtering, zoom, keyboard navigation, and Inspector click-through.
+- Added explicit transactional schema migration apply with executable-statement batching, applied-status confirmation, and native workspace persistence for the migration ledger.
+- Added a validated table-creation form with dialect-aware quoting, composite primary keys, SQL preview, and explicit transaction apply.
 
 ## [0.1.0] — 2026-08-03
 

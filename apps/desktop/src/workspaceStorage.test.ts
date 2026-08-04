@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { QueryFavorite, QueryHistoryEntry, QueryTab } from "./store";
+import type {
+  MigrationHistoryEntry,
+  QueryFavorite,
+  QueryHistoryEntry,
+  QueryTab,
+} from "./store";
 import {
   loadWorkspaceSnapshot,
   persistWorkspaceSnapshot,
@@ -59,6 +64,22 @@ describe("versioned workspace storage", () => {
         sql: "SELECT * FROM orders",
         createdAt: new Date().toISOString(),
       };
+      const migration: MigrationHistoryEntry = {
+        id: "migration-1",
+        baselineLabel: "Baseline",
+        targetLabel: "Current",
+        driver: "sqlite",
+        createdAt: new Date().toISOString(),
+        changeCount: 1,
+        added: 1,
+        removed: 0,
+        manual: 0,
+        migrationSql: "CREATE TABLE audit (id integer);",
+        rollbackSql: "DROP TABLE audit;",
+        privilegePreflightSql: "SELECT 1;",
+        status: "applied",
+        appliedAt: new Date().toISOString(),
+      };
 
       await persistWorkspaceSnapshot({
         version: 1,
@@ -66,6 +87,7 @@ describe("versioned workspace storage", () => {
         activeTabId: "second",
         history: [history],
         favorites: [favorite],
+        migrationHistory: [migration],
       });
       const result = await loadWorkspaceSnapshot([fallback]);
 
@@ -75,6 +97,7 @@ describe("versioned workspace storage", () => {
       expect(result.snapshot.tabs).toHaveLength(2);
       expect(result.snapshot.history).toEqual([history]);
       expect(result.snapshot.favorites).toEqual([favorite]);
+      expect(result.snapshot.migrationHistory).toEqual([migration]);
       expect(values.has("queryx:workspace-tabs")).toBe(true);
     });
   });
@@ -95,6 +118,7 @@ describe("versioned workspace storage", () => {
         activeTabId: "query-1",
         history: [],
         favorites: [],
+        migrationHistory: [],
       });
 
       expect(values.has("queryx:query-history")).toBe(false);

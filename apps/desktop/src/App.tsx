@@ -18,7 +18,9 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
   buildCsvImportPlan,
+  buildCreateTablePlan,
   buildErdDiagram,
+  buildSchemaMigrationStatements,
   buildRowsToSqlUpdateStatements,
   buildDependencyIndex,
   buildForeignKeyIndex,
@@ -42,6 +44,8 @@ import {
 import type {
   CsvImportMapping,
   CsvImportPlan,
+  CreateTableColumnInput,
+  CreateTablePlan,
   ErdNode,
   ForeignKeyRelations,
   ImportConflictPolicy,
@@ -457,6 +461,7 @@ function App() {
     clearHistory,
     addMigrationHistory,
     clearMigrationHistory,
+    markMigrationApplied,
     toggleFavorite,
   } = useQueryStore();
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -473,6 +478,7 @@ function App() {
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [createTableOpen, setCreateTableOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -538,10 +544,11 @@ function App() {
     }
     setSchemaDiffOpen(true);
   };
-  const recordMigrationPreview = () => {
-    if (!schemaDiff) return;
+  const recordMigrationPreview = (): string | null => {
+    if (!schemaDiff) return null;
+    const id = crypto.randomUUID();
     addMigrationHistory({
-      id: crypto.randomUUID(),
+      id,
       baselineLabel: schemaBaselineLabel,
       targetLabel: `Current connection · ${connectionName}`,
       driver: driverKind,
@@ -556,7 +563,46 @@ function App() {
         schemaDiff,
         driverKind,
       ),
+      status: "preview",
     });
+    return id;
+  };
+  const applySchemaMigration = async () => {
+    if (!schemaDiff || schemaDiff.changes.length === 0) return;
+    if (readOnlyConnection) {
+      notify("Schema migration is disabled for a read-only connection");
+      return;
+    }
+    if (schemaDiff.manual > 0) {
+      notify("Resolve manual-review changes before applying this migration");
+      return;
+    }
+    const statements = buildSchemaMigrationStatements(schemaDiff);
+    if (statements.length === 0) {
+      notify("No executable migration statements are available");
+      return;
+    }
+    if (
+      !window.confirm(
+        `Apply ${statements.length} schema statement${statements.length === 1 ? "" : "s"} in one transaction?`,
+      )
+    ) {
+      return;
+    }
+    const historyId = recordMigrationPreview();
+    const migrationSql = buildSchemaMigrationSql(schemaDiff);
+    const result = await runQuery("transaction", migrationSql, {
+      preserveResult: true,
+      batch: { statements, expectedRows: 0 },
+    });
+    if (!result || !historyId) {
+      notify("Schema migration failed; the transaction was rolled back");
+      return;
+    }
+    markMigrationApplied(historyId);
+    await loadMetadata();
+    setSchemaDiffOpen(false);
+    notify("Schema migration applied and recorded locally");
   };
   const openMigrationHistory = () => setMigrationHistoryOpen(true);
   const openErd = () => {
@@ -565,6 +611,31 @@ function App() {
       return;
     }
     setErdOpen(true);
+  };
+  const openCreateTable = () => {
+    if (!metadata) {
+      notify("Connect to a database before creating a table");
+      return;
+    }
+    setCreateTableOpen(true);
+  };
+  const createTable = async (plan: CreateTablePlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Table creation is disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Create this table in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+    });
+    if (!result) {
+      notify("Table creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setCreateTableOpen(false);
+    notify("Table created and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1657,6 +1728,13 @@ function App() {
         : "metadata required",
       disabled: !metadata,
       execute: openErd,
+    },
+    {
+      id: "create-table",
+      label: "Create table from form",
+      hint: metadata ? driverDisplayName(driverKind) : "metadata required",
+      disabled: !metadata || readOnlyConnection,
+      execute: openCreateTable,
     },
     {
       id: "connection",
@@ -2782,6 +2860,7 @@ function App() {
             setSchemaDiffOpen(false);
             notify("Opened privilege preflight in a new SQL tab");
           }}
+          onApplyMigration={applySchemaMigration}
           onOpenHistory={() => {
             setSchemaDiffOpen(false);
             openMigrationHistory();
@@ -2838,6 +2917,20 @@ function App() {
               name: node.name,
             });
             setErdOpen(false);
+          }}
+        />
+      )}
+      {createTableOpen && metadata && (
+        <CreateTableDialog
+          driverKind={driverKind}
+          schemas={metadata.schemas}
+          onClose={() => setCreateTableOpen(false)}
+          onCreate={createTable}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setCreateTableOpen(false);
+            notify("Opened CREATE TABLE preview in a new SQL tab");
           }}
         />
       )}
@@ -3331,6 +3424,206 @@ function EditPreviewDialog({
   );
 }
 
+function CreateTableDialog({
+  driverKind,
+  schemas,
+  onClose,
+  onCreate,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  schemas: string[];
+  onClose: () => void;
+  onCreate: (plan: CreateTablePlan) => Promise<void>;
+  onOpenSql: (plan: CreateTablePlan) => void;
+}) {
+  const [schema, setSchema] = useState(schemas[0] ?? "public");
+  const [name, setName] = useState("");
+  const [columns, setColumns] = useState<CreateTableColumnInput[]>([
+    { name: "id", type: "integer", nullable: false, primaryKey: true },
+  ]);
+  const plan = useMemo(
+    () => buildCreateTablePlan({ schema, name, columns }, driverKind),
+    [columns, driverKind, name, schema],
+  );
+  const updateColumn = (
+    index: number,
+    patch: Partial<CreateTableColumnInput>,
+  ) => {
+    setColumns((current) =>
+      current.map((column, columnIndex) =>
+        columnIndex === index ? { ...column, ...patch } : column,
+      ),
+    );
+  };
+  const addColumn = () => {
+    setColumns((current) => [
+      ...current,
+      { name: "", type: "text", nullable: true, primaryKey: false },
+    ]);
+  };
+  const removeColumn = (index: number) => {
+    setColumns((current) =>
+      current.filter((_, columnIndex) => columnIndex !== index),
+    );
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-table-modal"
+        aria-modal="true"
+        aria-labelledby="create-table-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · TABLE</p>
+            <h2 id="create-table-title">Create table</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close create table form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Generate a reviewed CREATE TABLE statement for the active{" "}
+          {driverDisplayName(driverKind)} connection. Defaults, foreign keys,
+          indexes, and generated columns can be added from the SQL preview.
+        </p>
+        <div className="create-table-fields">
+          <label htmlFor="create-table-schema">
+            Schema
+            {schemas.length > 0 ? (
+              <select
+                id="create-table-schema"
+                value={schema}
+                onChange={(event) => setSchema(event.target.value)}
+              >
+                {schemas.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="create-table-schema"
+                value={schema}
+                onChange={(event) => setSchema(event.target.value)}
+                placeholder="public"
+              />
+            )}
+          </label>
+          <label htmlFor="create-table-name">
+            Table name
+            <input
+              id="create-table-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="audit_events"
+            />
+          </label>
+        </div>
+        <div className="create-table-columns-heading">
+          <strong>Columns</strong>
+          <button type="button" className="mini-button" onClick={addColumn}>
+            + Add column
+          </button>
+        </div>
+        <div className="create-table-columns" aria-label="Table columns">
+          {columns.map((column, index) => (
+            <div
+              className="create-table-column"
+              key={`${index}-${column.name}`}
+            >
+              <input
+                value={column.name}
+                onChange={(event) =>
+                  updateColumn(index, { name: event.target.value })
+                }
+                placeholder="column_name"
+                aria-label={`Column ${index + 1} name`}
+              />
+              <input
+                value={column.type}
+                onChange={(event) =>
+                  updateColumn(index, { type: event.target.value })
+                }
+                placeholder="text"
+                aria-label={`Column ${index + 1} type`}
+              />
+              <label className="create-table-check">
+                <input
+                  type="checkbox"
+                  checked={!column.nullable}
+                  onChange={(event) =>
+                    updateColumn(index, { nullable: !event.target.checked })
+                  }
+                />
+                Required
+              </label>
+              <label className="create-table-check">
+                <input
+                  type="checkbox"
+                  checked={column.primaryKey}
+                  onChange={(event) =>
+                    updateColumn(index, { primaryKey: event.target.checked })
+                  }
+                />
+                PK
+              </label>
+              <button
+                type="button"
+                className="mini-button"
+                onClick={() => removeColumn(index)}
+                disabled={columns.length === 1}
+                aria-label={`Remove column ${index + 1}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        {plan.errors.length > 0 ? (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        ) : (
+          <pre className="create-table-preview">{plan.sql}</pre>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onCreate(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Create table
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
 function ErdDialog({
   metadata,
   onClose,
@@ -3773,6 +4066,7 @@ function SchemaDiffDialog({
   onOpenSql,
   onOpenRollback,
   onOpenPrivilegePreflight,
+  onApplyMigration,
   onOpenHistory,
 }: {
   diff: SchemaDiff;
@@ -3783,6 +4077,7 @@ function SchemaDiffDialog({
   onOpenSql: () => void;
   onOpenRollback: () => void;
   onOpenPrivilegePreflight: () => void;
+  onApplyMigration: () => Promise<void>;
   onOpenHistory: () => void;
 }) {
   const migrationSql = buildSchemaMigrationSql(diff);
@@ -3882,6 +4177,14 @@ function SchemaDiffDialog({
           </button>
           <button
             type="button"
+            className="modal-transaction"
+            onClick={() => void onApplyMigration()}
+            disabled={diff.changes.length === 0 || diff.manual > 0}
+          >
+            Apply in transaction
+          </button>
+          <button
+            type="button"
             className="modal-secondary"
             onClick={onOpenHistory}
           >
@@ -3938,8 +4241,10 @@ function MigrationHistoryDialog({
           </button>
         </div>
         <p className="modal-copy">
-          QueryX stores generated previews locally without passwords. Entries
-          are review records, not proof that SQL was applied to a database.
+          QueryX stores generated previews locally without passwords. A green
+          Applied status means QueryX completed every executable statement in
+          its transaction; Preview means the SQL still needs review or was not
+          run by QueryX.
         </p>
         {entries.length === 0 ? (
           <div className="schema-diff-empty">
@@ -3957,9 +4262,15 @@ function MigrationHistoryDialog({
                     {entry.baselineLabel} → {entry.targetLabel}
                   </strong>
                   <small>
+                    <span className={`migration-status ${entry.status}`}>
+                      {entry.status === "applied" ? "Applied" : "Preview"}
+                    </span>{" "}
                     {driverDisplayName(entry.driver)} ·{" "}
                     {new Date(entry.createdAt).toLocaleString()} ·{" "}
                     {entry.changeCount} changes · {entry.manual} manual
+                    {entry.appliedAt
+                      ? ` · applied ${new Date(entry.appliedAt).toLocaleString()}`
+                      : ""}
                   </small>
                 </div>
                 <div className="migration-history-actions">

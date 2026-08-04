@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DatabaseMetadata, DependencyMetadata } from "@queryx/shared";
 import {
+  buildSchemaMigrationStatements,
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
@@ -95,6 +96,66 @@ describe("compareSchemaSnapshots", () => {
     expect(diff.changes[0]?.kind).toBe("columnChanged");
     expect(diff.manual).toBe(1);
     expect(buildSchemaMigrationSql(diff)).toContain("MANUAL REVIEW REQUIRED");
+  });
+
+  it("splits executable migration SQL without breaking quoted semicolons", () => {
+    const current = snapshot({
+      tables: [
+        {
+          ...snapshot().tables[0],
+          columns: [
+            { name: "id", type: "integer", nullable: false, primaryKey: true },
+            { name: "email", type: "text", nullable: false },
+            { name: "note", type: "text", nullable: true },
+          ],
+        },
+      ],
+    });
+    const diff = compareSchemaSnapshots(snapshot(), current, "postgres");
+
+    expect(buildSchemaMigrationStatements(diff)).toEqual([
+      'ALTER TABLE "public"."users" ADD COLUMN "note" text',
+    ]);
+
+    const viewDiff = compareSchemaSnapshots(
+      snapshot(),
+      snapshot({
+        views: [
+          {
+            schema: "public",
+            name: "quoted_value",
+            columns: [{ name: "value", type: "text", nullable: true }],
+            definition: "SELECT 'a;b' AS value",
+          },
+        ],
+      }),
+      "postgres",
+    );
+    expect(buildSchemaMigrationStatements(viewDiff)).toEqual([
+      `CREATE VIEW "public"."quoted_value" AS SELECT 'a;b' AS value`,
+    ]);
+
+    const twoViewDiff = compareSchemaSnapshots(
+      snapshot(),
+      snapshot({
+        views: [
+          {
+            schema: "public",
+            name: "quoted_value",
+            columns: [{ name: "value", type: "text", nullable: true }],
+            definition: "SELECT 'a;b' AS value",
+          },
+          {
+            schema: "public",
+            name: "second_view",
+            columns: [{ name: "id", type: "integer", nullable: true }],
+            definition: "SELECT id FROM users",
+          },
+        ],
+      }),
+      "postgres",
+    );
+    expect(buildSchemaMigrationStatements(twoViewDiff)).toHaveLength(2);
   });
 
   it("orders new tables, indexes, foreign keys, and views for migration preview", () => {

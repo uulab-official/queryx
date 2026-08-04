@@ -54,6 +54,8 @@ export interface MigrationHistoryEntry {
   migrationSql: string;
   rollbackSql: string;
   privilegePreflightSql: string;
+  status: "preview" | "applied";
+  appliedAt?: string;
 }
 
 export type ConnectionProfileDraft = Omit<ConnectionProfile, "id"> & {
@@ -144,6 +146,7 @@ interface QueryState {
   clearHistory: () => void;
   addMigrationHistory: (entry: MigrationHistoryEntry) => void;
   clearMigrationHistory: () => void;
+  markMigrationApplied: (id: string) => void;
   toggleFavorite: (sql: string) => boolean;
 }
 
@@ -159,7 +162,10 @@ interface QueryWorkspaceSnapshot {
 }
 
 function persistWorkspaceState(
-  state: Pick<QueryState, "tabs" | "activeTabId" | "history" | "favorites">,
+  state: Pick<
+    QueryState,
+    "tabs" | "activeTabId" | "history" | "favorites" | "migrationHistory"
+  >,
 ): void {
   void persistWorkspaceSnapshot({
     version: 1,
@@ -167,6 +173,7 @@ function persistWorkspaceState(
     activeTabId: state.activeTabId,
     history: state.history,
     favorites: state.favorites,
+    migrationHistory: state.migrationHistory,
   }).catch(() => undefined);
 }
 
@@ -658,6 +665,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         sql: activeTab.sql,
         history: result.snapshot.history,
         favorites: result.snapshot.favorites,
+        migrationHistory: result.snapshot.migrationHistory,
         workspaceRestored: result.restored,
         workspaceLoaded: true,
       });
@@ -834,11 +842,25 @@ export const useQueryStore = create<QueryState>((set, get) => {
         ),
       ];
       writeMigrationHistory(history);
-      set({ migrationHistory: history.slice(0, 30) });
+      const migrationHistory = history.slice(0, 30);
+      set({ migrationHistory });
+      persistWorkspaceState({ ...get(), migrationHistory });
     },
     clearMigrationHistory: () => {
       clearStoredMigrationHistory();
       set({ migrationHistory: [] });
+      persistWorkspaceState({ ...get(), migrationHistory: [] });
+    },
+    markMigrationApplied: (id) => {
+      const appliedAt = new Date().toISOString();
+      const migrationHistory = get().migrationHistory.map((entry) =>
+        entry.id === id
+          ? { ...entry, status: "applied" as const, appliedAt }
+          : entry,
+      );
+      writeMigrationHistory(migrationHistory);
+      set({ migrationHistory });
+      persistWorkspaceState({ ...get(), migrationHistory });
     },
     toggleFavorite: (sql) => {
       const normalizedSql = sql.trim();
