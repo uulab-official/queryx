@@ -6,6 +6,7 @@ QueryX normalizes driver output into ordered columns, rows, execution time, affe
 
 - **Table** preserves the driver's column order and displays NULL separately from text values.
 - **JSON** shows the currently visible rows as formatted JSON.
+- Drag the divider at the right edge of a column header to resize it. Arrow keys adjust the focused divider; Shift+Arrow changes it faster, and Home/End set the minimum/maximum width.
 - The filter matches a case-insensitive string representation across each row.
 - Selecting a column header toggles local ascending/descending sorting.
 
@@ -25,7 +26,7 @@ Choose **Export** after a query returns columns and choose a format. QueryX expo
 - **JSON** emits an ordered array of row objects and converts BigInt/date values into portable JSON values.
 - **SQL INSERT** asks for a target table name, quotes identifiers for the active dialect, escapes values, and wraps replayable statements in `BEGIN`/`COMMIT`. It is generated text, never an automatic database write.
 
-In the native app, a save dialog asks for an explicit `.csv` path. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
+In the native app, a save dialog asks for an explicit path with the selected extension. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
 
 CSV behavior:
 
@@ -42,7 +43,7 @@ SQL INSERT export never executes the generated script. Review the target table, 
 
 ## Large results
 
-The alpha does not stream or virtualize results. Client-side pages keep the result grid responsive for moderate result sets, but all rows still occupy memory. Add a LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, server paging, progress, and cancellation are v0.2 roadmap items.
+The alpha does not yet stream or virtualize results. Client-side pages and adjustable column widths keep the result grid usable for moderate result sets, but all rows still occupy memory. Add a LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, server paging, progress, and cancellation are v0.2 roadmap items.
 
 ## Recovery
 

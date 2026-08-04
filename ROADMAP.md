@@ -54,7 +54,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
 - [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls
-- [ ] Virtualized result grid with incremental fetch, server paging, resize/reorder/freeze
+- [ ] Virtualized result grid with incremental fetch, server paging, reorder/freeze
+- [x] Result-grid column resizing with mouse and keyboard controls; virtualization, incremental fetch, server paging, reorder, and freeze remain planned
 - [x] Cell/row/range copy, NULL display controls, and spreadsheet-safe TSV clipboard output
 - [x] Client-side result pages up to 100 rows with local page navigation; streaming and server-side paging remain planned
 - [x] JSON and SQL INSERT export with portable values, dialect-aware identifier quoting, transaction wrapper, and explicit target-table prompt; progress/cancel and advanced encoding controls remain planned

@@ -9,6 +9,7 @@ import {
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { isTauri } from "@tauri-apps/api/core";
@@ -54,6 +55,8 @@ const MonacoSqlEditor = lazy(async () => {
 const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
 let nextResultRowKey = 0;
 const resultPageSize = 100;
+const minColumnWidth = 88;
+const maxColumnWidth = 520;
 type ExportFormat = "csv" | "json" | "sql";
 
 function resultRowKey(row: Record<string, unknown>): string {
@@ -96,6 +99,26 @@ function pageWindow(page: number, pageCount: number): number[] {
     Math.max(0, pageCount - visiblePageCount),
   );
   return Array.from({ length: visiblePageCount }, (_, index) => start + index);
+}
+
+function defaultColumnWidth(type: string): number {
+  const normalizedType = type.toLowerCase();
+  if (
+    normalizedType.includes("bool") ||
+    normalizedType.includes("int") ||
+    normalizedType.includes("numeric") ||
+    normalizedType.includes("decimal")
+  ) {
+    return 118;
+  }
+  if (
+    normalizedType.includes("date") ||
+    normalizedType.includes("time") ||
+    normalizedType.includes("timestamp")
+  ) {
+    return 168;
+  }
+  return 184;
 }
 
 function isCellInSelection(
@@ -370,6 +393,7 @@ function App() {
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [resultPage, setResultPage] = useState(0);
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -729,6 +753,58 @@ function App() {
       ),
     [filteredRows, resultPage],
   );
+  const getColumnWidth = (column: { name: string; type: string }) =>
+    columnWidths[column.name] ?? defaultColumnWidth(column.type);
+  const updateColumnWidth = (columnName: string, width: number) => {
+    setColumnWidths((current) => ({
+      ...current,
+      [columnName]: Math.min(maxColumnWidth, Math.max(minColumnWidth, width)),
+    }));
+  };
+  const startColumnResize = (
+    event: ReactPointerEvent<HTMLButtonElement>,
+    column: { name: string; type: string },
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = getColumnWidth(column);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const handleMove = (moveEvent: PointerEvent) => {
+      updateColumnWidth(column.name, startWidth + moveEvent.clientX - startX);
+    };
+    const handleUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp, { once: true });
+  };
+  const handleColumnResizeKeyDown = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    column: { name: string; type: string },
+  ) => {
+    const currentWidth = getColumnWidth(column);
+    const step = event.shiftKey ? 32 : 8;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      updateColumnWidth(column.name, currentWidth - step);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      updateColumnWidth(column.name, currentWidth + step);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      updateColumnWidth(column.name, minColumnWidth);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      updateColumnWidth(column.name, maxColumnWidth);
+    }
+  };
   useEffect(() => {
     setResultPage((page) => Math.min(page, resultPageCount - 1));
   }, [resultPageCount]);
@@ -1781,6 +1857,15 @@ function App() {
                 aria-label="Query result grid. Click cells or row numbers, then use Shift-click or Command/Ctrl+C to copy a range."
               >
                 <table onCopy={handleGridCopy}>
+                  <colgroup>
+                    <col style={{ width: 42 }} />
+                    {result?.columns.map((column) => (
+                      <col
+                        key={column.name}
+                        style={{ width: getColumnWidth(column) }}
+                      />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr>
                       <th className="row-number" aria-label="Select row">
@@ -1802,6 +1887,19 @@ function App() {
                                 : "↕"}
                             </span>
                           </button>
+                          <button
+                            type="button"
+                            className="column-resize-handle"
+                            aria-label={`Resize ${column.name} column`}
+                            title="Resize column · Arrow keys adjust · Home/End set limits"
+                            onClick={(event) => event.stopPropagation()}
+                            onPointerDown={(event) =>
+                              startColumnResize(event, column)
+                            }
+                            onKeyDown={(event) =>
+                              handleColumnResizeKeyDown(event, column)
+                            }
+                          />
                         </th>
                       ))}
                     </tr>

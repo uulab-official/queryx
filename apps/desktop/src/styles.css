@@ -873,7 +873,9 @@ button:disabled {
   box-shadow: inset 0 0 0 1px var(--blue);
 }
 .grid-wrap table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font: 10px var(--mono);
 }
@@ -887,6 +889,30 @@ button:disabled {
   background: #171c22;
   color: #8e98a4;
   text-align: left;
+}
+.grid-wrap th:not(.row-number) {
+  position: sticky;
+}
+.grid-wrap th:has(.column-resize-handle):hover {
+  background: #1d252d;
+}
+.grid-wrap .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 2;
+}
+.grid-wrap .column-resize-handle:hover,
+.grid-wrap .column-resize-handle:focus-visible {
+  background: var(--lime);
+  box-shadow: 0 0 10px rgba(226, 255, 103, 0.35);
+  outline: 0;
 }
 .grid-wrap th:not(:last-child) {
   cursor: pointer;

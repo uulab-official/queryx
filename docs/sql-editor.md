@@ -29,7 +29,7 @@ The table view supports spreadsheet-oriented copy without sending result data an
 - Press Cmd/Ctrl+C while the grid is focused, or choose **Copy**, to copy the selected cells/rows as TSV. With no selection, Copy includes the visible column headers and filtered/sorted rows.
 - Toggle **NULL** to switch between the literal `NULL` display and a blank display. Clipboard output follows the selected display mode; CSV export continues to use empty cells for null values.
 
-Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. Results are displayed in local pages of up to 100 rows, while the current grid still loads the complete result in memory; virtualized streaming and server paging remain planned.
+Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. Results are displayed in local pages of up to 100 rows, while the current grid still loads the complete result in memory. Column dividers can be dragged or adjusted with the keyboard; virtualized streaming and server paging remain planned.
 
 ## DDL handoff
 
