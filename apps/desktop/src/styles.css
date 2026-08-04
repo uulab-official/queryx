@@ -1010,6 +1010,26 @@ button:disabled {
 .pagination button:disabled {
   color: #3e4750;
 }
+.table-browse-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 10px;
+  color: #6f8a77;
+  font-size: 9px;
+}
+.table-browse-actions button {
+  width: auto;
+  min-width: 82px;
+  padding: 0 7px;
+  border: 1px solid #3c523d;
+  background: #1b281d;
+  color: #b4d48c;
+}
+.table-browse-actions button:hover:not(:disabled) {
+  border-color: var(--lime);
+  color: var(--lime);
+}
 .statusbar {
   height: 24px;
   display: flex;

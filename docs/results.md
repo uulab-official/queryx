@@ -21,7 +21,7 @@ The **NULL** button toggles between a visible `NULL` literal and a blank display
 
 ## Export CSV, JSON, and SQL INSERT
 
-Choose **Export** after a query returns columns and choose a format. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; pagination only limits what is rendered at once.
+Choose **Export** after a query returns columns and choose a format. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; local pagination only limits what is rendered at once.
 
 - **CSV** is spreadsheet-safe and keeps the existing formula-injection protection.
 - **JSON** emits an ordered array of row objects and converts BigInt/date values into portable JSON values.
@@ -50,7 +50,7 @@ Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` s
 
 ## Large results
 
-The alpha does not yet stream or virtualize results. Client-side pages and adjustable column widths keep the result grid usable for moderate result sets, but all rows still occupy memory. Add a LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, server paging, progress, and cancellation are v0.2 roadmap items.
+The table browser can fetch another 100 rows with **Load next 100**. For keyed tables, each page uses a deterministic primary-key `ORDER BY` with `LIMIT/OFFSET`, and newly loaded rows stay in the local result. This is incremental fetch, not a virtualized grid: all loaded rows still occupy memory and arbitrary SQL results are not automatically paged. Add a narrower LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, full server paging, progress, and cancellation remain roadmap items.
 
 ## Recovery
 

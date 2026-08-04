@@ -59,6 +59,7 @@ let nextResultRowKey = 0;
 const resultPageSize = 100;
 const minColumnWidth = 88;
 const maxColumnWidth = 520;
+const tableBrowsePageSize = 100;
 type ExportFormat = "csv" | "json" | "sql";
 
 function resultRowKey(row: Record<string, unknown>): string {
@@ -81,6 +82,13 @@ type EditingCell = {
 };
 
 type StagedRowEdit = SqlRowUpdate & { rowKey: string };
+
+interface TableBrowseState {
+  schema: string;
+  name: string;
+  offset: number;
+  hasMore: boolean;
+}
 
 interface PaletteCommand {
   id: string;
@@ -382,6 +390,7 @@ function App() {
     workspaceRestored,
     driver,
     driverKind,
+    appendResult,
     connectionName,
     connectionStatus,
     connectionError,
@@ -412,6 +421,7 @@ function App() {
     {},
   );
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
+  const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -517,6 +527,7 @@ function App() {
     setGridSelection(null);
     setEditingCell(null);
     setStagedEdits({});
+    setTableBrowse(null);
     void runQuery(mode, executableSql);
   };
   const handleExplain = () => {
@@ -537,6 +548,7 @@ function App() {
     }
     setPendingSafety(null);
     setGridSelection(null);
+    setTableBrowse(null);
     void runQuery("explain", explain.query.sql);
   };
   const openCommandPalette = () => {
@@ -979,6 +991,7 @@ function App() {
     setEditingEnabled(false);
     setEditingCell(null);
     setStagedEdits({});
+    setTableBrowse(null);
   }, [selectedObjectIdentity]);
   useEffect(() => {
     if (editingCell) editInputRef.current?.focus();
@@ -1112,17 +1125,62 @@ function App() {
       notify("Review or discard staged row edits before opening another table");
       return;
     }
-    const quote = driverKind === "mysql" ? "`" : '"';
-    const tableName = `${quote}${currentTable.schema.replaceAll(quote, `${quote}${quote}`)}${quote}.${quote}${currentTable.name.replaceAll(quote, `${quote}${quote}`)}${quote}`;
-    const browseSql = `SELECT * FROM ${tableName} LIMIT 100;`;
+    const browseSql = buildTableBrowseQuery(currentTable, driverKind, 0);
     newQuery();
     setSql(browseSql);
     setResultView("table");
     setFilter("");
     setSortBy(null);
     setResultPage(0);
-    void runQuery("normal", browseSql);
+    setTableBrowse({
+      schema: currentTable.schema,
+      name: currentTable.name,
+      offset: 0,
+      hasMore: true,
+    });
+    void runQuery("normal", browseSql).then((nextResult) => {
+      if (!nextResult) {
+        setTableBrowse(null);
+        return;
+      }
+      setTableBrowse((current) =>
+        current
+          ? {
+              ...current,
+              hasMore: nextResult.rows.length === tableBrowsePageSize,
+            }
+          : current,
+      );
+    });
     notify(`Opened ${currentTable.schema}.${currentTable.name} data`);
+  };
+  const loadNextTablePage = async () => {
+    if (!tableBrowse || !currentTable || isRunning) return;
+    if (
+      tableBrowse.schema !== currentTable.schema ||
+      tableBrowse.name !== currentTable.name ||
+      !tableBrowse.hasMore
+    ) {
+      return;
+    }
+    const nextOffset = tableBrowse.offset + tableBrowsePageSize;
+    const nextSql = buildTableBrowseQuery(currentTable, driverKind, nextOffset);
+    const nextResult = await runQuery("normal", nextSql, {
+      preserveResult: true,
+    });
+    if (!nextResult) return;
+    appendResult(nextResult);
+    setTableBrowse((current) =>
+      current
+        ? {
+            ...current,
+            offset: nextOffset,
+            hasMore: nextResult.rows.length === tableBrowsePageSize,
+          }
+        : current,
+    );
+    setResultPage(0);
+    notify(`Loaded ${nextResult.rows.length.toLocaleString()} more rows`);
   };
 
   const exportResults = async (format: ExportFormat) => {
@@ -2281,6 +2339,26 @@ function App() {
                   </button>
                 </div>
               )}
+              {tableBrowse && (
+                <div className="table-browse-actions">
+                  <span>
+                    Table browser · {result?.rows.length.toLocaleString() ?? 0}{" "}
+                    loaded
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void loadNextTablePage()}
+                    disabled={isRunning || !tableBrowse.hasMore}
+                    title="Fetch the next 100 rows from the selected table"
+                  >
+                    {isRunning
+                      ? "Loading…"
+                      : tableBrowse.hasMore
+                        ? "Load next 100"
+                        : "All loaded"}
+                  </button>
+                </div>
+              )}
               Result data stays on this device
             </div>
           </section>
@@ -2740,6 +2818,25 @@ function parseEditedCellValue(
     }
   }
   return rawValue;
+}
+
+function quoteBrowseIdentifier(value: string, driverKind: DriverKind): string {
+  const quote = driverKind === "mysql" ? "`" : '"';
+  return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
+}
+
+function buildTableBrowseQuery(
+  table: TableMetadata,
+  driverKind: DriverKind,
+  offset: number,
+): string {
+  const tableName = `${quoteBrowseIdentifier(table.schema, driverKind)}.${quoteBrowseIdentifier(table.name, driverKind)}`;
+  const primaryKeyOrder = table.columns
+    .filter((column) => column.primaryKey)
+    .map((column) => quoteBrowseIdentifier(column.name, driverKind))
+    .join(", ");
+  const orderBy = primaryKeyOrder ? ` ORDER BY ${primaryKeyOrder}` : "";
+  return `SELECT * FROM ${tableName}${orderBy} LIMIT ${tableBrowsePageSize} OFFSET ${offset};`;
 }
 
 function EditPreviewDialog({

@@ -33,6 +33,8 @@ Cells containing tabs, line breaks, or quotes are quoted so a pasted range remai
 
 For a table with a reported primary key, choose **Browse data** in the Inspector, then **Edit** in the result toolbar. Double-click a non-key cell to stage a value, press Enter to commit the draft, and use **Review & Apply** to inspect the generated UPDATE statements before execution. QueryX applies them through the native transaction path and never auto-writes a cell on blur.
 
+The table browser starts with 100 rows and exposes **Load next 100**. Primary-key ordering makes subsequent pages deterministic; manually written SQL remains a bounded, in-memory result until server-side paging is added.
+
 ## DDL handoff
 
 From a relation, trigger, event-trigger, or function/procedure Inspector, choose **Edit in SQL** to open the reconstructed definition in a new tab. The handoff never executes automatically. Review and modify the statement like any other query, then choose **Run in Transaction** to execute the complete document through the native transaction path. A failed statement rolls back the transaction and keeps the SQL tab available for correction.

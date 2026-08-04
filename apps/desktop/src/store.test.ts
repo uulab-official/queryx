@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDriver } from "@queryx/core";
+import type { QueryResult } from "@queryx/shared";
 import { useQueryStore, type QueryTab } from "./store";
 
 const initialTab: QueryTab = {
@@ -215,5 +216,24 @@ describe("query tabs", () => {
 
     expect(useQueryStore.getState().toggleFavorite("  \n ")).toBe(false);
     expect(useQueryStore.getState().favorites).toHaveLength(0);
+  });
+
+  it("appends compatible table-browser pages without discarding loaded rows", () => {
+    const page = (id: number): QueryResult => ({
+      columns: [{ name: "id", type: "integer", nullable: false }],
+      rows: [{ id }],
+      executionTime: 2,
+      affectedRows: 0,
+      warnings: [],
+    });
+    useQueryStore.setState({ result: page(1) });
+
+    useQueryStore.getState().appendResult(page(2));
+
+    expect(useQueryStore.getState().result?.rows).toEqual([
+      { id: 1 },
+      { id: 2 },
+    ]);
+    expect(useQueryStore.getState().result?.executionTime).toBe(4);
   });
 });

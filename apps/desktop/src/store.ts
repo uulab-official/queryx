@@ -81,7 +81,12 @@ interface QueryState {
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
   setSelectedObject: (object: SelectedDatabaseObject | null) => void;
-  runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<boolean>;
+  runQuery: (
+    mode?: RunMode,
+    sqlOverride?: string,
+    options?: { preserveResult?: boolean },
+  ) => Promise<QueryResult | null>;
+  appendResult: (result: QueryResult) => void;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
@@ -418,8 +423,12 @@ export const useQueryStore = create<QueryState>((set, get) => {
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
     setSelectedObject: (selectedObject) => set({ selectedObject }),
-    runQuery: async (mode = "normal", sqlOverride?: string) => {
-      if (get().isRunning) return false;
+    runQuery: async (
+      mode = "normal",
+      sqlOverride?: string,
+      options?: { preserveResult?: boolean },
+    ) => {
+      if (get().isRunning) return null;
       const controller = new AbortController();
       activeQueryController = controller;
       set({ isRunning: true, executionStatus: "running" });
@@ -441,7 +450,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         };
         get().addHistory(historyEntry);
         set({
-          result,
+          ...(options?.preserveResult ? {} : { result }),
           executionStatus: "success",
           connectionStatus: "connected",
           toast:
@@ -450,7 +459,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               : "Query completed successfully",
         });
         window.setTimeout(() => set({ toast: null }), 2200);
-        return true;
+        return result;
       } catch (error) {
         const wasCancelled =
           error instanceof DOMException && error.name === "AbortError";
@@ -473,7 +482,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               ? error.message
               : "Query failed",
         });
-        return false;
+        return null;
       } finally {
         if (activeQueryController === controller) {
           activeQueryController = null;
@@ -481,6 +490,25 @@ export const useQueryStore = create<QueryState>((set, get) => {
         }
       }
     },
+    appendResult: (nextResult) =>
+      set((state) => {
+        if (!state.result) return { result: nextResult };
+        const columnsMatch =
+          state.result.columns.map((column) => column.name).join("\u0000") ===
+          nextResult.columns.map((column) => column.name).join("\u0000");
+        if (!columnsMatch) return { result: nextResult };
+        return {
+          result: {
+            ...state.result,
+            rows: [...state.result.rows, ...nextResult.rows],
+            executionTime:
+              state.result.executionTime + nextResult.executionTime,
+            warnings: [
+              ...new Set([...state.result.warnings, ...nextResult.warnings]),
+            ],
+          },
+        };
+      }),
     cancelQuery: () => {
       if (!get().isRunning || !get().canCancel) return;
       activeQueryController?.abort();
