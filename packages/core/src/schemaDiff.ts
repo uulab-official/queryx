@@ -28,6 +28,10 @@ export interface SchemaDiffChange {
   detail: string;
   sql: string | null;
   destructive: boolean;
+  objectKey?: string;
+  dependsOnKeys?: string[];
+  destroyBeforeKeys?: string[];
+  rollbackSql?: string | null;
 }
 
 export interface SchemaDiff {
@@ -53,6 +57,47 @@ function qualifiedName(
 
 function tableKey(table: Pick<TableMetadata, "schema" | "name">): string {
   return `${table.schema}\u0000${table.name}`;
+}
+
+function objectKey(
+  kind: "table" | "view",
+  schema: string | null,
+  name: string,
+): string {
+  return `${kind}:${schema ?? ""}\u0000${name}`;
+}
+
+function tableObjectKey(table: Pick<TableMetadata, "schema" | "name">): string {
+  return objectKey("table", table.schema, table.name);
+}
+
+function viewObjectKey(view: Pick<ViewMetadata, "schema" | "name">): string {
+  return objectKey("view", view.schema, view.name);
+}
+
+function dependencyObjectKey(
+  dependency: DatabaseMetadata["dependencies"][number]["referenced"],
+): string | null {
+  if (
+    (dependency.kind !== "table" && dependency.kind !== "view") ||
+    dependency.schema === null
+  ) {
+    return null;
+  }
+  return objectKey(dependency.kind, dependency.schema, dependency.name);
+}
+
+function objectDependencies(
+  metadata: DatabaseMetadata,
+  dependent: string,
+): string[] {
+  return metadata.dependencies
+    .filter((dependency) => {
+      const key = dependencyObjectKey(dependency.dependent);
+      return key === dependent;
+    })
+    .map((dependency) => dependencyObjectKey(dependency.referenced))
+    .filter((key): key is string => key !== null);
 }
 
 function columnKey(column: Pick<ColumnMetadata, "name">): string {
@@ -232,6 +277,104 @@ function indexSignature(index: IndexMetadata): string {
   return `${index.name}\u0000${index.columns.join(",")}\u0000${index.unique}\u0000${index.primary}\u0000${index.type}`;
 }
 
+const changeOrder: Record<SchemaDiffKind, number> = {
+  tableAdded: 0,
+  columnAdded: 1,
+  indexAdded: 2,
+  foreignKeyAdded: 3,
+  viewAdded: 4,
+  columnChanged: 5,
+  foreignKeyRemoved: 6,
+  indexRemoved: 7,
+  columnRemoved: 8,
+  viewChanged: 9,
+  viewRemoved: 10,
+  tableRemoved: 11,
+};
+
+function compareChangePriority(
+  left: SchemaDiffChange,
+  right: SchemaDiffChange,
+): number {
+  return (
+    changeOrder[left.kind] - changeOrder[right.kind] ||
+    left.label.localeCompare(right.label)
+  );
+}
+
+function changeAt(
+  changes: SchemaDiffChange[],
+  index: number,
+): SchemaDiffChange {
+  const change = changes[index];
+  if (!change) throw new Error(`Missing schema change at index ${index}`);
+  return change;
+}
+
+function orderSchemaChanges(changes: SchemaDiffChange[]): SchemaDiffChange[] {
+  const outgoing = changes.map(() => new Set<number>());
+  const incoming = changes.map(() => 0);
+  const byObject = new Map<string, number[]>();
+  changes.forEach((change, index) => {
+    if (!change.objectKey) return;
+    const entries = byObject.get(change.objectKey) ?? [];
+    entries.push(index);
+    byObject.set(change.objectKey, entries);
+  });
+  const addEdge = (before: number, after: number) => {
+    if (before === after || outgoing[before]?.has(after)) return;
+    outgoing[before]?.add(after);
+    incoming[after] = (incoming[after] ?? 0) + 1;
+  };
+
+  changes.forEach((change, index) => {
+    if (!change.destructive) {
+      for (const dependency of change.dependsOnKeys ?? []) {
+        for (const candidate of byObject.get(dependency) ?? []) {
+          if (!changes[candidate]?.destructive) addEdge(candidate, index);
+        }
+      }
+    } else {
+      for (const dependency of change.destroyBeforeKeys ?? []) {
+        for (const candidate of byObject.get(dependency) ?? []) {
+          if (changes[candidate]?.destructive) addEdge(index, candidate);
+        }
+      }
+    }
+  });
+
+  const ready = changes
+    .map((_, index) => index)
+    .filter((index) => incoming[index] === 0);
+  const ordered: number[] = [];
+  while (ready.length > 0) {
+    ready.sort((left, right) =>
+      compareChangePriority(changeAt(changes, left), changeAt(changes, right)),
+    );
+    const current = ready.shift();
+    if (current === undefined) break;
+    ordered.push(current);
+    for (const next of outgoing[current] ?? []) {
+      incoming[next] -= 1;
+      if (incoming[next] === 0) ready.push(next);
+    }
+  }
+
+  if (ordered.length !== changes.length) {
+    const remaining = changes
+      .map((_, index) => index)
+      .filter((index) => !ordered.includes(index))
+      .sort((left, right) =>
+        compareChangePriority(
+          changeAt(changes, left),
+          changeAt(changes, right),
+        ),
+      );
+    ordered.push(...remaining);
+  }
+  return ordered.map((index) => changeAt(changes, index));
+}
+
 function addChange(
   changes: SchemaDiffChange[],
   change: SchemaDiffChange,
@@ -260,6 +403,8 @@ export function compareSchemaSnapshots(
         detail: `${table.columns.length} column${table.columns.length === 1 ? "" : "s"}`,
         sql: createTableSql(table, driver),
         destructive: false,
+        objectKey: tableObjectKey(table),
+        rollbackSql: `DROP TABLE ${qualifiedName(table.schema, table.name, driver)};`,
       });
       for (const index of table.indexes) {
         if (index.primary) continue;
@@ -269,6 +414,8 @@ export function compareSchemaSnapshots(
           detail: index.columns.join(", "),
           sql: indexSql(table, index, driver),
           destructive: false,
+          objectKey: tableObjectKey(table),
+          rollbackSql: dropIndexSql(table, index, driver),
         });
       }
       for (const foreignKey of table.foreignKeys) {
@@ -278,6 +425,15 @@ export function compareSchemaSnapshots(
           detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
           sql: foreignKeySql(table, foreignKey, driver),
           destructive: false,
+          objectKey: tableObjectKey(table),
+          dependsOnKeys: [
+            objectKey(
+              "table",
+              foreignKey.referencedRelation.schema,
+              foreignKey.referencedRelation.name,
+            ),
+          ],
+          rollbackSql: dropForeignKeySql(table, foreignKey, driver),
         });
       }
       continue;
@@ -299,6 +455,8 @@ export function compareSchemaSnapshots(
           detail: columnDefinition(column, driver),
           sql: addColumnSql(table, column, driver),
           destructive: false,
+          objectKey: tableObjectKey(table),
+          rollbackSql: dropColumnSql(table, column, driver),
         });
       } else if (
         previous.type !== column.type ||
@@ -311,6 +469,8 @@ export function compareSchemaSnapshots(
           detail: `${previous.type} → ${column.type}${previous.nullable === column.nullable ? "" : ", nullability changed"}`,
           sql: alterColumnSql(table, column, driver),
           destructive: true,
+          objectKey: tableObjectKey(table),
+          rollbackSql: alterColumnSql(table, previous, driver),
         });
       }
     }
@@ -322,6 +482,8 @@ export function compareSchemaSnapshots(
           detail: column.type,
           sql: dropColumnSql(table, column, driver),
           destructive: true,
+          objectKey: tableObjectKey(table),
+          rollbackSql: addColumnSql(table, column, driver),
         });
       }
     }
@@ -340,6 +502,8 @@ export function compareSchemaSnapshots(
           detail: index.columns.join(", "),
           sql: indexSql(table, index, driver),
           destructive: false,
+          objectKey: tableObjectKey(table),
+          rollbackSql: dropIndexSql(table, index, driver),
         });
       }
     }
@@ -351,6 +515,8 @@ export function compareSchemaSnapshots(
           detail: index.columns.join(", "),
           sql: dropIndexSql(table, index, driver),
           destructive: true,
+          objectKey: tableObjectKey(table),
+          rollbackSql: indexSql(table, index, driver),
         });
       }
     }
@@ -375,6 +541,15 @@ export function compareSchemaSnapshots(
           detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
           sql: foreignKeySql(table, foreignKey, driver),
           destructive: false,
+          objectKey: tableObjectKey(table),
+          dependsOnKeys: [
+            objectKey(
+              "table",
+              foreignKey.referencedRelation.schema,
+              foreignKey.referencedRelation.name,
+            ),
+          ],
+          rollbackSql: dropForeignKeySql(table, foreignKey, driver),
         });
       }
     }
@@ -386,6 +561,15 @@ export function compareSchemaSnapshots(
           detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
           sql: dropForeignKeySql(table, foreignKey, driver),
           destructive: true,
+          objectKey: tableObjectKey(table),
+          destroyBeforeKeys: [
+            objectKey(
+              "table",
+              foreignKey.referencedRelation.schema,
+              foreignKey.referencedRelation.name,
+            ),
+          ],
+          rollbackSql: foreignKeySql(table, foreignKey, driver),
         });
       }
     }
@@ -400,6 +584,15 @@ export function compareSchemaSnapshots(
           detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
           sql: dropForeignKeySql(table, foreignKey, driver),
           destructive: true,
+          objectKey: tableObjectKey(table),
+          destroyBeforeKeys: [
+            objectKey(
+              "table",
+              foreignKey.referencedRelation.schema,
+              foreignKey.referencedRelation.name,
+            ),
+          ],
+          rollbackSql: foreignKeySql(table, foreignKey, driver),
         });
       }
       addChange(changes, {
@@ -408,6 +601,15 @@ export function compareSchemaSnapshots(
         detail: `${table.columns.length} column${table.columns.length === 1 ? "" : "s"}`,
         sql: `DROP TABLE ${qualifiedName(table.schema, table.name, driver)};`,
         destructive: true,
+        objectKey: tableObjectKey(table),
+        destroyBeforeKeys: table.foreignKeys.map((foreignKey) =>
+          objectKey(
+            "table",
+            foreignKey.referencedRelation.schema,
+            foreignKey.referencedRelation.name,
+          ),
+        ),
+        rollbackSql: createTableSql(table, driver),
       });
     }
   }
@@ -427,6 +629,9 @@ export function compareSchemaSnapshots(
         detail: view.definition?.trim() || "View definition unavailable",
         sql: viewCreateSql(view, driver),
         destructive: false,
+        objectKey: viewObjectKey(view),
+        dependsOnKeys: objectDependencies(current, viewObjectKey(view)),
+        rollbackSql: viewDropSql(view, driver),
       });
     } else if (previous.definition?.trim() !== view.definition?.trim()) {
       addChange(changes, {
@@ -435,6 +640,9 @@ export function compareSchemaSnapshots(
         detail: "View definition changed",
         sql: viewReplaceSql(view, driver),
         destructive: true,
+        objectKey: viewObjectKey(view),
+        dependsOnKeys: objectDependencies(current, viewObjectKey(view)),
+        rollbackSql: viewReplaceSql(previous, driver),
       });
     }
   }
@@ -446,38 +654,23 @@ export function compareSchemaSnapshots(
         detail: "View no longer exists in the current schema",
         sql: viewDropSql(view, driver),
         destructive: true,
+        objectKey: viewObjectKey(view),
+        destroyBeforeKeys: objectDependencies(baseline, viewObjectKey(view)),
+        rollbackSql: viewCreateSql(view, driver),
       });
     }
   }
 
-  const changeOrder: Record<SchemaDiffKind, number> = {
-    tableAdded: 0,
-    columnAdded: 1,
-    indexAdded: 2,
-    foreignKeyAdded: 3,
-    viewAdded: 4,
-    columnChanged: 5,
-    foreignKeyRemoved: 6,
-    indexRemoved: 7,
-    columnRemoved: 8,
-    viewChanged: 9,
-    viewRemoved: 10,
-    tableRemoved: 11,
-  };
-  changes.sort(
-    (left, right) =>
-      changeOrder[left.kind] - changeOrder[right.kind] ||
-      left.label.localeCompare(right.label),
-  );
+  const orderedChanges = orderSchemaChanges(changes);
   return {
-    changes,
-    added: changes.filter((change) => !change.destructive).length,
-    removed: changes.filter((change) => change.destructive).length,
-    changed: changes.filter(
+    changes: orderedChanges,
+    added: orderedChanges.filter((change) => !change.destructive).length,
+    removed: orderedChanges.filter((change) => change.destructive).length,
+    changed: orderedChanges.filter(
       (change) =>
         change.kind === "columnChanged" || change.kind === "viewChanged",
     ).length,
-    manual: changes.filter((change) => change.sql === null).length,
+    manual: orderedChanges.filter((change) => change.sql === null).length,
   };
 }
 
@@ -486,6 +679,18 @@ export function buildSchemaMigrationSql(diff: SchemaDiff): string {
     .map((change) => {
       if (change.sql) return `-- ${change.label}\n${change.sql}`;
       return `-- MANUAL REVIEW REQUIRED: ${change.label}\n-- ${change.detail}`;
+    })
+    .join("\n\n");
+}
+
+export function buildSchemaRollbackSql(diff: SchemaDiff): string {
+  return [...diff.changes]
+    .reverse()
+    .map((change) => {
+      if (change.rollbackSql) {
+        return `-- Rollback ${change.label}\n${change.rollbackSql}`;
+      }
+      return `-- MANUAL REVIEW REQUIRED: rollback for ${change.label}\n-- ${change.detail}`;
     })
     .join("\n\n");
 }

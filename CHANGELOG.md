@@ -58,6 +58,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added session-local schema compare with baseline capture, table/column/index diffing, dialect-aware migration preview SQL, destructive markers, and SQLite manual-review safeguards.
 - Added same-dialect cross-connection schema comparison through temporary read-only metadata connections without replacing the active session.
 - Expanded schema compare with foreign-key and view diffing, dialect-aware preview SQL, SQLite manual-review safeguards, and deterministic dependency-aware object-category ordering.
+- Added metadata-graph ordering for dependent views/foreign keys and reverse rollback SQL preview in a normal editable SQL tab.
 
 ## [0.1.0] — 2026-08-03
 

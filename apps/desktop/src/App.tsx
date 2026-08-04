@@ -21,6 +21,7 @@ import {
   buildForeignKeyIndex,
   buildExplainQuery,
   buildSchemaMigrationSql,
+  buildSchemaRollbackSql,
   compareSchemaSnapshots,
   formatSql,
   inspectQuerySafety,
@@ -2649,6 +2650,13 @@ function App() {
             setSchemaDiffOpen(false);
             notify("Opened schema migration preview in a new SQL tab");
           }}
+          onOpenRollback={() => {
+            const rollbackSql = buildSchemaRollbackSql(schemaDiff);
+            newQuery();
+            setSql(rollbackSql);
+            setSchemaDiffOpen(false);
+            notify("Opened schema rollback preview in a new SQL tab");
+          }}
         />
       )}
       {schemaTargetOpen && (
@@ -3156,6 +3164,7 @@ function SchemaDiffDialog({
   onClose,
   onCompareConnection,
   onOpenSql,
+  onOpenRollback,
 }: {
   diff: SchemaDiff;
   driverKind: DriverKind;
@@ -3163,6 +3172,7 @@ function SchemaDiffDialog({
   onClose: () => void;
   onCompareConnection: () => void;
   onOpenSql: () => void;
+  onOpenRollback: () => void;
 }) {
   const migrationSql = buildSchemaMigrationSql(diff);
   return (
@@ -3243,6 +3253,14 @@ function SchemaDiffDialog({
             onClick={onCompareConnection}
           >
             Compare connection
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={onOpenRollback}
+            disabled={diff.changes.length === 0}
+          >
+            Open rollback
           </button>
           <button
             type="button"

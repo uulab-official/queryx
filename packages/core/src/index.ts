@@ -33,6 +33,7 @@ export type { QuerySafetyReport } from "./querySafety";
 export { formatSql } from "./sqlFormatter";
 export {
   buildSchemaMigrationSql,
+  buildSchemaRollbackSql,
   compareSchemaSnapshots,
 } from "./schemaDiff";
 export type {

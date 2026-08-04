@@ -74,7 +74,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL database-scoped event triggers with tags, activation status, function navigation, and reconstructed DDL
 - [x] PostgreSQL aggregates/window functions with catalog-specific Inspector metadata
 - [x] DDL Inspector handoff to editable SQL tabs with explicit transaction execution, rollback-on-error, and metadata refresh
-- [x] Session-local and same-dialect cross-connection schema compare with table/column/index/FK/view migration SQL preview, deterministic create/remove ordering, and manual-review markers; dependency graphs, object-specific forms, privilege checks, rollback SQL, and migration history remain planned
+- [x] Session-local and same-dialect cross-connection schema compare with dependency-ordered table/column/index/FK/view migration and rollback SQL preview plus manual-review markers; object-specific forms, privilege checks, and migration history remain planned
 - [x] Searchable command palette and Quick Open for core query/editor/result actions; complete keyboard map and full accessibility audit remain planned
 - [x] Inspector close behavior, modal Escape handling, and accessible labels for primary navigation controls
 
@@ -94,7 +94,7 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state remains separate work
 - [ ] Table data editor with filters, ordering, pagination, and optimistic conflict detection
 - [ ] Object creation/editing for tables, columns, indexes, views, and constraints
-- [ ] Schema compare dependency graph, privilege preflight, rollback SQL, and migration history on top of the current deterministic table/column/index/FK/view preview ordering
+- [ ] Schema compare privilege preflight and persistent migration history on top of the current metadata dependency graph and forward/rollback preview
 - [ ] Session audit trail stored locally with configurable retention and redaction
 - [ ] Backup/export warning flows before high-risk schema operations
 

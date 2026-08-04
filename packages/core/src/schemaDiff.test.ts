@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { DatabaseMetadata } from "@queryx/shared";
-import { buildSchemaMigrationSql, compareSchemaSnapshots } from "./schemaDiff";
+import type { DatabaseMetadata, DependencyMetadata } from "@queryx/shared";
+import {
+  buildSchemaMigrationSql,
+  buildSchemaRollbackSql,
+  compareSchemaSnapshots,
+} from "./schemaDiff";
 
 const snapshot = (
   overrides: Partial<DatabaseMetadata> = {},
@@ -205,5 +209,99 @@ describe("compareSchemaSnapshots", () => {
     expect(diff.manual).toBe(2);
     expect(buildSchemaMigrationSql(diff)).toContain("DROP VIEW");
     expect(buildSchemaMigrationSql(diff)).toContain("MANUAL REVIEW REQUIRED");
+  });
+
+  it("topologically orders view additions and table removals", () => {
+    const viewReference = (
+      dependentName: string,
+      referenced: { kind: "table" | "view"; name: string },
+    ): DependencyMetadata => ({
+      id: `view:${dependentName}:${referenced.name}`,
+      kind: "viewReference",
+      dependent: {
+        kind: "view",
+        id: null,
+        schema: "public",
+        name: dependentName,
+        identityArguments: null,
+      },
+      referenced: {
+        kind: referenced.kind,
+        id: null,
+        schema: "public",
+        name: referenced.name,
+        identityArguments: null,
+      },
+    });
+    const current = snapshot({
+      views: [
+        {
+          schema: "public",
+          name: "report_view",
+          columns: [],
+          definition: "SELECT * FROM base_view",
+        },
+        {
+          schema: "public",
+          name: "base_view",
+          columns: [],
+          definition: "SELECT * FROM users",
+        },
+      ],
+      dependencies: [
+        viewReference("report_view", { kind: "view", name: "base_view" }),
+        viewReference("base_view", { kind: "table", name: "users" }),
+      ],
+    });
+    const addedViews = compareSchemaSnapshots(snapshot(), current, "postgres");
+    expect(addedViews.changes.map((change) => change.label)).toEqual([
+      "Add view public.base_view",
+      "Add view public.report_view",
+    ]);
+
+    const removed = compareSchemaSnapshots(
+      snapshot({
+        tables: [
+          {
+            schema: "public",
+            name: "orders",
+            rowCount: 0,
+            columns: [{ name: "id", type: "integer", nullable: false }],
+            indexes: [],
+            foreignKeys: [
+              {
+                id: "orders_user_id_fkey",
+                name: "orders_user_id_fkey",
+                columns: [
+                  {
+                    ordinal: 1,
+                    sourceColumn: "user_id",
+                    referencedColumn: "id",
+                  },
+                ],
+                referencedRelation: { schema: "public", name: "users" },
+                onUpdate: "NO ACTION",
+                onDelete: "CASCADE",
+                match: null,
+                deferrable: false,
+                initiallyDeferred: false,
+              },
+            ],
+          },
+          snapshot().tables[0],
+        ],
+      }),
+      snapshot({ tables: [] }),
+      "postgres",
+    );
+    expect(
+      removed.changes
+        .filter((change) => change.kind === "tableRemoved")
+        .map((change) => change.label),
+    ).toEqual(["Drop table public.orders", "Drop table public.users"]);
+    const rollback = buildSchemaRollbackSql(addedViews);
+    expect(rollback.indexOf("report_view")).toBeLessThan(
+      rollback.indexOf("base_view"),
+    );
   });
 });
