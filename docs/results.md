@@ -17,9 +17,13 @@ Click a cell and Shift-click another cell to select a rectangular range. Click r
 
 The **NULL** button toggles between a visible `NULL` literal and a blank display. Copy follows that choice; CSV export keeps SQL NULL as an empty field so exported files remain compatible with the existing CSV contract.
 
-## Export CSV
+## Export CSV, JSON, and SQL INSERT
 
-Choose **Export** after a query returns columns. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; pagination only limits what is rendered at once.
+Choose **Export** after a query returns columns and choose a format. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; pagination only limits what is rendered at once.
+
+- **CSV** is spreadsheet-safe and keeps the existing formula-injection protection.
+- **JSON** emits an ordered array of row objects and converts BigInt/date values into portable JSON values.
+- **SQL INSERT** asks for a target table name, quotes identifiers for the active dialect, escapes values, and wraps replayable statements in `BEGIN`/`COMMIT`. It is generated text, never an automatic database write.
 
 In the native app, a save dialog asks for an explicit `.csv` path. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
 
@@ -33,6 +37,8 @@ CSV behavior:
 - values beginning with `=`, `+`, `-`, `@`, tab, or carriage return receive a leading apostrophe to reduce spreadsheet formula injection risk.
 
 Formula protection changes the exported representation of affected text cells intentionally. A future advanced export dialog may expose an explicit raw mode; the current UI always uses the safe default.
+
+SQL INSERT export never executes the generated script. Review the target table, column order, constraints, and conflict behavior before running it in a query tab.
 
 ## Large results
 

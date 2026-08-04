@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { serializeRowsToCsv } from "./csvExport";
+import {
+  serializeRowsToCsv,
+  serializeRowsToJson,
+  serializeRowsToSqlInsert,
+} from "./csvExport";
 
 const columns = [
   { name: "id" },
@@ -55,5 +59,48 @@ describe("serializeRowsToCsv", () => {
     });
 
     expect(csv).toBe("value\r\n+1\r\n");
+  });
+});
+
+describe("serializeRowsToJson", () => {
+  it("preserves column order and makes non-JSON primitives portable", () => {
+    const json = serializeRowsToJson(
+      [{ name: "id" }, { name: "created_at" }, { name: "payload" }],
+      [
+        {
+          id: 9n,
+          created_at: new Date("2026-08-04T00:00:00.000Z"),
+          payload: { ok: true },
+        },
+      ],
+    );
+
+    expect(json).toBe(
+      '[\n  {\n    "id": "9",\n    "created_at": "2026-08-04T00:00:00.000Z",\n    "payload": {\n      "ok": true\n    }\n  }\n]\n',
+    );
+  });
+});
+
+describe("serializeRowsToSqlInsert", () => {
+  it("quotes qualified identifiers and values for safe replay", () => {
+    const sql = serializeRowsToSqlInsert(
+      [{ name: "id" }, { name: "display name" }, { name: "active" }],
+      [{ id: 1, "display name": "O'Brien", active: true }],
+      { tableName: "public.users", dialect: "postgres" },
+    );
+
+    expect(sql).toBe(
+      'BEGIN;\nINSERT INTO "public"."users" ("id", "display name", "active") VALUES (1, \'O\'\'Brien\', TRUE);\nCOMMIT;\n',
+    );
+  });
+
+  it("supports MySQL identifier quoting and empty result sets", () => {
+    const sql = serializeRowsToSqlInsert([{ name: "id" }], [], {
+      tableName: "archive.events",
+      dialect: "mysql",
+      includeTransaction: false,
+    });
+
+    expect(sql).toBe("");
   });
 });

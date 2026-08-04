@@ -11,7 +11,7 @@ QueryX uses a small, explicit test pyramid:
 5. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 6. **Native matrix checks** test and build Tauri on Linux, macOS, and Windows.
 7. **Live PostgreSQL contract checks** execute catalog, query, and cancellation behavior against a disposable PostgreSQL service.
-8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export → inspect and navigate object dependencies.
+8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export CSV/JSON/SQL INSERT → inspect and navigate object dependencies.
 9. **Browser workflow checks** cover Monaco load, query-tab creation/switching/closing, document preservation, and keyboard execution.
 
 The desktop preview also has a Safe Mode smoke path: replace the editor query with an UPDATE or DELETE without WHERE, press Cmd/Ctrl+Enter, confirm the warning, then choose Cancel, Run in Transaction, or Execute Anyway. This is a UI contract preview; native transaction semantics belong to the Rust driver.
@@ -48,7 +48,7 @@ pnpm --filter @queryx/desktop tauri build --no-bundle
 
 `pnpm run verify` checks version alignment, required open-source project files, and local Markdown links. GitHub Actions runs the web gates on Ubuntu 22.04 and native tests/builds on Ubuntu 22.04, macOS 15, and Windows 2025. A separate Ubuntu job runs live PostgreSQL contract tests against PostgreSQL 17. Rust formatting and Clippy run once on Linux; native tests and the no-bundle Tauri build run on every platform.
 
-CSV unit tests cover column order, control-character escaping, NULL handling, UTF-8 BOM output, object serialization, and spreadsheet-formula protection. The manual export smoke test filters and sorts a result, exports it, opens the CSV in a text editor and spreadsheet, and confirms that the visible row order and count match without evaluating formula-like cells.
+CSV/JSON/SQL export unit tests cover column order, control-character escaping, NULL handling, UTF-8 BOM output, BigInt/date normalization, identifier quoting, transaction wrapping, object serialization, and spreadsheet-formula protection. The manual export smoke test filters and sorts a result, exports each format, opens the files in a text editor, and confirms that the visible row order and count match without evaluating formula-like cells or executing generated SQL.
 
 The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, overload-safe function/procedure DDL, aggregate kind and mode metadata, trigger status/timing/DDL metadata, and direct FK/view/trigger dependency edges. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
 

@@ -21,6 +21,8 @@ import {
   formatSql,
   inspectQuerySafety,
   serializeRowsToCsv,
+  serializeRowsToJson,
+  serializeRowsToSqlInsert,
   serializeRowsToTsv,
 } from "@queryx/core";
 import type {
@@ -41,7 +43,7 @@ import type {
   ViewMetadata,
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
-import { saveCsvFile } from "./exportCsv";
+import { saveTextFile } from "./exportCsv";
 import { useQueryStore, type RunMode } from "./store";
 
 const MonacoSqlEditor = lazy(async () => {
@@ -52,6 +54,7 @@ const MonacoSqlEditor = lazy(async () => {
 const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
 let nextResultRowKey = 0;
 const resultPageSize = 100;
+type ExportFormat = "csv" | "json" | "sql";
 
 function resultRowKey(row: Record<string, unknown>): string {
   const existing = resultRowKeys.get(row);
@@ -367,6 +370,7 @@ function App() {
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [resultPage, setResultPage] = useState(0);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
   );
@@ -734,6 +738,12 @@ function App() {
       setGridSelection(null);
     }
   }, [executionStatus]);
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const closeMenu = () => setExportMenuOpen(false);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [exportMenuOpen]);
   const updateFilter = (value: string) => {
     setGridSelection(null);
     setResultPage(0);
@@ -852,25 +862,66 @@ function App() {
         : [...current, key],
     );
 
-  const exportResults = async () => {
+  const exportResults = async (format: ExportFormat) => {
     if (!result || result.columns.length === 0) {
       notify("Run a query with tabular results before exporting");
       return;
     }
+    setExportMenuOpen(false);
     const timestamp = new Date()
       .toISOString()
       .replaceAll(":", "-")
       .slice(0, 19);
     try {
-      const outcome = await saveCsvFile(
-        serializeRowsToCsv(result.columns, filteredRows),
-        `queryx-results-${timestamp}.csv`,
+      let contents: string;
+      let extension: string;
+      let filterName: string;
+      let mimeType: string;
+      let suggestedName: string;
+      if (format === "csv") {
+        contents = serializeRowsToCsv(result.columns, filteredRows);
+        extension = "csv";
+        filterName = "CSV";
+        mimeType = "text/csv;charset=utf-8";
+        suggestedName = `queryx-results-${timestamp}.csv`;
+      } else if (format === "json") {
+        contents = serializeRowsToJson(result.columns, filteredRows);
+        extension = "json";
+        filterName = "JSON";
+        mimeType = "application/json;charset=utf-8";
+        suggestedName = `queryx-results-${timestamp}.json`;
+      } else {
+        const tableName = window.prompt(
+          "Target table for generated SQL INSERT statements",
+          "exported_results",
+        );
+        if (!tableName?.trim()) {
+          notify("SQL INSERT export cancelled");
+          return;
+        }
+        contents = serializeRowsToSqlInsert(result.columns, filteredRows, {
+          tableName,
+          dialect: driverKind,
+        });
+        extension = "sql";
+        filterName = "SQL";
+        mimeType = "application/sql;charset=utf-8";
+        suggestedName = `queryx-results-${timestamp}.sql`;
+      }
+      const outcome = await saveTextFile(
+        contents,
+        suggestedName,
+        filterName,
+        extension,
+        mimeType,
       );
       if (outcome === "saved")
-        notify(`Exported ${filteredRows.length.toLocaleString()} rows locally`);
+        notify(
+          `Exported ${filteredRows.length.toLocaleString()} rows as ${format.toUpperCase()} locally`,
+        );
     } catch (error) {
       notify(
-        `CSV export failed: ${error instanceof Error ? error.message : String(error)}`,
+        `${format.toUpperCase()} export failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   };
@@ -1650,14 +1701,49 @@ function App() {
                 >
                   {nullDisplay === "literal" ? "NULL" : "∅"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void exportResults()}
-                  disabled={!result || result.columns.length === 0}
-                  title="Export all filtered and sorted rows"
+                <div
+                  className="export-menu-wrap"
+                  onClick={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => event.stopPropagation()}
                 >
-                  ⇩ Export
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setExportMenuOpen((open) => !open)}
+                    disabled={!result || result.columns.length === 0}
+                    aria-expanded={exportMenuOpen}
+                    title="Export all filtered and sorted rows"
+                  >
+                    ⇩ Export <span className="export-chevron">⌄</span>
+                  </button>
+                  {exportMenuOpen && (
+                    <div className="export-menu" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void exportResults("csv")}
+                      >
+                        <strong>CSV</strong>
+                        <small>Spreadsheet-safe</small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void exportResults("json")}
+                      >
+                        <strong>JSON</strong>
+                        <small>Structured rows</small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void exportResults("sql")}
+                      >
+                        <strong>SQL INSERT</strong>
+                        <small>Replayable transaction</small>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="results-toolbar">

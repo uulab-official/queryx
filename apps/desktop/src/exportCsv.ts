@@ -4,6 +4,22 @@ export async function saveCsvFile(
   contents: string,
   suggestedName: string,
 ): Promise<"saved" | "cancelled"> {
+  return saveTextFile(
+    contents,
+    suggestedName,
+    "CSV",
+    "csv",
+    "text/csv;charset=utf-8",
+  );
+}
+
+export async function saveTextFile(
+  contents: string,
+  suggestedName: string,
+  filterName: string,
+  extension: string,
+  mimeType: string,
+): Promise<"saved" | "cancelled"> {
   if (isTauri()) {
     const [{ save }, { writeTextFile }] = await Promise.all([
       import("@tauri-apps/plugin-dialog"),
@@ -11,16 +27,14 @@ export async function saveCsvFile(
     ]);
     const path = await save({
       defaultPath: suggestedName,
-      filters: [{ name: "CSV", extensions: ["csv"] }],
+      filters: [{ name: filterName, extensions: [extension] }],
     });
     if (!path) return "cancelled";
     await writeTextFile(path, contents);
     return "saved";
   }
 
-  const url = URL.createObjectURL(
-    new Blob([contents], { type: "text/csv;charset=utf-8" }),
-  );
+  const url = URL.createObjectURL(new Blob([contents], { type: mimeType }));
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = suggestedName;

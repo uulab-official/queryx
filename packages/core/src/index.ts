@@ -1,5 +1,9 @@
-export { serializeRowsToCsv } from "./csvExport";
-export type { CsvExportOptions } from "./csvExport";
+export {
+  serializeRowsToCsv,
+  serializeRowsToJson,
+  serializeRowsToSqlInsert,
+} from "./csvExport";
+export type { CsvExportOptions, SqlInsertExportOptions } from "./csvExport";
 export { serializeRowsToTsv } from "./clipboard";
 export type { ClipboardExportOptions } from "./clipboard";
 export {

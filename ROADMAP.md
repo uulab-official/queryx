@@ -57,7 +57,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [ ] Virtualized result grid with incremental fetch, server paging, resize/reorder/freeze
 - [x] Cell/row/range copy, NULL display controls, and spreadsheet-safe TSV clipboard output
 - [x] Client-side result pages up to 100 rows with local page navigation; streaming and server-side paging remain planned
-- [ ] JSON and SQL INSERT export; progress, cancel, encoding, delimiter, and line-ending controls
+- [x] JSON and SQL INSERT export with portable values, dialect-aware identifier quoting, transaction wrapper, and explicit target-table prompt; progress/cancel and advanced encoding controls remain planned
 - [x] Metadata for views, indexes, and primary keys
 - [x] Composite foreign keys with outgoing/incoming relationship navigation
 - [x] PostgreSQL functions/procedures with overload-safe selection and read-only DDL inspection
