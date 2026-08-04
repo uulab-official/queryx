@@ -68,7 +68,7 @@ QueryX 문서는 사용자가 안전하게 데이터를 다루도록 돕고, 기
 5. [x] Troubleshooting
 6. [x] Security policy and local-first boundaries
 7. [x] Safe DDL handoff and recovery workflow
-8. [ ] Native packaging, signing, and update guide
+8. [x] Native packaging, signing, and update guide
 9. [ ] Workspace persistence and keychain guide when those features land
 
 ### Phase C — extensibility docs

@@ -128,6 +128,13 @@ button:disabled {
   background: var(--panel3);
   color: var(--text);
 }
+.update-button.update-ready {
+  color: var(--lime);
+}
+.update-button:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
 .avatar {
   width: 27px;
   height: 27px;

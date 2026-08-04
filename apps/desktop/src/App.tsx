@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -9,6 +10,9 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { isTauri } from "@tauri-apps/api/core";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
 import {
   buildDependencyIndex,
   buildForeignKeyIndex,
@@ -121,6 +125,108 @@ function Icon({ children }: { children: string }) {
     <span className="icon" aria-hidden="true">
       {children}
     </span>
+  );
+}
+
+type UpdateStatus =
+  | "idle"
+  | "checking"
+  | "available"
+  | "installing"
+  | "up-to-date"
+  | "error";
+
+function UpdateButton({ onNotify }: { onNotify: (message: string) => void }) {
+  const [update, setUpdate] = useState<Awaited<ReturnType<typeof check>>>(null);
+  const [status, setStatus] = useState<UpdateStatus>("idle");
+  const [progress, setProgress] = useState<number | null>(null);
+
+  const checkForUpdates = useCallback(
+    async (announce: boolean) => {
+      if (!isTauri()) {
+        if (announce)
+          onNotify("Automatic updates are available in the desktop app");
+        return;
+      }
+      try {
+        setStatus("checking");
+        const nextUpdate = await check();
+        setUpdate(nextUpdate);
+        if (nextUpdate) {
+          setStatus("available");
+          onNotify(`QueryX ${nextUpdate.version} is ready to install`);
+        } else {
+          setStatus("up-to-date");
+          if (announce) onNotify("QueryX is up to date");
+        }
+      } catch (error) {
+        setStatus("error");
+        if (announce) {
+          const detail =
+            error instanceof Error ? error.message : "Unknown updater error";
+          onNotify(`Update check failed: ${detail}`);
+        }
+      }
+    },
+    [onNotify],
+  );
+
+  const installUpdate = useCallback(async () => {
+    if (!update) return;
+    try {
+      setStatus("installing");
+      setProgress(0);
+      let totalBytes = 0;
+      let downloadedBytes = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started")
+          totalBytes = event.data.contentLength ?? 0;
+        if (event.event === "Progress") {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes > 0) {
+            setProgress(
+              Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)),
+            );
+          }
+        }
+        if (event.event === "Finished") setProgress(100);
+      });
+      await relaunch();
+    } catch (error) {
+      setStatus("error");
+      const detail =
+        error instanceof Error ? error.message : "Unknown updater error";
+      onNotify(`Update installation failed: ${detail}`);
+    }
+  }, [onNotify, update]);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const timer = window.setTimeout(() => void checkForUpdates(false), 2_500);
+    return () => window.clearTimeout(timer);
+  }, [checkForUpdates]);
+
+  const installing = status === "installing";
+  const checking = status === "checking";
+  const label = installing
+    ? `Updating${progress === null ? "…" : ` ${progress}%`}`
+    : update
+      ? `Update ${update.version}`
+      : "Check for updates";
+
+  return (
+    <button
+      type="button"
+      className={`icon-button update-button ${update ? "update-ready" : ""}`}
+      aria-label={label}
+      title={label}
+      onClick={() =>
+        update ? void installUpdate() : void checkForUpdates(true)
+      }
+      disabled={checking || installing}
+    >
+      {installing ? "↻" : update ? "↑" : "↻"}
+    </button>
   );
 }
 
@@ -873,6 +979,7 @@ function App() {
           >
             ⌘K
           </button>
+          <UpdateButton onNotify={notify} />
           <button
             type="button"
             className="icon-button"

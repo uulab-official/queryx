@@ -25,7 +25,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 | Results | Dynamic table/JSON view, local filter/sort, guarded CSV export | Virtualized streaming, copy modes, paging |
 | Safety | Destructive-query warning, transaction execution path | Parser-backed analysis and affected-row estimate |
 | Metadata | Schemas, relations, keys, indexes, FK navigation, functions/procedures/aggregates/window functions, relation/event triggers, direct Depends on / Used by navigation, and safe DDL-to-SQL handoff | Schema-aware DDL diff and migration history |
-| Runtime | Tauri 2, React, Rust, SQLx | Signed installers and automatic updates |
+| Runtime | Tauri 2, React, Rust, SQLx, signed updater integration, GitHub Release workflow | Platform notarization/codesigning and production key operations |
 
 The detailed delivery order and acceptance gates are in the [product roadmap](ROADMAP.md).
 
@@ -43,6 +43,8 @@ pnpm --filter @queryx/desktop tauri:dev
 QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file or PostgreSQL server. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
 
 See [Getting Started](docs/getting-started.md) for platform setup and the first-query walkthrough.
+
+Packaged desktop builds check for signed updates after startup. See [Desktop Updates](docs/updates.md) for the release feed, GitHub Actions secrets, and rollback procedure.
 
 ## Development
 

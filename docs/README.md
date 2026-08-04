@@ -27,5 +27,6 @@ Use this index to find the shortest path for your task. Documentation describes 
 
 - [Testing Guide](testing.md) — local and CI quality gates
 - [Release Process](release-process.md) — versioning, release evidence, rollback
+- [Desktop Updates](updates.md) — signed updater feed, GitHub Actions release, secrets, and rollback
 - [Documentation Plan](DOCUMENTATION_PLAN.md) — information architecture and writing rules
 - [Contributing](../CONTRIBUTING.md), [Security](../SECURITY.md), and [Roadmap](../ROADMAP.md)

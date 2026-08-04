@@ -27,6 +27,18 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMzQzVEQjA4ODBFQzI5MkIKUldRcktleUFDTnZGTXlIZi9XcVZRd0sza1FKZFA1MkFtWE54M1M2MWkrWnFMNFZaYWRMSHAybVYK",
+      "endpoints": [
+        "https://github.com/uulab-official/queryx/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

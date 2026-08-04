@@ -38,7 +38,7 @@ Known alpha limitations:
 - Passwords are intentionally session-only until OS keychain support lands.
 - Result rows are loaded into memory; virtualized streaming and server paging are not implemented.
 - Safety analysis is lexical, not yet parser/plan backed.
-- Installers are not yet signed or published.
+- GitHub Release packaging and signed OTA verification are wired; the first production release still requires repository updater secrets and platform signing/notarization credentials.
 
 ## v0.2 — Daily query workflow
 
@@ -120,7 +120,7 @@ Release gates:
 ## v1.0 — Stable open ecosystem
 
 - [ ] Signed and notarized installers for macOS, Windows, and Linux packages
-- [ ] Secure automatic updates with rollback guidance
+- [x] Secure automatic updates with signature verification, GitHub Release publishing, and rollback guidance; production secret provisioning remains an operational gate
 - [ ] Stable storage migrations, driver API, plugin API, and deprecation policy
 - [ ] Crash recovery for tabs, transactions, and workspace state
 - [ ] Public threat model, independent security review, and vulnerability response SLA

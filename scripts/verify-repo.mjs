@@ -34,6 +34,32 @@ if (tauriVersion !== version)
   errors.push(
     `apps/desktop/src-tauri/tauri.conf.json has ${tauriVersion}; expected ${version}`,
   );
+const tauriConfig = readJson("apps/desktop/src-tauri/tauri.conf.json");
+const updaterConfig = tauriConfig.plugins?.updater;
+if (!tauriConfig.bundle?.active || !tauriConfig.bundle?.createUpdaterArtifacts)
+  errors.push("Tauri bundle must create updater artifacts for releases");
+if (
+  !updaterConfig?.pubkey ||
+  !updaterConfig.endpoints?.includes(
+    "https://github.com/uulab-official/queryx/releases/latest/download/latest.json",
+  )
+)
+  errors.push(
+    "Tauri updater must have a public key and the GitHub latest.json endpoint",
+  );
+const releaseWorkflow = readFileSync(
+  join(root, ".github/workflows/release.yml"),
+  "utf8",
+);
+for (const requiredReleaseContract of [
+  "contents: write",
+  "tauri-apps/tauri-action@v1",
+  "TAURI_SIGNING_PRIVATE_KEY",
+  "latest.json",
+]) {
+  if (!releaseWorkflow.includes(requiredReleaseContract))
+    errors.push(`Release workflow is missing ${requiredReleaseContract}`);
+}
 for (const required of [
   "README.md",
   "ROADMAP.md",
@@ -43,6 +69,7 @@ for (const required of [
   "CODE_OF_CONDUCT.md",
   "SECURITY.md",
   ".github/workflows/ci.yml",
+  ".github/workflows/release.yml",
   ".github/PULL_REQUEST_TEMPLATE.md",
   "docs/README.md",
   "docs/DOCUMENTATION_PLAN.md",
@@ -59,6 +86,7 @@ for (const required of [
   "docs/postgres-driver.md",
   "docs/testing.md",
   "docs/release-process.md",
+  "docs/updates.md",
 ]) {
   if (!existsSync(join(root, required)))
     errors.push(`Missing required file: ${required}`);
