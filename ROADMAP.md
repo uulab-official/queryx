@@ -82,7 +82,7 @@ Release gates:
 Goal: support production-oriented work without turning mistakes into incidents.
 
 - [ ] Explicit auto-commit state and begin/commit/rollback controls
-- [ ] Editable result rows with key detection, staged diff, validation, and generated SQL preview
+- [x] Keyed result-cell editing with staged local diffs, generated UPDATE preview, explicit transaction apply, and refresh; full validation/conflict detection remains planned
 - [ ] Parser-backed destructive-statement analysis and database-backed affected-row estimates
 - [ ] Read-only connection enforcement in both UI and Rust execution layer
 - [ ] Table data editor with filters, ordering, pagination, and optimistic conflict detection

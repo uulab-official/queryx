@@ -13,6 +13,19 @@ export interface SqlInsertExportOptions {
   includeTransaction?: boolean;
 }
 
+export interface SqlUpdateExportOptions {
+  tableName: string;
+  keyColumns: readonly string[];
+  dialect?: "mysql" | "postgres" | "sqlite";
+  lineEnding?: "\n" | "\r\n";
+  includeTransaction?: boolean;
+}
+
+export interface SqlRowUpdate {
+  originalRow: Record<string, unknown>;
+  changes: Readonly<Record<string, unknown>>;
+}
+
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
 
 export function serializeRowsToCsv(
@@ -78,6 +91,64 @@ export function serializeRowsToSqlInsert(
   );
   const body = statements.join(lineEnding);
   if (statements.length === 0) return "";
+  const transaction =
+    options.includeTransaction === false ? "" : `BEGIN;${lineEnding}`;
+  const commit =
+    options.includeTransaction === false
+      ? ""
+      : `${lineEnding}COMMIT;${lineEnding}`;
+  return `${transaction}${body}${commit}`;
+}
+
+export function serializeRowsToSqlUpdate(
+  columns: readonly Pick<QueryColumn, "name">[],
+  updates: readonly SqlRowUpdate[],
+  options: SqlUpdateExportOptions,
+): string {
+  const tableName = options.tableName.trim();
+  if (!tableName) throw new Error("A target table name is required");
+  if (columns.length === 0)
+    throw new Error("At least one result column is required");
+  if (options.keyColumns.length === 0)
+    throw new Error("At least one key column is required");
+  const columnNames = new Set(columns.map((column) => column.name));
+  const missingKey = options.keyColumns.find(
+    (columnName) => !columnNames.has(columnName),
+  );
+  if (missingKey)
+    throw new Error(`Result does not include key column: ${missingKey}`);
+  const dialect = options.dialect ?? "sqlite";
+  const lineEnding = options.lineEnding ?? "\n";
+  const quotedTable = tableName
+    .split(".")
+    .map((part) => quoteIdentifier(part, dialect))
+    .join(".");
+  const statements = updates
+    .map(({ originalRow, changes }, index) => {
+      const changedColumns = columns.filter((column) =>
+        Object.hasOwn(changes, column.name),
+      );
+      if (changedColumns.length === 0) return "";
+      const keyValues = options.keyColumns.map((columnName) => {
+        const value = originalRow[columnName];
+        if (value === null || value === undefined) {
+          throw new Error(
+            `Row ${index + 1} has a NULL key value for ${columnName}`,
+          );
+        }
+        return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value)}`;
+      });
+      const assignments = changedColumns
+        .map(
+          (column) =>
+            `${quoteIdentifier(column.name, dialect)} = ${serializeSqlValue(changes[column.name])}`,
+        )
+        .join(", ");
+      return `UPDATE ${quotedTable} SET ${assignments} WHERE ${keyValues.join(" AND ")};`;
+    })
+    .filter(Boolean);
+  if (statements.length === 0) return "";
+  const body = statements.join(lineEnding);
   const transaction =
     options.includeTransaction === false ? "" : `BEGIN;${lineEnding}`;
   const commit =

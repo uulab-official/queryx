@@ -24,12 +24,14 @@ import {
   serializeRowsToCsv,
   serializeRowsToJson,
   serializeRowsToSqlInsert,
+  serializeRowsToSqlUpdate,
   serializeRowsToTsv,
 } from "@queryx/core";
 import type {
   ForeignKeyRelations,
   ObjectDependencies,
   QuerySafetyReport,
+  SqlRowUpdate,
 } from "@queryx/core";
 import type {
   DatabaseObjectRef,
@@ -71,6 +73,14 @@ type GridPoint = { row: number; column: number };
 type GridSelection =
   | { kind: "cells"; anchor: GridPoint; focus: GridPoint }
   | { kind: "rows"; anchor: number; focus: number };
+
+type EditingCell = {
+  rowKey: string;
+  columnName: string;
+  row: Record<string, unknown>;
+};
+
+type StagedRowEdit = SqlRowUpdate & { rowKey: string };
 
 interface PaletteCommand {
   id: string;
@@ -370,6 +380,7 @@ function App() {
     history,
     favorites,
     workspaceRestored,
+    driver,
     driverKind,
     connectionName,
     connectionStatus,
@@ -394,6 +405,13 @@ function App() {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [resultPage, setResultPage] = useState(0);
   const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
+  const [editingEnabled, setEditingEnabled] = useState(false);
+  const [editingCell, setEditingCell] = useState<EditingCell | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [stagedEdits, setStagedEdits] = useState<Record<string, StagedRowEdit>>(
+    {},
+  );
+  const [editPreviewOpen, setEditPreviewOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -415,8 +433,13 @@ function App() {
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
   const editorRef = useRef<SqlEditorHandle>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
   const activeFavorite = favorites.find(
     (favorite) => favorite.sql === sql.trim(),
+  );
+  const pendingEditCount = Object.values(stagedEdits).reduce(
+    (count, edit) => count + Object.keys(edit.changes).length,
+    0,
   );
   const handleToggleFavorite = () => {
     if (!sql.trim()) {
@@ -474,6 +497,10 @@ function App() {
     if (!workspaceRestored) void runQuery();
   }, [loadMetadata, runQuery, workspaceRestored]);
   const handleRun = (mode: RunMode = "normal", sqlOverride?: string) => {
+    if (pendingEditCount > 0) {
+      notify("Review or discard staged row edits before running another query");
+      return;
+    }
     const executableSql = sqlOverride?.trim() || sql;
     if (!executableSql.trim()) {
       notify("Enter SQL before running the query");
@@ -488,9 +515,17 @@ function App() {
     }
     setPendingSafety(null);
     setGridSelection(null);
+    setEditingCell(null);
+    setStagedEdits({});
     void runQuery(mode, executableSql);
   };
   const handleExplain = () => {
+    if (pendingEditCount > 0) {
+      notify(
+        "Review or discard staged row edits before explaining another query",
+      );
+      return;
+    }
     if (!canExplain) {
       notify("Explain plans are not supported by this connection");
       return;
@@ -634,6 +669,13 @@ function App() {
           (eventTrigger) => eventTrigger.id === selectedObject.id,
         )
       : undefined;
+  const selectedObjectIdentity = selectedObject
+    ? selectedObject.kind === "routine" || selectedObject.kind === "trigger"
+      ? `${selectedObject.kind}:${selectedObject.id}`
+      : selectedObject.kind === "eventTrigger"
+        ? `eventTrigger:${selectedObject.name}`
+        : `${selectedObject.kind}:${selectedObject.schema}.${selectedObject.name}`
+    : "none";
   const foreignKeyIndex = useMemo(() => buildForeignKeyIndex(tables), [tables]);
   const currentForeignKeys = currentTable
     ? foreignKeyIndex.get(currentTable)
@@ -753,6 +795,119 @@ function App() {
       ),
     [filteredRows, resultPage],
   );
+  const primaryKeyColumns = useMemo(
+    () => currentTable?.columns.filter((column) => column.primaryKey) ?? [],
+    [currentTable],
+  );
+  const canEditResults = Boolean(
+    driver.capabilities().has("editing") &&
+      currentTable &&
+      result &&
+      primaryKeyColumns.length > 0 &&
+      primaryKeyColumns.every((key) =>
+        result.columns.some((column) => column.name === key.name),
+      ),
+  );
+  const editPreview = useMemo(() => {
+    if (!canEditResults || !currentTable || !result || pendingEditCount === 0) {
+      return { sql: "", error: null };
+    }
+    try {
+      return {
+        sql: serializeRowsToSqlUpdate(
+          result.columns,
+          Object.values(stagedEdits),
+          {
+            tableName: `${currentTable.schema}.${currentTable.name}`,
+            keyColumns: primaryKeyColumns.map((column) => column.name),
+            dialect: driverKind,
+            includeTransaction: false,
+          },
+        ),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        sql: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [
+    canEditResults,
+    currentTable,
+    driverKind,
+    pendingEditCount,
+    primaryKeyColumns,
+    result,
+    stagedEdits,
+  ]);
+  const beginCellEdit = (
+    row: Record<string, unknown>,
+    column: { name: string; type: string; nullable: boolean },
+  ) => {
+    if (!editingEnabled || !canEditResults) return;
+    if (primaryKeyColumns.some((key) => key.name === column.name)) {
+      notify("Primary key cells are locked to protect the update target");
+      return;
+    }
+    setEditingCell({ rowKey: resultRowKey(row), columnName: column.name, row });
+    setEditDraft(editableCellValue(row[column.name]));
+  };
+  const cancelCellEdit = () => {
+    setEditingCell(null);
+    setEditDraft("");
+  };
+  const commitCellEdit = () => {
+    if (!editingCell || !result) return;
+    const column = result.columns.find(
+      (candidate) => candidate.name === editingCell.columnName,
+    );
+    if (!column) return cancelCellEdit();
+    try {
+      const nextValue = parseEditedCellValue(editDraft, column);
+      const previousValue = editingCell.row[column.name];
+      const unchanged =
+        Object.is(previousValue, nextValue) ||
+        (typeof previousValue === "object" &&
+          typeof nextValue === "object" &&
+          JSON.stringify(previousValue) === JSON.stringify(nextValue));
+      setStagedEdits((current) => {
+        const existing = current[editingCell.rowKey];
+        const changes = { ...(existing?.changes ?? {}) };
+        if (unchanged) delete changes[column.name];
+        else changes[column.name] = nextValue;
+        const next = { ...current };
+        if (Object.keys(changes).length === 0) delete next[editingCell.rowKey];
+        else {
+          next[editingCell.rowKey] = {
+            rowKey: editingCell.rowKey,
+            originalRow: existing?.originalRow ?? editingCell.row,
+            changes,
+          };
+        }
+        return next;
+      });
+      cancelCellEdit();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const applyStagedEdits = async () => {
+    if (!editPreview.sql) {
+      notify(editPreview.error ?? "Stage at least one editable cell first");
+      return;
+    }
+    setEditPreviewOpen(false);
+    const updated = await runQuery("transaction", editPreview.sql);
+    if (!updated) return;
+    setStagedEdits({});
+    setEditingCell(null);
+    setEditingEnabled(false);
+    await runQuery("normal", sql);
+    notify(
+      `Applied ${pendingEditCount} staged cell edit${pendingEditCount === 1 ? "" : "s"}`,
+    );
+  };
   const getColumnWidth = (column: { name: string; type: string }) =>
     columnWidths[column.name] ?? defaultColumnWidth(column.type);
   const updateColumnWidth = (columnName: string, width: number) => {
@@ -814,6 +969,20 @@ function App() {
       setGridSelection(null);
     }
   }, [executionStatus]);
+  useEffect(() => {
+    if (selectedObjectIdentity === "none") {
+      setEditingEnabled(false);
+      setEditingCell(null);
+      setStagedEdits({});
+      return;
+    }
+    setEditingEnabled(false);
+    setEditingCell(null);
+    setStagedEdits({});
+  }, [selectedObjectIdentity]);
+  useEffect(() => {
+    if (editingCell) editInputRef.current?.focus();
+  }, [editingCell]);
   useEffect(() => {
     if (!exportMenuOpen) return;
     const closeMenu = () => setExportMenuOpen(false);
@@ -937,6 +1106,24 @@ function App() {
         ? current.filter((item) => item !== key)
         : [...current, key],
     );
+  const browseCurrentTable = () => {
+    if (!currentTable) return;
+    if (pendingEditCount > 0) {
+      notify("Review or discard staged row edits before opening another table");
+      return;
+    }
+    const quote = driverKind === "mysql" ? "`" : '"';
+    const tableName = `${quote}${currentTable.schema.replaceAll(quote, `${quote}${quote}`)}${quote}.${quote}${currentTable.name.replaceAll(quote, `${quote}${quote}`)}${quote}`;
+    const browseSql = `SELECT * FROM ${tableName} LIMIT 100;`;
+    newQuery();
+    setSql(browseSql);
+    setResultView("table");
+    setFilter("");
+    setSortBy(null);
+    setResultPage(0);
+    void runQuery("normal", browseSql);
+    notify(`Opened ${currentTable.schema}.${currentTable.name} data`);
+  };
 
   const exportResults = async (format: ExportFormat) => {
     if (!result || result.columns.length === 0) {
@@ -1777,6 +1964,45 @@ function App() {
                 >
                   {nullDisplay === "literal" ? "NULL" : "∅"}
                 </button>
+                <button
+                  type="button"
+                  className={
+                    editingEnabled
+                      ? "active edit-results-button"
+                      : "edit-results-button"
+                  }
+                  onClick={() => {
+                    if (!canEditResults) {
+                      notify(
+                        "Select a table and include its primary-key columns in the result before editing",
+                      );
+                      return;
+                    }
+                    setEditingEnabled((enabled) => !enabled);
+                    cancelCellEdit();
+                  }}
+                  disabled={!result || result.columns.length === 0}
+                  aria-pressed={editingEnabled}
+                  title={
+                    canEditResults
+                      ? "Double-click a non-primary-key cell to stage an edit"
+                      : "Requires a selected table, editing-capable driver, and primary-key columns in the result"
+                  }
+                >
+                  ✎ {editingEnabled ? "Editing" : "Edit"}
+                  {pendingEditCount > 0 && ` · ${pendingEditCount}`}
+                </button>
+                {pendingEditCount > 0 && (
+                  <button
+                    type="button"
+                    className="apply-edits-button"
+                    onClick={() => setEditPreviewOpen(true)}
+                    disabled={Boolean(editPreview.error)}
+                    title="Review generated UPDATE statements before running them in a transaction"
+                  >
+                    Review & Apply
+                  </button>
+                )}
                 <div
                   className="export-menu-wrap"
                   onClick={(event) => event.stopPropagation()}
@@ -1905,51 +2131,84 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row, rowIndex) => (
-                      <tr key={resultRowKey(row)}>
-                        <td
-                          className={`row-number selectable ${gridSelection?.kind === "rows" && isCellInSelection(gridSelection, rowIndex, 0) ? "selected" : ""}`}
-                          title="Select row; Shift-click to extend"
-                        >
-                          <button
-                            type="button"
-                            className="grid-cell-button row-select-button"
-                            onClick={(event) =>
-                              selectGridRow(rowIndex, event.shiftKey)
-                            }
-                            onKeyDown={handleGridKeyDown}
-                            title="Select row; Shift-click to extend"
-                          >
-                            {rowIndex + 1}
-                          </button>
-                        </td>
-                        {result?.columns.map((column, columnIndex) => (
+                    {visibleRows.map((row, rowIndex) => {
+                      const rowKey = resultRowKey(row);
+                      return (
+                        <tr key={rowKey}>
                           <td
-                            key={column.name}
-                            className={`${row[column.name] === null ? "null-value" : ""} ${isCellInSelection(gridSelection, rowIndex, columnIndex) ? "selected" : ""}`}
+                            className={`row-number selectable ${gridSelection?.kind === "rows" && isCellInSelection(gridSelection, rowIndex, 0) ? "selected" : ""}`}
+                            title="Select row; Shift-click to extend"
                           >
                             <button
                               type="button"
-                              className="grid-cell-button"
+                              className="grid-cell-button row-select-button"
                               onClick={(event) =>
-                                selectGridCell(
-                                  rowIndex,
-                                  columnIndex,
-                                  event.shiftKey,
-                                )
+                                selectGridRow(rowIndex, event.shiftKey)
                               }
                               onKeyDown={handleGridKeyDown}
-                              title="Select cell; Shift-click to extend"
+                              title="Select row; Shift-click to extend"
                             >
-                              {formatCellValue(
-                                row[column.name],
-                                nullDisplay === "literal",
-                              )}
+                              {rowIndex + 1}
                             </button>
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                          {result?.columns.map((column, columnIndex) => (
+                            <td
+                              key={column.name}
+                              className={`${row[column.name] === null ? "null-value" : ""} ${isCellInSelection(gridSelection, rowIndex, columnIndex) ? "selected" : ""} ${stagedEdits[rowKey] && Object.hasOwn(stagedEdits[rowKey].changes, column.name) ? "staged-cell" : ""}`}
+                            >
+                              {editingCell?.rowKey === rowKey &&
+                              editingCell.columnName === column.name ? (
+                                <input
+                                  ref={editInputRef}
+                                  className="grid-edit-input"
+                                  value={editDraft}
+                                  onChange={(event) =>
+                                    setEditDraft(event.target.value)
+                                  }
+                                  onBlur={commitCellEdit}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      commitCellEdit();
+                                    } else if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelCellEdit();
+                                    }
+                                  }}
+                                  aria-label={`Edit ${column.name}`}
+                                />
+                              ) : (
+                                <button
+                                  type="button"
+                                  className="grid-cell-button"
+                                  onClick={(event) =>
+                                    selectGridCell(
+                                      rowIndex,
+                                      columnIndex,
+                                      event.shiftKey,
+                                    )
+                                  }
+                                  onDoubleClick={() =>
+                                    beginCellEdit(row, column)
+                                  }
+                                  onKeyDown={handleGridKeyDown}
+                                  title={
+                                    editingEnabled
+                                      ? "Double-click to stage an edit"
+                                      : "Select cell; Shift-click to extend"
+                                  }
+                                >
+                                  {formatCellValue(
+                                    row[column.name],
+                                    nullDisplay === "literal",
+                                  )}
+                                </button>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {result && result.columns.length === 0 && (
@@ -2067,6 +2326,7 @@ function App() {
           onSelectTable={selectRelatedTable}
           onSelectTriggerRelation={selectTriggerRelation}
           onSelectDependency={selectDependencyObject}
+          onBrowseTable={browseCurrentTable}
           onCopyDefinition={(definition) => {
             void navigator.clipboard
               .writeText(definition)
@@ -2087,6 +2347,20 @@ function App() {
           onCancel={() => setPendingSafety(null)}
           onRunInTransaction={() => handleRun("transaction", pendingSafety.sql)}
           onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
+        />
+      )}
+      {editPreviewOpen && (
+        <EditPreviewDialog
+          sql={editPreview.sql}
+          error={editPreview.error}
+          editCount={pendingEditCount}
+          onCancel={() => setEditPreviewOpen(false)}
+          onDiscard={() => {
+            setEditPreviewOpen(false);
+            setStagedEdits({});
+            setEditingCell(null);
+          }}
+          onApply={() => void applyStagedEdits()}
         />
       )}
       {connectionOpen && (
@@ -2427,6 +2701,119 @@ function formatCellValue(value: unknown, showNullLiteral = true): string {
   return String(value);
 }
 
+function editableCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "NULL";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function parseEditedCellValue(
+  rawValue: string,
+  column: { type: string; nullable: boolean },
+): unknown {
+  const trimmed = rawValue.trim();
+  const normalizedType = column.type.toLowerCase();
+  if (trimmed.toUpperCase() === "NULL") return null;
+  if (!trimmed && column.nullable) return null;
+  if (
+    normalizedType.includes("bool") &&
+    (trimmed.toLowerCase() === "true" || trimmed.toLowerCase() === "false")
+  ) {
+    return trimmed.toLowerCase() === "true";
+  }
+  if (
+    normalizedType.includes("int") ||
+    normalizedType.includes("numeric") ||
+    normalizedType.includes("decimal") ||
+    normalizedType.includes("real") ||
+    normalizedType.includes("double")
+  ) {
+    const numericValue = Number(trimmed);
+    if (Number.isFinite(numericValue)) return numericValue;
+  }
+  if (normalizedType.includes("json")) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      throw new Error("JSON cells must contain valid JSON");
+    }
+  }
+  return rawValue;
+}
+
+function EditPreviewDialog({
+  sql,
+  error,
+  editCount,
+  onCancel,
+  onDiscard,
+  onApply,
+}: {
+  sql: string;
+  error: string | null;
+  editCount: number;
+  onCancel: () => void;
+  onDiscard: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="edit-preview-modal"
+        aria-modal="true"
+        aria-labelledby="edit-preview-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">STAGED DATA EDIT</p>
+            <h2 id="edit-preview-title">
+              Review {editCount} cell edit{editCount === 1 ? "" : "s"}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close edit preview"
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </div>
+        {error ? (
+          <div className="edit-preview-error">{error}</div>
+        ) : (
+          <>
+            <p className="modal-copy">
+              QueryX will run these generated UPDATE statements inside the
+              native transaction boundary, then refresh the result. Nothing runs
+              until you choose Apply changes.
+            </p>
+            <pre className="edit-preview-sql">{sql}</pre>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onCancel}>
+            Keep editing
+          </button>
+          <button type="button" className="modal-danger" onClick={onDiscard}>
+            Discard edits
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={onApply}
+            disabled={Boolean(error) || !sql}
+          >
+            Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
 function SafeModeDialog({
   report,
   onCancel,
@@ -2688,6 +3075,7 @@ function Inspector({
   onSelectTable,
   onSelectTriggerRelation,
   onSelectDependency,
+  onBrowseTable,
   onCopyDefinition,
   onEditDefinition,
 }: {
@@ -2702,6 +3090,7 @@ function Inspector({
   onSelectTable: (relation: RelationRef) => void;
   onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
   onSelectDependency: (object: DatabaseObjectRef) => void;
+  onBrowseTable: () => void;
   onCopyDefinition: (definition: string) => void;
   onEditDefinition: (definition: string, label: string) => void;
 }) {
@@ -3010,6 +3399,16 @@ function Inspector({
                 {relation.schema} · {table ? "table" : "view"}
               </small>
             </span>
+            {table && (
+              <button
+                type="button"
+                className="inspector-action"
+                onClick={onBrowseTable}
+                title="Open the first 100 rows in a new query tab"
+              >
+                Browse data
+              </button>
+            )}
           </div>
           <div className="inspector-tabs">
             <button

@@ -2,8 +2,14 @@ export {
   serializeRowsToCsv,
   serializeRowsToJson,
   serializeRowsToSqlInsert,
+  serializeRowsToSqlUpdate,
 } from "./csvExport";
-export type { CsvExportOptions, SqlInsertExportOptions } from "./csvExport";
+export type {
+  CsvExportOptions,
+  SqlInsertExportOptions,
+  SqlRowUpdate,
+  SqlUpdateExportOptions,
+} from "./csvExport";
 export { serializeRowsToTsv } from "./clipboard";
 export type { ClipboardExportOptions } from "./clipboard";
 export {

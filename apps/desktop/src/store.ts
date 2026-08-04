@@ -81,7 +81,7 @@ interface QueryState {
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
   setSelectedObject: (object: SelectedDatabaseObject | null) => void;
-  runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<void>;
+  runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<boolean>;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
@@ -419,7 +419,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     setResultView: (resultView) => set({ resultView }),
     setSelectedObject: (selectedObject) => set({ selectedObject }),
     runQuery: async (mode = "normal", sqlOverride?: string) => {
-      if (get().isRunning) return;
+      if (get().isRunning) return false;
       const controller = new AbortController();
       activeQueryController = controller;
       set({ isRunning: true, executionStatus: "running" });
@@ -450,6 +450,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               : "Query completed successfully",
         });
         window.setTimeout(() => set({ toast: null }), 2200);
+        return true;
       } catch (error) {
         const wasCancelled =
           error instanceof DOMException && error.name === "AbortError";
@@ -472,6 +473,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               ? error.message
               : "Query failed",
         });
+        return false;
       } finally {
         if (activeQueryController === controller) {
           activeQueryController = null;

@@ -224,6 +224,7 @@ impl DatabaseDriver for PostgresDriver {
             DriverCapability::Transactions,
             DriverCapability::Explain,
             DriverCapability::Cancel,
+            DriverCapability::Editing,
         ]
     }
 

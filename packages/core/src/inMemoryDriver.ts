@@ -308,7 +308,7 @@ $function$`,
 export class InMemoryDriver implements DatabaseDriver {
   readonly kind = "postgres" as const;
   capabilities(): ReadonlySet<DriverCapability> {
-    return new Set(["transactions", "explain", "cancel"]);
+    return new Set(["transactions", "explain", "cancel", "editing"]);
   }
   private connected = false;
 

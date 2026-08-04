@@ -58,7 +58,11 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     fn capabilities(&self) -> Vec<DriverCapability> {
-        vec![DriverCapability::Transactions, DriverCapability::Explain]
+        vec![
+            DriverCapability::Transactions,
+            DriverCapability::Explain,
+            DriverCapability::Editing,
+        ]
     }
 
     async fn execute(

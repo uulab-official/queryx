@@ -3,6 +3,7 @@ import {
   serializeRowsToCsv,
   serializeRowsToJson,
   serializeRowsToSqlInsert,
+  serializeRowsToSqlUpdate,
 } from "./csvExport";
 
 const columns = [
@@ -102,5 +103,39 @@ describe("serializeRowsToSqlInsert", () => {
     });
 
     expect(sql).toBe("");
+  });
+});
+
+describe("serializeRowsToSqlUpdate", () => {
+  it("generates a keyed transaction with changed columns only", () => {
+    const sql = serializeRowsToSqlUpdate(
+      [{ name: "id" }, { name: "status" }, { name: "note" }],
+      [
+        {
+          originalRow: { id: 7, status: "pending", note: null },
+          changes: { status: "paid", note: "reviewer's note" },
+        },
+      ],
+      { tableName: "public.orders", keyColumns: ["id"], dialect: "postgres" },
+    );
+
+    expect(sql).toBe(
+      'BEGIN;\nUPDATE "public"."orders" SET "status" = \'paid\', "note" = \'reviewer\'\'s note\' WHERE "id" = 7;\nCOMMIT;\n',
+    );
+  });
+
+  it("rejects a row whose primary key is null", () => {
+    expect(() =>
+      serializeRowsToSqlUpdate(
+        [{ name: "id" }, { name: "status" }],
+        [
+          {
+            originalRow: { id: null, status: "pending" },
+            changes: { status: "paid" },
+          },
+        ],
+        { tableName: "orders", keyColumns: ["id"] },
+      ),
+    ).toThrow("NULL key value");
   });
 });

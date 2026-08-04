@@ -59,6 +59,7 @@ pub enum DriverCapability {
     Transactions,
     Explain,
     Cancel,
+    Editing,
 }
 
 #[derive(Debug, Serialize)]
