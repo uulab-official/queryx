@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type ClipboardEvent,
+  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
@@ -16,6 +17,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
+  buildCsvImportPlan,
   buildRowsToSqlUpdateStatements,
   buildDependencyIndex,
   buildForeignKeyIndex,
@@ -24,8 +26,11 @@ import {
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
   compareSchemaSnapshots,
+  defaultCsvImportMappings,
   formatSql,
+  inferImportType,
   inspectQuerySafety,
+  parseCsv,
   serializeRowsToCsv,
   serializeRowsToJson,
   serializeRowsToSqlInsert,
@@ -33,7 +38,10 @@ import {
   serializeRowsToTsv,
 } from "@queryx/core";
 import type {
+  CsvImportMapping,
+  CsvImportPlan,
   ForeignKeyRelations,
+  ImportValueType,
   ObjectDependencies,
   QuerySafetyReport,
   SqlRowUpdate,
@@ -460,6 +468,7 @@ function App() {
   );
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -1351,6 +1360,32 @@ function App() {
     notify(`Loaded ${nextResult.rows.length.toLocaleString()} more rows`);
   };
 
+  const importCsv = async (plan: CsvImportPlan) => {
+    if (!currentTable) return;
+    if (readOnlyConnection) {
+      notify("Read-only connection: imports are disabled");
+      return;
+    }
+    if (pendingEditCount > 0) {
+      notify("Review or discard staged row edits before importing data");
+      return;
+    }
+    if (plan.errors.length > 0 || plan.statements.length === 0) {
+      notify("Fix import mapping errors before importing data");
+      return;
+    }
+    setImportOpen(false);
+    const result = await runQuery("normal", plan.statements.join("\n"), {
+      batch: {
+        statements: plan.statements,
+        expectedRows: plan.statements.length,
+      },
+    });
+    if (!result) return;
+    await loadMetadata();
+    notify(`Imported ${plan.statements.length.toLocaleString()} rows`);
+  };
+
   const exportResults = async (format: ExportFormat) => {
     if (!result || result.columns.length === 0) {
       notify("Run a query with tabular results before exporting");
@@ -1592,6 +1627,15 @@ function App() {
       label: "Migration history",
       hint: `${migrationHistory.length} saved previews`,
       execute: openMigrationHistory,
+    },
+    {
+      id: "import-csv",
+      label: "Import CSV into selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: () => setImportOpen(true),
     },
     {
       id: "connection",
@@ -2274,6 +2318,21 @@ function App() {
                     Review & Apply
                   </button>
                 )}
+                {currentTable && (
+                  <button
+                    type="button"
+                    className="import-data-button"
+                    onClick={() => setImportOpen(true)}
+                    disabled={readOnlyConnection || isRunning}
+                    title={
+                      readOnlyConnection
+                        ? "Read-only connection: imports are disabled"
+                        : `Import CSV into ${currentTable.schema}.${currentTable.name}`
+                    }
+                  >
+                    ⇧ Import
+                  </button>
+                )}
                 <div
                   className="export-menu-wrap"
                   onClick={(event) => event.stopPropagation()}
@@ -2737,6 +2796,14 @@ function App() {
             setMigrationHistoryOpen(false);
             notify(`Opened ${kind} preview in a new SQL tab`);
           }}
+        />
+      )}
+      {importOpen && currentTable && (
+        <CsvImportDialog
+          table={currentTable}
+          driverKind={driverKind}
+          onClose={() => setImportOpen(false)}
+          onImport={importCsv}
         />
       )}
       {editPreviewOpen && (
@@ -3222,6 +3289,211 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function CsvImportDialog({
+  table,
+  driverKind,
+  onClose,
+  onImport,
+}: {
+  table: TableMetadata;
+  driverKind: DriverKind;
+  onClose: () => void;
+  onImport: (plan: CsvImportPlan) => Promise<void>;
+}) {
+  const [fileName, setFileName] = useState("");
+  const [parsed, setParsed] = useState<ReturnType<typeof parseCsv> | null>(
+    null,
+  );
+  const [mappings, setMappings] = useState<CsvImportMapping[]>([]);
+  const [loading, setLoading] = useState(false);
+  const plan = useMemo(
+    () =>
+      parsed ? buildCsvImportPlan(table, parsed, mappings, driverKind) : null,
+    [driverKind, mappings, parsed, table],
+  );
+  const importTypes: ImportValueType[] = [
+    "text",
+    "integer",
+    "numeric",
+    "boolean",
+    "date",
+    "json",
+  ];
+
+  const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const text = await file.text();
+      const next = parseCsv(text);
+      setFileName(file.name);
+      setParsed(next);
+      setMappings(defaultCsvImportMappings(next.headers, table.columns));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateMapping = (index: number, next: Partial<CsvImportMapping>) => {
+    setMappings((current) =>
+      current.map((mapping, mappingIndex) =>
+        mappingIndex === index ? { ...mapping, ...next } : mapping,
+      ),
+    );
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-diff-modal import-modal"
+        aria-modal="true"
+        aria-labelledby="csv-import-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">
+              DATA IMPORT · {driverDisplayName(driverKind)}
+            </p>
+            <h2 id="csv-import-title">
+              Import CSV into {table.schema}.{table.name}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close CSV import"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Select a CSV with a header row, map source columns to the target
+          table, then review the generated batch before importing.
+        </p>
+        <label className="import-file-picker">
+          <span>{fileName || "Choose CSV file"}</span>
+          <input type="file" accept=".csv,text/csv" onChange={handleFile} />
+        </label>
+        {loading && <div className="import-status">Reading CSV…</div>}
+        {parsed && (
+          <>
+            <div className="schema-diff-summary">
+              <span>{parsed.rows.length} rows</span>
+              <span>
+                {mappings.filter((mapping) => mapping.include).length} mapped
+              </span>
+              {plan && plan.errors.length > 0 && (
+                <span className="schema-diff-removed">
+                  {plan.errors.length} errors
+                </span>
+              )}
+            </div>
+            <div className="import-mapping-list">
+              {mappings.map((mapping, index) => (
+                <div className="import-mapping-row" key={mapping.sourceName}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={mapping.include}
+                      onChange={(event) =>
+                        updateMapping(index, {
+                          include: event.target.checked,
+                        })
+                      }
+                    />
+                    <strong>{mapping.sourceName}</strong>
+                  </label>
+                  <select
+                    value={mapping.targetName ?? ""}
+                    disabled={!mapping.include}
+                    onChange={(event) => {
+                      const targetName = event.target.value || null;
+                      const target = table.columns.find(
+                        (column) => column.name === targetName,
+                      );
+                      updateMapping(index, {
+                        targetName,
+                        include: Boolean(targetName),
+                        type: target ? inferImportType(target) : mapping.type,
+                      });
+                    }}
+                    aria-label={`Target for ${mapping.sourceName}`}
+                  >
+                    <option value="">Skip column</option>
+                    {table.columns.map((column) => (
+                      <option value={column.name} key={column.name}>
+                        {column.name}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={mapping.type}
+                    disabled={!mapping.include}
+                    onChange={(event) =>
+                      updateMapping(index, {
+                        type: event.target.value as ImportValueType,
+                      })
+                    }
+                    aria-label={`Type for ${mapping.sourceName}`}
+                  >
+                    {importTypes.map((type) => (
+                      <option value={type} key={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            {parsed.rows.length > 0 && (
+              <div className="import-preview-wrap">
+                <strong>Preview · first 5 rows</strong>
+                <pre className="import-preview">
+                  {parsed.rows
+                    .slice(0, 5)
+                    .map((row) => row.values.join(" | "))
+                    .join("\n")}
+                </pre>
+              </div>
+            )}
+            {plan && plan.errors.length > 0 && (
+              <div className="import-errors" role="alert">
+                {plan.errors.slice(0, 8).map((error) => (
+                  <span key={error}>{error}</span>
+                ))}
+                {plan.errors.length > 8 && (
+                  <span>…and {plan.errors.length - 8} more</span>
+                )}
+              </div>
+            )}
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            disabled={
+              !plan || plan.errors.length > 0 || plan.statements.length === 0
+            }
+            onClick={() => {
+              if (!plan) return;
+              void onImport(plan);
+            }}
+          >
+            Import {plan?.statements.length ?? 0} rows
           </button>
         </div>
       </dialog>

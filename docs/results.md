@@ -65,5 +65,6 @@ When the active connection is marked **READ ONLY**, QueryX hides or disables res
 ## Related
 
 - [SQL Editor](sql-editor.md)
+- [CSV Import](import.md)
 - [Connections](connections.md)
 - [Security Policy](../SECURITY.md)

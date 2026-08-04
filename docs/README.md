@@ -10,6 +10,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
 - [Schema Compare](schema-compare.md) — capture a baseline, review metadata changes, and open migration SQL safely
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
+- [CSV Import](import.md) — header mapping, typed preview, validation, and transactional batch import
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, routines, triggers, and dependency navigation
 - [Routine Inspector](routine-inspector.md) — overload identity, functions/procedures/aggregates/window functions, read-only PostgreSQL DDL, safety, and recovery
 - [Trigger Inspector](trigger-inspector.md) — activation modes, events, owner navigation, and read-only DDL

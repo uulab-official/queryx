@@ -28,6 +28,18 @@ export type {
   IncomingForeignKey,
 } from "./foreignKeyIndex";
 export { InMemoryDriver } from "./inMemoryDriver";
+export {
+  buildCsvImportPlan,
+  defaultCsvImportMappings,
+  inferImportType,
+  parseCsv,
+} from "./csvImport";
+export type {
+  CsvImportMapping,
+  CsvImportParseResult,
+  CsvImportPlan,
+  ImportValueType,
+} from "./csvImport";
 export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
 export { formatSql } from "./sqlFormatter";

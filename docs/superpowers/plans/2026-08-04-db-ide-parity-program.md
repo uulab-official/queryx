@@ -256,6 +256,13 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add driver-specific read-only privilege preflight SQL and local preview history with forward/rollback recall.
 - [ ] Add applied-migration confirmation and native durable migration history.
 
+### Task 8: CSV import vertical slice
+
+- [x] Parse quoted CSV with headers, multiline cells, duplicate/width validation, and row-level errors.
+- [x] Map CSV columns to table metadata types and generate dialect-aware INSERT batches.
+- [x] Add desktop file picker, mapping controls, five-row preview, read-only gating, and transactional execution.
+- [x] Add deterministic tests and document JSON/transforms/upsert/progress as remaining scope.
+
 ## Final verification for this plan
 
 Run all of the following before calling the first safety track complete:
