@@ -108,7 +108,7 @@ Release gates:
 
 Goal: cover the database families and power workflows expected from a general-purpose IDE.
 
-- [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and basic tables/views/columns/index metadata; foreign keys, routines, triggers, streaming, cancellation, and integration matrix remain planned
+- [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and tables/views/columns/index/foreign-key/routine/trigger metadata; event triggers, streaming, cancellation, and integration matrix remain planned
 - [ ] SQL Server driver
 - [ ] Oracle driver and Oracle-specific object metadata
 - [ ] ER diagram with selective loading for large schemas

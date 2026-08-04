@@ -7,13 +7,13 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 - MySQL and MariaDB TCP connections with host, port, database, username, password, and `Prefer`/`Require`/`Disable` SSL modes;
 - direct query execution and explicit single-document transactions;
 - SELECT/SHOW/DESCRIBE/EXPLAIN result normalization, including common numeric, date/time, JSON, and binary values;
-- information_schema metadata for tables, views, columns, approximate table row counts, and indexes;
+- information_schema metadata for tables, views, columns, approximate table row counts, indexes, foreign keys, routines, triggers, and direct relation dependencies;
 - read-only sessions: the pool requests read-only transactions and the native driver rejects non-read statements before execution;
 - capability reporting for transactions, explain, and editing.
 
 ## Deliberate limitations
 
-The initial driver does not yet expose MySQL/MariaDB foreign keys, routines, triggers, events, server-side cancellation, streaming cursors, SSH tunnels, or certificate-file configuration. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
+The initial driver does not yet expose MySQL/MariaDB event triggers, server-side cancellation, streaming cursors, SSH tunnels, or certificate-file configuration. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
 
 MySQL `information_schema.tables.table_rows` is an engine-dependent estimate, not an exact `COUNT(*)`. Use an explicit query when an exact count matters.
 

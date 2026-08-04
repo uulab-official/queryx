@@ -15,15 +15,18 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, IndexMetadata, QueryColumn,
-        QueryResult, SslMode, TableMetadata, ViewMetadata,
+        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
+        DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
+        IndexMetadata, QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata,
+        SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
+        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
 /// MySQL/MariaDB support intentionally starts with the common IDE workflow:
 /// connect, inspect relations, run SQL, browse rows, and edit through SQL.
-/// Vendor-specific routines, events, and cancellation are separate capability
-/// work and are not advertised here.
+/// Vendor-specific events and cancellation are separate capability work and
+/// are not advertised here.
 pub struct MysqlDriver {
     database: String,
     pool: MySqlPool,
@@ -138,6 +141,21 @@ impl DatabaseDriver for MysqlDriver {
         )
         .fetch_all(&self.pool)
         .await?;
+        let foreign_key_rows = sqlx::query(
+            "SELECT kcu.table_name, kcu.constraint_name, kcu.ordinal_position, kcu.column_name, kcu.referenced_table_name, kcu.referenced_column_name, rc.update_rule, rc.delete_rule, rc.match_option FROM information_schema.key_column_usage kcu LEFT JOIN information_schema.referential_constraints rc ON rc.constraint_schema = kcu.constraint_schema AND rc.table_name = kcu.table_name AND rc.constraint_name = kcu.constraint_name WHERE kcu.table_schema = DATABASE() AND kcu.referenced_table_name IS NOT NULL ORDER BY kcu.table_name, kcu.constraint_name, kcu.ordinal_position",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let routine_rows = sqlx::query(
+            "SELECT routine_name, routine_type, data_type, routine_definition, external_language FROM information_schema.routines WHERE routine_schema = DATABASE() ORDER BY routine_name, routine_type",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        let trigger_rows = sqlx::query(
+            "SELECT trigger_name, event_manipulation, event_object_table, action_timing, action_orientation, action_statement FROM information_schema.triggers WHERE trigger_schema = DATABASE() ORDER BY trigger_name, event_manipulation",
+        )
+        .fetch_all(&self.pool)
+        .await?;
 
         let mut columns_by_relation: HashMap<String, Vec<ColumnMetadata>> = HashMap::new();
         for row in column_rows {
@@ -181,6 +199,136 @@ impl DatabaseDriver for MysqlDriver {
             indexes.sort_by(|left, right| left.name.cmp(&right.name));
         }
 
+        let mut foreign_keys_by_key: HashMap<(String, String), ForeignKeyMetadata> = HashMap::new();
+        for row in foreign_key_rows {
+            let table_name: String = row.try_get("table_name")?;
+            let constraint_name: String = row.try_get("constraint_name")?;
+            let pair = ForeignKeyColumnPair {
+                ordinal: row.try_get::<u32, _>("ordinal_position")?,
+                source_column: row.try_get("column_name")?,
+                referenced_column: row.try_get("referenced_column_name")?,
+            };
+            let referenced_table: String = row.try_get("referenced_table_name")?;
+            foreign_keys_by_key
+                .entry((table_name.clone(), constraint_name.clone()))
+                .and_modify(|foreign_key| foreign_key.columns.push(pair.clone()))
+                .or_insert(ForeignKeyMetadata {
+                    id: format!(
+                        "mysql:foreign-key:{}:{}:{}",
+                        self.database, table_name, constraint_name
+                    ),
+                    name: Some(constraint_name),
+                    columns: vec![pair],
+                    referenced_relation: RelationRef {
+                        schema: self.database.clone(),
+                        name: referenced_table,
+                    },
+                    on_update: row
+                        .try_get::<Option<String>, _>("update_rule")?
+                        .unwrap_or_else(|| "NO ACTION".into()),
+                    on_delete: row
+                        .try_get::<Option<String>, _>("delete_rule")?
+                        .unwrap_or_else(|| "NO ACTION".into()),
+                    r#match: row.try_get("match_option")?,
+                    deferrable: Some(false),
+                    initially_deferred: Some(false),
+                });
+        }
+        let mut foreign_keys_by_table: HashMap<String, Vec<ForeignKeyMetadata>> = HashMap::new();
+        for ((table_name, _), mut foreign_key) in foreign_keys_by_key {
+            foreign_key
+                .columns
+                .sort_by_key(|column_pair| column_pair.ordinal);
+            foreign_keys_by_table
+                .entry(table_name)
+                .or_default()
+                .push(foreign_key);
+        }
+
+        let routines = routine_rows
+            .into_iter()
+            .map(|row| -> Result<RoutineMetadata, sqlx::Error> {
+                let name: String = row.try_get("routine_name")?;
+                let routine_type: String = row.try_get("routine_type")?;
+                Ok(RoutineMetadata {
+                    id: format!("mysql:routine:{}:{}:{}", self.database, routine_type, name),
+                    schema: self.database.clone(),
+                    name,
+                    kind: if routine_type.eq_ignore_ascii_case("FUNCTION") {
+                        RoutineKind::Function
+                    } else {
+                        RoutineKind::Procedure
+                    },
+                    identity_arguments: String::new(),
+                    return_type: row.try_get("data_type")?,
+                    language: row
+                        .try_get::<Option<String>, _>("external_language")?
+                        .unwrap_or_else(|| "SQL".into()),
+                    definition: row.try_get("routine_definition")?,
+                    aggregate: None,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut triggers_by_key: HashMap<(String, String), TriggerMetadata> = HashMap::new();
+        for row in trigger_rows {
+            let name: String = row.try_get("trigger_name")?;
+            let relation_name: String = row.try_get("event_object_table")?;
+            let event = match row
+                .try_get::<String, _>("event_manipulation")?
+                .to_ascii_uppercase()
+                .as_str()
+            {
+                "INSERT" => TriggerEvent::Insert,
+                "UPDATE" => TriggerEvent::Update,
+                "DELETE" => TriggerEvent::Delete,
+                _ => TriggerEvent::Unknown,
+            };
+            let timing = match row
+                .try_get::<String, _>("action_timing")?
+                .to_ascii_uppercase()
+                .as_str()
+            {
+                "BEFORE" => TriggerTiming::Before,
+                "AFTER" => TriggerTiming::After,
+                _ => TriggerTiming::Unknown,
+            };
+            let key = (name.clone(), relation_name.clone());
+            triggers_by_key
+                .entry(key)
+                .and_modify(|trigger| {
+                    if !trigger.events.contains(&event) {
+                        trigger.events.push(event);
+                    }
+                })
+                .or_insert(TriggerMetadata {
+                    id: format!("mysql:trigger:{}:{}:{}", self.database, relation_name, name),
+                    schema: self.database.clone(),
+                    name,
+                    relation: TriggerRelationRef {
+                        schema: self.database.clone(),
+                        name: relation_name,
+                        kind: TriggerRelationKind::Table,
+                    },
+                    timing,
+                    events: vec![event],
+                    update_columns: None,
+                    orientation: match row
+                        .try_get::<String, _>("action_orientation")?
+                        .to_ascii_uppercase()
+                        .as_str()
+                    {
+                        "ROW" => TriggerOrientation::Row,
+                        _ => TriggerOrientation::Statement,
+                    },
+                    status: TriggerStatus::Enabled,
+                    condition: None,
+                    definition: row.try_get("action_statement")?,
+                });
+        }
+        let mut triggers = triggers_by_key.into_values().collect::<Vec<_>>();
+        triggers.sort_by(|left, right| left.name.cmp(&right.name));
+
         let mut tables = Vec::new();
         let mut views = Vec::new();
         for row in relation_rows {
@@ -201,26 +349,75 @@ impl DatabaseDriver for MysqlDriver {
                     row_count: row.try_get::<Option<i64>, _>("table_rows")?.unwrap_or(0) as u64,
                     columns,
                     indexes: indexes_by_table.remove(&name).unwrap_or_default(),
-                    foreign_keys: Vec::new(),
+                    foreign_keys: foreign_keys_by_table.remove(&name).unwrap_or_default(),
                 });
             }
         }
+
+        let mut dependencies = Vec::new();
+        for table in &tables {
+            for foreign_key in &table.foreign_keys {
+                dependencies.push(DependencyMetadata {
+                    id: format!("mysql:dependency:foreign-key:{}", foreign_key.id),
+                    kind: DependencyKind::ForeignKey,
+                    dependent: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &table.schema,
+                        &table.name,
+                    ),
+                    referenced: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &foreign_key.referenced_relation.schema,
+                        &foreign_key.referenced_relation.name,
+                    ),
+                });
+            }
+        }
+        for trigger in &triggers {
+            dependencies.push(DependencyMetadata {
+                id: format!("mysql:dependency:trigger-owner:{}", trigger.id),
+                kind: DependencyKind::TriggerOwner,
+                dependent: DatabaseObjectRef {
+                    kind: DatabaseObjectKind::Trigger,
+                    id: Some(trigger.id.clone()),
+                    schema: Some(trigger.schema.clone()),
+                    name: trigger.name.clone(),
+                    identity_arguments: None,
+                },
+                referenced: relation_object_ref(
+                    DatabaseObjectKind::Table,
+                    &trigger.relation.schema,
+                    &trigger.relation.name,
+                ),
+            });
+        }
+        dependencies.sort_by(|left, right| left.id.cmp(&right.id));
 
         Ok(DatabaseMetadata {
             databases: vec![self.database.clone()],
             schemas: vec![self.database.clone()],
             tables,
             views,
-            routines: Vec::new(),
-            triggers: Vec::new(),
+            routines,
+            triggers,
             event_triggers: Vec::new(),
-            dependencies: Vec::new(),
+            dependencies,
         })
     }
 
     async fn disconnect(&self) -> Result<(), AppError> {
         self.pool.close().await;
         Ok(())
+    }
+}
+
+fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
+    DatabaseObjectRef {
+        kind,
+        id: None,
+        schema: Some(schema.to_string()),
+        name: name.to_string(),
+        identity_arguments: None,
     }
 }
 
@@ -448,6 +645,8 @@ mod tests {
             .await
             .expect("read-only MySQL query");
         assert_eq!(result.columns[0].name, "health");
+        let metadata = driver.metadata().await.expect("MySQL metadata");
+        assert!(metadata.schemas.contains(&config.database));
         assert!(driver.is_read_only());
         assert!(driver
             .execute(
