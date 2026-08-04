@@ -1,4 +1,4 @@
-import type { DriverKind } from "@queryx/shared";
+import type { DriverKind, TableMetadata } from "@queryx/shared";
 
 export interface CreateTableColumnInput {
   name: string;
@@ -14,6 +14,17 @@ export interface CreateTableInput {
 }
 
 export interface CreateTablePlan {
+  sql: string;
+  errors: string[];
+}
+
+export interface AddColumnInput {
+  name: string;
+  type: string;
+  nullable: boolean;
+}
+
+export interface AddColumnPlan {
   sql: string;
   errors: string[];
 }
@@ -41,7 +52,9 @@ function identifierError(label: string, value: string): string | null {
   return null;
 }
 
-function typeError(column: CreateTableColumnInput): string | null {
+function typeError(
+  column: Pick<CreateTableColumnInput, "name" | "type">,
+): string | null {
   const type = column.type.trim();
   if (!type) return `Column ${column.name || "(unnamed)"} needs a type`;
   if (/[;'"`]|--|\/\*/.test(type)) {
@@ -106,6 +119,32 @@ export function buildCreateTablePlan(
   }
   return {
     sql: `CREATE TABLE ${qualifiedName(schema, name, driver)} (\n  ${definitions.join(",\n  ")}\n);`,
+    errors: [],
+  };
+}
+
+export function buildAddColumnPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns">,
+  input: AddColumnInput,
+  driver: DriverKind,
+): AddColumnPlan {
+  const name = normalizeIdentifier(input.name);
+  const type = input.type.trim();
+  const errors = [identifierError("Column name", name)].filter(
+    (error): error is string => Boolean(error),
+  );
+  if (
+    table.columns.some(
+      (column) => column.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    )
+  ) {
+    errors.push(`Column already exists: ${name}`);
+  }
+  const columnTypeError = typeError({ name, type });
+  if (columnTypeError) errors.push(columnTypeError);
+  if (errors.length > 0) return { sql: "", errors };
+  return {
+    sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ADD COLUMN ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
     errors: [],
   };
 }

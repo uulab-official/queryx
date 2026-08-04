@@ -65,6 +65,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added a bounded ERD explorer with deterministic table/view layout, foreign-key and view-reference edges, relation filtering, zoom, keyboard navigation, and Inspector click-through.
 - Added explicit transactional schema migration apply with executable-statement batching, applied-status confirmation, and native workspace persistence for the migration ledger.
 - Added a validated table-creation form with dialect-aware quoting, composite primary keys, SQL preview, and explicit transaction apply.
+- Added an add-column form for selected tables with duplicate/type validation, dialect-aware ALTER TABLE SQL, preview, and explicit transaction apply.
 
 ## [0.1.0] — 2026-08-03
 

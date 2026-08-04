@@ -1532,6 +1532,43 @@ button:disabled {
   background: #141a18;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
 }
+.add-column-modal {
+  width: min(660px, calc(100vw - 40px));
+  margin: 0;
+  padding: 22px;
+  border: 1px solid #526b4a;
+  border-radius: 9px;
+  background: #141a18;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.add-column-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+.add-column-fields label:not(.create-table-check) {
+  display: grid;
+  gap: 5px;
+  color: #879b9b;
+  font: 9px var(--mono);
+}
+.add-column-fields label:not(.create-table-check) input {
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.add-column-fields label:not(.create-table-check) input:focus {
+  border-color: #a6cc91;
+  outline: 0;
+}
+.add-column-required {
+  grid-column: 1 / -1;
+}
 .create-table-fields {
   display: grid;
   grid-template-columns: minmax(160px, .75fr) minmax(220px, 1.25fr);

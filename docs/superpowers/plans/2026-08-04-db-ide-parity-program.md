@@ -275,6 +275,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add a validated table creation plan for PostgreSQL, MySQL/MariaDB, and SQLite with quoted identifiers and composite primary keys.
 - [x] Add command-palette access, editable column rows, SQL preview, explicit transaction apply, read-only gating, and metadata refresh.
 - [x] Document the table-form boundary while keeping alteration, drop, view, index, and constraint forms planned.
+- [x] Add selected-table add-column form with duplicate/type validation, dialect-aware ALTER TABLE preview, explicit transaction apply, and metadata refresh.
 
 ## Final verification for this plan
 

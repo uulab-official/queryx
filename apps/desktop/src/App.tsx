@@ -17,6 +17,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
+  buildAddColumnPlan,
   buildCsvImportPlan,
   buildCreateTablePlan,
   buildErdDiagram,
@@ -42,6 +43,8 @@ import {
   serializeRowsToTsv,
 } from "@queryx/core";
 import type {
+  AddColumnInput,
+  AddColumnPlan,
   CsvImportMapping,
   CsvImportPlan,
   CreateTableColumnInput,
@@ -479,6 +482,7 @@ function App() {
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [createTableOpen, setCreateTableOpen] = useState(false);
+  const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -636,6 +640,31 @@ function App() {
     await loadMetadata();
     setCreateTableOpen(false);
     notify("Table created and metadata refreshed");
+  };
+  const openAddColumn = () => {
+    if (!currentTable) {
+      notify("Select a table before adding a column");
+      return;
+    }
+    setAddColumnOpen(true);
+  };
+  const addColumn = async (plan: AddColumnPlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Column changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Add this column in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+    });
+    if (!result) {
+      notify("Column creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setAddColumnOpen(false);
+    notify("Column added and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1735,6 +1764,15 @@ function App() {
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
       disabled: !metadata || readOnlyConnection,
       execute: openCreateTable,
+    },
+    {
+      id: "add-column",
+      label: "Add column to selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openAddColumn,
     },
     {
       id: "connection",
@@ -2934,6 +2972,20 @@ function App() {
           }}
         />
       )}
+      {addColumnOpen && currentTable && (
+        <AddColumnDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setAddColumnOpen(false)}
+          onAdd={addColumn}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setAddColumnOpen(false);
+            notify("Opened ALTER TABLE preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3417,6 +3469,136 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function AddColumnDialog({
+  driverKind,
+  table,
+  onClose,
+  onAdd,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onAdd: (plan: AddColumnPlan) => Promise<void>;
+  onOpenSql: (plan: AddColumnPlan) => void;
+}) {
+  const [column, setColumn] = useState<AddColumnInput>({
+    name: "",
+    type: "text",
+    nullable: true,
+  });
+  const plan = useMemo(
+    () => buildAddColumnPlan(table, column, driverKind),
+    [column, driverKind, table],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="add-column-modal"
+        aria-modal="true"
+        aria-labelledby="add-column-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · COLUMN</p>
+            <h2 id="add-column-title">Add column</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close add column form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Add a column to{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>{" "}
+          using {driverDisplayName(driverKind)} syntax. Defaults, generated
+          values, and constraints remain available in the SQL preview.
+        </p>
+        <div className="add-column-fields">
+          <label htmlFor="add-column-name">
+            Column name
+            <input
+              id="add-column-name"
+              value={column.name}
+              onChange={(event) =>
+                setColumn((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              placeholder="created_at"
+            />
+          </label>
+          <label htmlFor="add-column-type">
+            Database type
+            <input
+              id="add-column-type"
+              value={column.type}
+              onChange={(event) =>
+                setColumn((current) => ({
+                  ...current,
+                  type: event.target.value,
+                }))
+              }
+              placeholder="timestamp with time zone"
+            />
+          </label>
+          <label className="create-table-check add-column-required">
+            <input
+              type="checkbox"
+              checked={!column.nullable}
+              onChange={(event) =>
+                setColumn((current) => ({
+                  ...current,
+                  nullable: !event.target.checked,
+                }))
+              }
+            />
+            Required / NOT NULL
+          </label>
+        </div>
+        {plan.errors.length > 0 ? (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        ) : (
+          <pre className="create-table-preview">{plan.sql}</pre>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onAdd(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Add column
           </button>
         </div>
       </dialog>
