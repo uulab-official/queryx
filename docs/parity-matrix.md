@@ -7,7 +7,7 @@ This matrix is the source of truth for QueryX parity claims. It compares workflo
 | Local-first direct connection | Partial — SQLite, PostgreSQL, initial MySQL/MariaDB | Available | Available | Available | Available | [connections](connections.md), [drivers](driver-api.md) |
 | SQL editor, tabs, completion, formatting | Partial — strong editor slice, dialect parser pending | Available | Available | Partial | Available | [SQL editor](sql-editor.md), [testing](testing.md) |
 | Query cancellation | Partial — PostgreSQL only | Available | Available | Partial | Available | [PostgreSQL driver](postgres-driver.md), native tests |
-| Result grid, filter, sort, copy, export | Partial — loaded-result virtualization; arbitrary SQL server paging pending | Available | Available | Available | Available | [results](results.md), `resultGrid.test.ts` |
+| Result grid, filter, sort, copy, export | Partial — virtualized loaded pages and 100-row server paging for single SELECT/WITH queries; streaming and server-side filtering pending | Available | Available | Available | Available | [results](results.md), `resultGrid.test.ts`, `queryPaging.test.ts` |
 | Table browsing and keyed edits | Partial — SQLite/PostgreSQL/MySQL basic keys; conflict-aware edits | Available | Available | Available | Available | [results](results.md), edit-batch tests |
 | Read-only safety boundary | Available for SQLite/PostgreSQL/MySQL initial driver | Available | Available | Available | Available | [connections](connections.md), native read-only tests |
 | Schema/object explorer | Partial — broad SQLite/PostgreSQL metadata, initial MySQL basics | Available | Available | Available | Available | [metadata explorer](metadata-explorer.md) |

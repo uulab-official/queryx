@@ -30,6 +30,7 @@ import {
   buildDependencyIndex,
   buildForeignKeyIndex,
   buildExplainQuery,
+  buildQueryPagePlan,
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
@@ -141,6 +142,12 @@ type StagedRowEdit = SqlRowUpdate & { rowKey: string };
 interface TableBrowseState {
   schema: string;
   name: string;
+  offset: number;
+  hasMore: boolean;
+}
+
+interface ServerQueryPageState {
+  sql: string;
   offset: number;
   hasMore: boolean;
 }
@@ -490,6 +497,8 @@ function App() {
   );
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
+  const [serverQueryPage, setServerQueryPage] =
+    useState<ServerQueryPageState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
@@ -881,7 +890,36 @@ function App() {
     setEditingCell(null);
     setStagedEdits({});
     setTableBrowse(null);
-    void runQuery(mode, executableSql);
+    const firstPage =
+      mode === "normal"
+        ? buildQueryPagePlan(executableSql, driverKind, resultPageSize, 0)
+        : null;
+    const paging =
+      firstPage && firstPage.errors.length === 0 ? firstPage : null;
+    setServerQueryPage(
+      paging ? { sql: executableSql, offset: 0, hasMore: true } : null,
+    );
+    void runQuery(
+      mode,
+      paging?.sql || executableSql,
+      paging ? { historySql: executableSql } : undefined,
+    ).then((nextResult) => {
+      if (!paging && mode === "normal") return;
+      if (!nextResult && paging) {
+        setServerQueryPage(null);
+        return;
+      }
+      if (paging) {
+        setServerQueryPage((current) =>
+          current
+            ? {
+                ...current,
+                hasMore: nextResult?.rows.length === resultPageSize,
+              }
+            : current,
+        );
+      }
+    });
   };
   const handleExplain = () => {
     if (pendingEditCount > 0) {
@@ -902,6 +940,7 @@ function App() {
     setPendingSafety(null);
     setGridSelection(null);
     setTableBrowse(null);
+    setServerQueryPage(null);
     void runQuery("explain", explain.query.sql);
   };
   const openCommandPalette = () => {
@@ -1543,6 +1582,7 @@ function App() {
       offset: 0,
       hasMore: true,
     });
+    setServerQueryPage(null);
     void runQuery("normal", browseSql).then((nextResult) => {
       if (!nextResult) {
         setTableBrowse(null);
@@ -1581,6 +1621,39 @@ function App() {
             ...current,
             offset: nextOffset,
             hasMore: nextResult.rows.length === tableBrowsePageSize,
+          }
+        : current,
+    );
+    setResultPage(0);
+    notify(`Loaded ${nextResult.rows.length.toLocaleString()} more rows`);
+  };
+
+  const loadNextServerPage = async () => {
+    if (!serverQueryPage || isRunning || !serverQueryPage.hasMore) return;
+    const nextOffset = serverQueryPage.offset + resultPageSize;
+    const nextPlan = buildQueryPagePlan(
+      serverQueryPage.sql,
+      driverKind,
+      resultPageSize,
+      nextOffset,
+    );
+    if (nextPlan.errors.length > 0) {
+      notify(nextPlan.errors[0] ?? "Unable to load the next result page");
+      setServerQueryPage(null);
+      return;
+    }
+    const nextResult = await runQuery("normal", nextPlan.sql, {
+      preserveResult: true,
+      historySql: serverQueryPage.sql,
+    });
+    if (!nextResult) return;
+    appendResult(nextResult);
+    setServerQueryPage((current) =>
+      current
+        ? {
+            ...current,
+            offset: nextOffset,
+            hasMore: nextResult.rows.length === resultPageSize,
           }
         : current,
     );
@@ -2940,6 +3013,26 @@ function App() {
                     {isRunning
                       ? "Loading…"
                       : tableBrowse.hasMore
+                        ? "Load next 100"
+                        : "All loaded"}
+                  </button>
+                </div>
+              )}
+              {serverQueryPage && !tableBrowse && (
+                <div className="table-browse-actions">
+                  <span>
+                    Server paging · {result?.rows.length.toLocaleString() ?? 0}{" "}
+                    loaded
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void loadNextServerPage()}
+                    disabled={isRunning || !serverQueryPage.hasMore}
+                    title="Fetch the next 100 rows from the current SELECT result"
+                  >
+                    {isRunning
+                      ? "Loading…"
+                      : serverQueryPage.hasMore
                         ? "Load next 100"
                         : "All loaded"}
                   </button>

@@ -212,9 +212,10 @@ git commit -m "docs: add database ide parity gates"
 
 - [x] Add a bounded virtual row window with overscan and top/bottom scroll spacers.
 - [x] Preserve global logical row indices for selection and clipboard ranges while only mounting rows near the viewport.
-- [x] Keep arbitrary-query results honest: virtualization reduces DOM work, but loaded rows remain in memory and server paging remains planned.
+- [x] Keep arbitrary-query results honest: virtualization reduces DOM work, loaded pages remain in memory, and non-pageable SQL falls back to the normal driver path.
 - [x] Add deterministic boundary tests for small sets, large-set windows, and end-of-list clamping.
-- [ ] Add streamed driver cursors, progress/cancellation telemetry, and arbitrary-query server paging in the next large-data slices.
+- [x] Add conservative dialect-aware server paging for single SELECT/WITH queries, original-SQL history preservation, and incremental result-grid loading.
+- [ ] Add streamed driver cursors, progress/cancellation telemetry, and server-side filtering in the next large-data slices.
 
 ### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix
 

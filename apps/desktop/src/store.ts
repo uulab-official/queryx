@@ -121,6 +121,7 @@ interface QueryState {
     sqlOverride?: string,
     options?: {
       preserveResult?: boolean;
+      historySql?: string;
       batch?: { statements: readonly string[]; expectedRows: number };
     },
   ) => Promise<QueryResult | null>;
@@ -558,6 +559,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
       sqlOverride?: string,
       options?: {
         preserveResult?: boolean;
+        historySql?: string;
         batch?: { statements: readonly string[]; expectedRows: number };
       },
     ) => {
@@ -568,6 +570,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
       try {
         await driverReady;
         const executedSql = sqlOverride?.trim() || get().sql;
+        const historySql = options?.historySql?.trim() || executedSql;
         const execute = () =>
           options?.batch
             ? get().driver.executeBatch(
@@ -582,8 +585,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
             : await get().driver.transaction(execute);
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
-          label: mode === "explain" ? "Explain plan" : queryLabel(executedSql),
-          sql: executedSql,
+          label: mode === "explain" ? "Explain plan" : queryLabel(historySql),
+          sql: historySql,
           executedAt: new Date().toISOString(),
           status: "success",
         };
@@ -609,7 +612,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
             : mode === "explain"
               ? "Explain failed"
               : "Query failed",
-          sql: sqlOverride?.trim() || get().sql,
+          sql: options?.historySql?.trim() || sqlOverride?.trim() || get().sql,
           executedAt: new Date().toISOString(),
           status: wasCancelled ? "cancelled" : "error",
         });

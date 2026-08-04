@@ -42,6 +42,28 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().history[0]?.status).toBe("cancelled");
   });
 
+  it("keeps the original SQL in history when execution uses a page wrapper", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    useQueryStore.setState({ driver, sql: "SELECT * FROM orders" });
+
+    await useQueryStore
+      .getState()
+      .runQuery(
+        "normal",
+        'SELECT * FROM (SELECT * FROM orders) AS "__queryx_page" LIMIT 100 OFFSET 0;',
+        { historySql: "SELECT * FROM orders" },
+      );
+
+    expect(useQueryStore.getState().history[0]?.sql).toBe(
+      "SELECT * FROM orders",
+    );
+  });
+
   it("preserves each document while switching tabs", () => {
     useQueryStore.getState().setSql("SELECT * FROM orders");
     useQueryStore.getState().newQuery();

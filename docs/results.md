@@ -1,6 +1,6 @@
 # Results and CSV Export
 
-QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. The current alpha loads returned rows in memory. Smaller results use local pages of up to 100 rows; larger loaded results use a virtualized table window so only the rows near the viewport are mounted.
+QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. Single-statement `SELECT` and `WITH` queries are server-paged in 100-row batches; non-pageable statements retain the driver's normal result behavior. Smaller loaded results use local pages, while larger loaded results use a virtualized table window so only the rows near the viewport are mounted.
 
 ## Table and JSON views
 
@@ -50,9 +50,9 @@ Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` s
 
 ## Large results
 
-The table browser can fetch another 100 rows with **Load next 100**. For keyed tables, each page uses a deterministic primary-key `ORDER BY` with `LIMIT/OFFSET`, and newly loaded rows stay in the local result. Once the loaded set grows beyond 200 rows, the grid switches to bounded row rendering with overscan and scroll spacers; the footer marks this mode as **virtualized**. Selection and copy continue to use logical row positions, while export still operates on all loaded, filtered, and sorted rows.
+The table browser and ordinary pageable queries can fetch another 100 rows with **Load next 100**. Table browsing uses a deterministic primary-key `ORDER BY` when available. Ordinary single-statement `SELECT`/`WITH` queries are wrapped as a derived table with dialect-aware quoting and `LIMIT/OFFSET`; the original SQL remains in the editor and query history. Newly loaded rows stay in the local result. Once the loaded set grows beyond 200 rows, the grid switches to bounded row rendering with overscan and scroll spacers; the footer marks this mode as **virtualized**. Selection and copy continue to use logical row positions, while export still operates on all loaded, filtered, and sorted rows.
 
-Virtualization reduces DOM work but does not reduce memory use: arbitrary SQL results are not automatically paged, and all loaded rows remain available for filtering and export. Add a narrower `LIMIT` clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, full server paging, progress, and cancellation remain roadmap items.
+Virtualization reduces DOM work but does not reduce memory use: loaded pages remain available for filtering and export. QueryX deliberately falls back to normal execution for DML, multiple statements, locking clauses, and queries with unterminated SQL syntax. Streaming cursors, progress telemetry, and server-side filtering remain roadmap items.
 
 ## Recovery
 

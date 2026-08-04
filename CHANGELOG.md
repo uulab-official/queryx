@@ -70,6 +70,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added selected-table index creation with ordered columns, UNIQUE support, duplicate/missing-column validation, redundancy warnings, and explicit transaction apply.
 - Added selected-table regular index deletion with dialect-aware SQL and primary-index protection.
 - Added a validated view-creation form for single SELECT/WITH definitions with duplicate-name, delimiter, comment, and mutating-query guards, SQL preview, explicit transaction apply, and metadata refresh.
+- Added conservative dialect-aware server paging for single SELECT/WITH results, 100-row incremental loading, original-SQL history preservation, and fallback for mutation, locking, or multi-statement queries.
 
 ## [0.1.0] — 2026-08-03
 

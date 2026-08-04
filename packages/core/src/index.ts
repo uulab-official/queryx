@@ -88,6 +88,8 @@ export type {
   SchemaDiffChange,
   SchemaDiffKind,
 } from "./schemaDiff";
+export { buildQueryPagePlan } from "./queryPaging";
+export type { QueryPagePlan } from "./queryPaging";
 export { buildExplainQuery } from "./explain";
 export type {
   ExplainQuery,
