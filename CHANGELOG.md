@@ -43,6 +43,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Tauri signed updater integration with startup checks, one-click install/relaunch UX, and a cross-platform GitHub Actions release workflow that publishes `latest.json`.
 - Open-source release and OTA operations guide covering updater secrets, key rotation, platform signing boundaries, and rollback.
 - QueryX visual identity refresh with a reusable vector icon system, branded query mark, and regenerated desktop/mobile platform icon assets.
+- Refined the app mark into a quieter neon Q-lens with a single orbit accent for clearer recognition at small sizes.
 
 ## [0.1.0] — 2026-08-03
 
