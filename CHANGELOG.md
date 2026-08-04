@@ -68,6 +68,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added an add-column form for selected tables with duplicate/type validation, dialect-aware ALTER TABLE SQL, preview, and explicit transaction apply.
 - Added selected-table column editing for PostgreSQL/MySQL/MariaDB type/nullability changes and non-primary-key drops, with SQLite manual-review gating.
 - Added selected-table index creation with ordered columns, UNIQUE support, duplicate/missing-column validation, redundancy warnings, and explicit transaction apply.
+- Added selected-table regular index deletion with dialect-aware SQL and primary-index protection.
 
 ## [0.1.0] — 2026-08-03
 

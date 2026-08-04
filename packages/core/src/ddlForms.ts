@@ -56,6 +56,12 @@ export interface CreateIndexPlan {
   warnings: string[];
 }
 
+export interface DropIndexPlan {
+  sql: string;
+  errors: string[];
+  manual: string[];
+}
+
 function quoteIdentifier(value: string, driver: DriverKind): string {
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -314,4 +320,34 @@ export function buildCreateIndexPlan(
     errors: [],
     warnings,
   };
+}
+
+export function buildDropIndexPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "indexes">,
+  indexName: string,
+  driver: DriverKind,
+): DropIndexPlan {
+  const name = normalizeIdentifier(indexName);
+  const errors = [identifierError("Index name", name)].filter(
+    (error): error is string => Boolean(error),
+  );
+  const index = table.indexes.find((candidate) => candidate.name === name);
+  if (!index && name) errors.push(`Index does not exist: ${name}`);
+  if (errors.length > 0 || !index) {
+    return { sql: "", errors, manual: [] };
+  }
+  if (index.primary) {
+    const message = `Primary index cannot be removed from the index form: ${name}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      errors: [],
+      manual: [message],
+    };
+  }
+  const qualifiedTable = qualifiedName(table.schema, table.name, driver);
+  const sql =
+    driver === "mysql"
+      ? `DROP INDEX ${quoteIdentifier(name, driver)} ON ${qualifiedTable};`
+      : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
+  return { sql, errors: [], manual: [] };
 }

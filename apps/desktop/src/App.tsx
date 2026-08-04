@@ -22,6 +22,7 @@ import {
   buildCreateTablePlan,
   buildCreateIndexPlan,
   buildEditTableColumnsPlan,
+  buildDropIndexPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
   buildRowsToSqlUpdateStatements,
@@ -53,6 +54,7 @@ import type {
   CreateTablePlan,
   CreateIndexInput,
   CreateIndexPlan,
+  DropIndexPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
   ErdNode,
@@ -491,6 +493,7 @@ function App() {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
+  const [dropIndexOpen, setDropIndexOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -725,6 +728,31 @@ function App() {
     await loadMetadata();
     setCreateIndexOpen(false);
     notify("Index created and metadata refreshed");
+  };
+  const openDropIndex = () => {
+    if (!currentTable) {
+      notify("Select a table before dropping an index");
+      return;
+    }
+    setDropIndexOpen(true);
+  };
+  const dropIndex = async (plan: DropIndexPlan) => {
+    if (!plan.sql || plan.errors.length > 0 || plan.manual.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Index deletion is disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Drop this index in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+    });
+    if (!result) {
+      notify("Index deletion failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setDropIndexOpen(false);
+    notify("Index dropped and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1851,6 +1879,15 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: openCreateIndex,
+    },
+    {
+      id: "drop-index",
+      label: "Drop index on selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openDropIndex,
     },
     {
       id: "connection",
@@ -3092,6 +3129,20 @@ function App() {
           }}
         />
       )}
+      {dropIndexOpen && currentTable && (
+        <DropIndexDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setDropIndexOpen(false)}
+          onDrop={dropIndex}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setDropIndexOpen(false);
+            notify("Opened DROP INDEX preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3575,6 +3626,115 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DropIndexDialog({
+  driverKind,
+  table,
+  onClose,
+  onDrop,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onDrop: (plan: DropIndexPlan) => Promise<void>;
+  onOpenSql: (plan: DropIndexPlan) => void;
+}) {
+  const [indexName, setIndexName] = useState(
+    table.indexes.find((index) => !index.primary)?.name ??
+      table.indexes[0]?.name ??
+      "",
+  );
+  const plan = useMemo(
+    () => buildDropIndexPlan(table, indexName, driverKind),
+    [driverKind, indexName, table],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="drop-index-modal"
+        aria-modal="true"
+        aria-labelledby="drop-index-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · INDEX</p>
+            <h2 id="drop-index-title">Drop index</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close drop index form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Remove a non-primary index from{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>{" "}
+          using an explicit transaction. Primary indexes are protected because
+          they enforce the table key.
+        </p>
+        <label className="drop-index-select" htmlFor="drop-index-name">
+          Index
+          <select
+            id="drop-index-name"
+            value={indexName}
+            onChange={(event) => setIndexName(event.target.value)}
+          >
+            {table.indexes.map((index) => (
+              <option key={index.name} value={index.name}>
+                {index.name} {index.primary ? "(primary)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {plan.sql && <pre className="create-table-preview">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-danger"
+            onClick={() => void onDrop(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Drop index
           </button>
         </div>
       </dialog>

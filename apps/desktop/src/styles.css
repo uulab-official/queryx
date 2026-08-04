@@ -1561,6 +1561,31 @@ button:disabled {
   background: #141a18;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
 }
+.drop-index-modal {
+  width: min(620px, calc(100vw - 40px));
+  margin: 0;
+  padding: 22px;
+  border: 1px solid #754c40;
+  border-radius: 9px;
+  background: #181615;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.drop-index-select {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 16px;
+  color: #a8948f;
+  font: 9px var(--mono);
+}
+.drop-index-select select {
+  height: 31px;
+  padding: 0 9px;
+  border: 1px solid #5a3c35;
+  border-radius: 4px;
+  background: #0f1110;
+  color: #e4d6d0;
+  font: 10px var(--mono);
+}
 .create-index-fields {
   display: grid;
   grid-template-columns: 1fr auto;

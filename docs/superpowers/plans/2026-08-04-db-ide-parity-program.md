@@ -278,6 +278,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add selected-table add-column form with duplicate/type validation, dialect-aware ALTER TABLE preview, explicit transaction apply, and metadata refresh.
 - [x] Add selected-table type/nullability editing and non-primary-key drop planning with PostgreSQL/MySQL execution and SQLite manual-review boundaries.
 - [x] Add selected-table ordered index-create form with UNIQUE support, validation, redundancy warnings, SQL preview, and explicit apply.
+- [x] Add selected-table regular index-drop form with dialect-aware SQL and primary-index manual-review protection.
 
 ## Final verification for this plan
 
