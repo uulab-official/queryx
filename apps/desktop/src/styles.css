@@ -1570,6 +1570,64 @@ button:disabled {
   background: #181615;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
 }
+.create-view-modal {
+  width: min(900px, calc(100vw - 40px));
+  max-height: calc(100vh - 32px);
+  margin: 0;
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid #526b4a;
+  border-radius: 9px;
+  background: #141a18;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.create-view-fields {
+  display: grid;
+  grid-template-columns: 0.75fr 1.25fr;
+  gap: 10px;
+  margin: 12px 0 14px;
+}
+.create-view-fields label {
+  display: grid;
+  gap: 5px;
+  color: #879b9b;
+  font: 9px var(--mono);
+}
+.create-view-fields input,
+.create-view-fields select {
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.create-view-fields input:focus,
+.create-view-fields select:focus {
+  border-color: #a6cc91;
+  outline: 0;
+}
+.create-view-definition {
+  display: grid;
+  gap: 5px;
+  color: #879b9b;
+  font: 9px var(--mono);
+}
+.create-view-definition textarea {
+  min-height: 190px;
+  resize: vertical;
+  padding: 10px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px / 1.5 var(--mono);
+}
+.create-view-definition textarea:focus {
+  border-color: #a6cc91;
+  outline: 0;
+}
 .drop-index-select {
   display: grid;
   gap: 5px;

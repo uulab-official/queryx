@@ -32,6 +32,7 @@ export {
   buildAddColumnPlan,
   buildCreateIndexPlan,
   buildCreateTablePlan,
+  buildCreateViewPlan,
   buildDropIndexPlan,
   buildEditTableColumnsPlan,
 } from "./ddlForms";
@@ -40,6 +41,8 @@ export type {
   AddColumnPlan,
   CreateIndexInput,
   CreateIndexPlan,
+  CreateViewInput,
+  CreateViewPlan,
   DropIndexPlan,
   CreateTableColumnInput,
   CreateTableInput,

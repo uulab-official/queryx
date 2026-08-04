@@ -21,6 +21,7 @@ import {
   buildCsvImportPlan,
   buildCreateTablePlan,
   buildCreateIndexPlan,
+  buildCreateViewPlan,
   buildEditTableColumnsPlan,
   buildDropIndexPlan,
   buildErdDiagram,
@@ -54,6 +55,7 @@ import type {
   CreateTablePlan,
   CreateIndexInput,
   CreateIndexPlan,
+  CreateViewPlan,
   DropIndexPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
@@ -494,6 +496,7 @@ function App() {
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
   const [dropIndexOpen, setDropIndexOpen] = useState(false);
+  const [createViewOpen, setCreateViewOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -753,6 +756,31 @@ function App() {
     await loadMetadata();
     setDropIndexOpen(false);
     notify("Index dropped and metadata refreshed");
+  };
+  const openCreateView = () => {
+    if (!metadata) {
+      notify("Connect to a database before creating a view");
+      return;
+    }
+    setCreateViewOpen(true);
+  };
+  const createView = async (plan: CreateViewPlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("View creation is disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Create this view in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+    });
+    if (!result) {
+      notify("View creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setCreateViewOpen(false);
+    notify("View created and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1888,6 +1916,13 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: openDropIndex,
+    },
+    {
+      id: "create-view",
+      label: "Create view from form",
+      hint: metadata ? driverDisplayName(driverKind) : "metadata required",
+      disabled: !metadata || readOnlyConnection,
+      execute: openCreateView,
     },
     {
       id: "connection",
@@ -3143,6 +3178,21 @@ function App() {
           }}
         />
       )}
+      {createViewOpen && metadata && (
+        <CreateViewDialog
+          driverKind={driverKind}
+          schemas={metadata.schemas}
+          existingViews={metadata.views}
+          onClose={() => setCreateViewOpen(false)}
+          onCreate={createView}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setCreateViewOpen(false);
+            notify("Opened CREATE VIEW preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3626,6 +3676,139 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function CreateViewDialog({
+  driverKind,
+  schemas,
+  existingViews,
+  onClose,
+  onCreate,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  schemas: string[];
+  existingViews: ViewMetadata[];
+  onClose: () => void;
+  onCreate: (plan: CreateViewPlan) => Promise<void>;
+  onOpenSql: (plan: CreateViewPlan) => void;
+}) {
+  const [schema, setSchema] = useState(schemas[0] ?? "public");
+  const [name, setName] = useState("");
+  const [definition, setDefinition] = useState(
+    "SELECT\n  id\nFROM\n  public.users",
+  );
+  const plan = useMemo(
+    () =>
+      buildCreateViewPlan(
+        { schema, name, definition },
+        existingViews,
+        driverKind,
+      ),
+    [definition, driverKind, existingViews, name, schema],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-view-modal"
+        aria-modal="true"
+        aria-labelledby="create-view-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · VIEW</p>
+            <h2 id="create-view-title">Create view</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close create view form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Create a read-only view from a single SELECT/WITH definition. QueryX
+          rejects DML, DDL, comments, and multiple statements before apply.
+        </p>
+        <div className="create-view-fields">
+          <label htmlFor="create-view-schema">
+            Schema
+            {schemas.length > 0 ? (
+              <select
+                id="create-view-schema"
+                value={schema}
+                onChange={(event) => setSchema(event.target.value)}
+              >
+                {schemas.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                id="create-view-schema"
+                value={schema}
+                onChange={(event) => setSchema(event.target.value)}
+                placeholder="public"
+              />
+            )}
+          </label>
+          <label htmlFor="create-view-name">
+            View name
+            <input
+              id="create-view-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="paid_orders"
+            />
+          </label>
+        </div>
+        <label className="create-view-definition" htmlFor="create-view-sql">
+          SELECT definition
+          <textarea
+            id="create-view-sql"
+            value={definition}
+            onChange={(event) => setDefinition(event.target.value)}
+            spellCheck={false}
+          />
+        </label>
+        {plan.errors.length > 0 ? (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        ) : (
+          <pre className="create-table-preview">{plan.sql}</pre>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onCreate(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Create view
           </button>
         </div>
       </dialog>

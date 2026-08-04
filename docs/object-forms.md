@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides table-focused object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, and **Drop index on selected table**.
+QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, and **Create view from form**.
 
 The form supports:
 
@@ -19,6 +19,8 @@ The index form supports ordered single- and multi-column indexes, UNIQUE indexes
 
 The drop-index form supports regular indexes and protects primary indexes. PostgreSQL/SQLite use schema-qualified `DROP INDEX`; MySQL/MariaDB uses `DROP INDEX ... ON table`. Primary-key removal remains a manual SQL operation.
 
+The create-view form accepts one read-only `SELECT` or `WITH` definition, checks schema/name collisions against the current metadata snapshot, rejects comments, delimiters, and mutating DML/DDL keywords, and applies the generated dialect-aware `CREATE VIEW` statement only after confirmation. The SQL preview can also be opened in a normal query tab for review or vendor-specific edits.
+
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Column renames, index alteration, view, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Column renames, index alteration, view alter/drop, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

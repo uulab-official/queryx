@@ -1,4 +1,4 @@
-import type { DriverKind, TableMetadata } from "@queryx/shared";
+import type { DriverKind, TableMetadata, ViewMetadata } from "@queryx/shared";
 
 export interface CreateTableColumnInput {
   name: string;
@@ -62,6 +62,17 @@ export interface DropIndexPlan {
   manual: string[];
 }
 
+export interface CreateViewInput {
+  schema: string;
+  name: string;
+  definition: string;
+}
+
+export interface CreateViewPlan {
+  sql: string;
+  errors: string[];
+}
+
 function quoteIdentifier(value: string, driver: DriverKind): string {
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -83,6 +94,79 @@ function identifierError(label: string, value: string): string | null {
   if (!value) return `${label} is required`;
   if (value.includes("\u0000")) return `${label} contains an invalid character`;
   return null;
+}
+
+function inspectViewDefinition(definition: string): {
+  hasDelimiterOrComment: boolean;
+  hasMutatingKeyword: boolean;
+  hasUnterminatedQuote: boolean;
+} {
+  let quote: "'" | '"' | "`" | null = null;
+  let lineComment = false;
+  let blockComment = false;
+  let executable = "";
+  let hasDelimiterOrComment = false;
+
+  for (let index = 0; index < definition.length; index += 1) {
+    const character = definition[index];
+    const next = definition[index + 1];
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && next === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (character === "\\" && quote !== '"') {
+        index += 1;
+        continue;
+      }
+      if (character === quote) {
+        if (next === quote) {
+          index += 1;
+        } else {
+          quote = null;
+        }
+      }
+      continue;
+    }
+    if (character === "-" && next === "-") {
+      lineComment = true;
+      hasDelimiterOrComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && next === "*") {
+      blockComment = true;
+      hasDelimiterOrComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") {
+      quote = character;
+      executable += " ";
+      continue;
+    }
+    if (character === ";") {
+      hasDelimiterOrComment = true;
+      continue;
+    }
+    executable += character;
+  }
+
+  return {
+    hasDelimiterOrComment,
+    hasMutatingKeyword:
+      /\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|GRANT|REVOKE)\b/i.test(
+        executable,
+      ),
+    hasUnterminatedQuote: Boolean(quote) || blockComment,
+  };
 }
 
 function typeError(
@@ -350,4 +434,46 @@ export function buildDropIndexPlan(
       ? `DROP INDEX ${quoteIdentifier(name, driver)} ON ${qualifiedTable};`
       : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
   return { sql, errors: [], manual: [] };
+}
+
+export function buildCreateViewPlan(
+  input: CreateViewInput,
+  existingViews: Pick<ViewMetadata, "schema" | "name">[],
+  driver: DriverKind,
+): CreateViewPlan {
+  const schema = normalizeIdentifier(input.schema);
+  const name = normalizeIdentifier(input.name);
+  const definition = input.definition.trim().replace(/;\s*$/, "");
+  const errors = [
+    identifierError("Schema", schema),
+    identifierError("View name", name),
+  ].filter((error): error is string => Boolean(error));
+  if (!definition) errors.push("View definition is required");
+  if (!/^(SELECT|WITH)\b/i.test(definition)) {
+    errors.push("View definition must start with SELECT or WITH");
+  }
+  const safety = inspectViewDefinition(definition);
+  if (safety.hasDelimiterOrComment) {
+    errors.push("View definition cannot contain SQL delimiters or comments");
+  }
+  if (safety.hasMutatingKeyword) {
+    errors.push("View definition must be a read-only query");
+  }
+  if (safety.hasUnterminatedQuote) {
+    errors.push("View definition contains an unterminated quote or comment");
+  }
+  if (
+    existingViews.some(
+      (view) =>
+        view.schema.toLocaleLowerCase() === schema.toLocaleLowerCase() &&
+        view.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    )
+  ) {
+    errors.push(`View already exists: ${schema}.${name}`);
+  }
+  if (errors.length > 0) return { sql: "", errors };
+  return {
+    sql: `CREATE VIEW ${qualifiedName(schema, name, driver)} AS ${definition};`,
+    errors: [],
+  };
 }
