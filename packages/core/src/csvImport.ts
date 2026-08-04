@@ -8,6 +8,8 @@ export type ImportValueType =
   | "date"
   | "json";
 
+export type ImportConflictPolicy = "error" | "ignore";
+
 export interface CsvImportParseResult {
   headers: string[];
   rows: Array<{ line: number; values: string[] }>;
@@ -107,6 +109,65 @@ export function parseCsv(text: string, delimiter = ","): CsvImportParseResult {
   return { headers, rows, errors };
 }
 
+export function parseJsonRows(text: string): CsvImportParseResult {
+  const source = text.replace(/^\uFEFF/, "").trim();
+  if (!source) return { headers: [], rows: [], errors: ["JSON is empty"] };
+  let values: unknown[];
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    values = Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    values = [];
+    const errors: string[] = [];
+    for (const [index, line] of source.split(/\r?\n/).entries()) {
+      if (!line.trim()) continue;
+      try {
+        values.push(JSON.parse(line) as unknown);
+      } catch {
+        errors.push(`Line ${index + 1}: invalid JSON`);
+      }
+    }
+    if (errors.length > 0) return { headers: [], rows: [], errors };
+  }
+  const records = values.filter(
+    (value): value is Record<string, unknown> =>
+      Boolean(value) && typeof value === "object" && !Array.isArray(value),
+  );
+  if (records.length !== values.length) {
+    return {
+      headers: [],
+      rows: [],
+      errors: ["JSON import expects an object or an array of objects"],
+    };
+  }
+  const headers: string[] = [];
+  const seen = new Set<string>();
+  for (const record of records) {
+    for (const key of Object.keys(record)) {
+      if (seen.has(key)) continue;
+      seen.add(key);
+      headers.push(key);
+    }
+  }
+  return {
+    headers,
+    rows: records.map((record, index) => ({
+      line: index + 1,
+      values: headers.map((header) => jsonCell(record[header])),
+    })),
+    errors: headers.length === 0 ? ["JSON objects contain no fields"] : [],
+  };
+}
+
+function jsonCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
 export function inferImportType(column: ColumnMetadata): ImportValueType {
   const type = column.type.toLowerCase();
   if (/(bool)/.test(type)) return "boolean";
@@ -138,6 +199,7 @@ export function buildCsvImportPlan(
   parsed: CsvImportParseResult,
   mappings: readonly CsvImportMapping[],
   driver: DriverKind,
+  conflictPolicy: ImportConflictPolicy = "error",
 ): CsvImportPlan {
   const errors = [...parsed.errors];
   const sourceIndexes = new Map(
@@ -180,8 +242,18 @@ export function buildCsvImportPlan(
       values.push(converted.sql);
     }
     if (columns.length === activeMappings.length && columns.length > 0) {
+      const conflictPrefix =
+        conflictPolicy === "ignore" && driver === "mysql"
+          ? "INSERT IGNORE INTO"
+          : conflictPolicy === "ignore" && driver === "sqlite"
+            ? "INSERT OR IGNORE INTO"
+            : "INSERT INTO";
+      const conflictSuffix =
+        conflictPolicy === "ignore" && driver === "postgres"
+          ? " ON CONFLICT DO NOTHING"
+          : "";
       statements.push(
-        `INSERT INTO ${quoteIdentifier(table.schema, driver)}.${quoteIdentifier(table.name, driver)} (${columns.join(", ")}) VALUES (${values.join(", ")});`,
+        `${conflictPrefix} ${quoteIdentifier(table.schema, driver)}.${quoteIdentifier(table.name, driver)} (${columns.join(", ")}) VALUES (${values.join(", ")})${conflictSuffix};`,
       );
     }
   }

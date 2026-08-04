@@ -33,11 +33,13 @@ export {
   defaultCsvImportMappings,
   inferImportType,
   parseCsv,
+  parseJsonRows,
 } from "./csvImport";
 export type {
   CsvImportMapping,
   CsvImportParseResult,
   CsvImportPlan,
+  ImportConflictPolicy,
   ImportValueType,
 } from "./csvImport";
 export { inspectQuerySafety } from "./querySafety";

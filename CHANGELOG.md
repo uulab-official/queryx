@@ -61,6 +61,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added metadata-graph ordering for dependent views/foreign keys and reverse rollback SQL preview in a normal editable SQL tab.
 - Added driver-specific privilege preflight SQL and a local migration-preview ledger with forward, rollback, and preflight recall actions.
 - Added a CSV import wizard with target/type mapping, typed validation, first-row preview, and transactional edit batches.
+- Extended import to JSON arrays/NDJSON and driver-specific ignore-conflict policies.
 
 ## [0.1.0] — 2026-08-03
 

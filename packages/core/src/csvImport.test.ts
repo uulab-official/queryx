@@ -3,6 +3,7 @@ import {
   buildCsvImportPlan,
   defaultCsvImportMappings,
   parseCsv,
+  parseJsonRows,
 } from "./csvImport";
 
 const table = {
@@ -41,6 +42,19 @@ describe("parseCsv", () => {
       "Line 3: expected 2 columns, got 3",
     ]);
   });
+
+  it("accepts JSON arrays and newline-delimited JSON objects", () => {
+    const array = parseJsonRows(
+      '[{"id":1,"email":"a@example.com"},{"id":2,"active":true}]',
+    );
+    expect(array.errors).toEqual([]);
+    expect(array.headers).toEqual(["id", "email", "active"]);
+    expect(array.rows[1]?.values).toEqual(["2", "", "true"]);
+
+    const ndjson = parseJsonRows('{"id":1}\n{"id":2}\n');
+    expect(ndjson.errors).toEqual([]);
+    expect(ndjson.rows).toHaveLength(2);
+  });
 });
 
 describe("buildCsvImportPlan", () => {
@@ -78,5 +92,23 @@ describe("buildCsvImportPlan", () => {
       "Line 2, id: invalid integer value not-an-int",
       "Line 2, active: invalid boolean value maybe",
     ]);
+  });
+
+  it("generates dialect-specific ignore-conflict statements", () => {
+    const parsed = parseCsv("id,email\n1,a@example.com\n");
+    const mappings = defaultCsvImportMappings(parsed.headers, table.columns);
+
+    expect(
+      buildCsvImportPlan(table, parsed, mappings, "postgres", "ignore")
+        .statements[0],
+    ).toContain("ON CONFLICT DO NOTHING");
+    expect(
+      buildCsvImportPlan(table, parsed, mappings, "mysql", "ignore")
+        .statements[0],
+    ).toContain("INSERT IGNORE INTO");
+    expect(
+      buildCsvImportPlan(table, parsed, mappings, "sqlite", "ignore")
+        .statements[0],
+    ).toContain("INSERT OR IGNORE INTO");
   });
 });

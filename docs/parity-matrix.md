@@ -13,7 +13,7 @@ This matrix is the source of truth for QueryX parity claims. It compares workflo
 | Schema/object explorer | Partial — broad SQLite/PostgreSQL metadata, initial MySQL basics | Available | Available | Available | Available | [metadata explorer](metadata-explorer.md) |
 | DDL inspect → edit → transaction | Partial — safe handoff, no object form builder | Available | Available | Available | Available | [DDL workflow](ddl-workflow.md) |
 | Schema diff and migration history | Partial — same-dialect dependency-ordered table/column/index/FK/view forward, rollback, privilege-preflight, and local preview history; applied ledger/native durable storage pending | Available | Partial | Partial | Available | [schema compare](schema-compare.md), [roadmap](../ROADMAP.md) |
-| Import wizard and type mapping | Partial — CSV header/type mapping, validation, preview, and transactional batch import; JSON, transforms, upsert, and progress pending | Available | Partial | Available | Available | [CSV import](import.md), [roadmap](../ROADMAP.md) |
+| Import wizard and type mapping | Partial — CSV/JSON mapping, validation, preview, transactional batches, and ignore-conflict policy; transforms, update/upsert, and progress pending | Available | Partial | Available | Available | [CSV import](import.md), [roadmap](../ROADMAP.md) |
 | SSH tunnels, keychain, certificate files | Planned | Available | Partial | Partial | Available | [connections](connections.md) |
 | Signed release and OTA update path | Available — repository workflow and signed updater contract | Varies by distribution | Varies by distribution | Varies by distribution | Varies by distribution | [updates](updates.md), GitHub Actions workflows |
 

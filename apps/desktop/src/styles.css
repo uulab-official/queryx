@@ -1667,6 +1667,23 @@ button:disabled {
   color: #9eb5bc;
   font: 10px var(--mono);
 }
+.import-conflict-policy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 9px;
+  color: #9eb5bc;
+  font: 9px var(--mono);
+}
+.import-conflict-policy select {
+  height: 25px;
+  border: 1px solid #34464b;
+  border-radius: 3px;
+  background: #182125;
+  color: #afc0c3;
+  font: 9px var(--mono);
+}
 .import-mapping-list {
   max-height: 240px;
   overflow: auto;

@@ -31,6 +31,7 @@ import {
   inferImportType,
   inspectQuerySafety,
   parseCsv,
+  parseJsonRows,
   serializeRowsToCsv,
   serializeRowsToJson,
   serializeRowsToSqlInsert,
@@ -41,6 +42,7 @@ import type {
   CsvImportMapping,
   CsvImportPlan,
   ForeignKeyRelations,
+  ImportConflictPolicy,
   ImportValueType,
   ObjectDependencies,
   QuerySafetyReport,
@@ -3308,6 +3310,9 @@ function CsvImportDialog({
   onImport: (plan: CsvImportPlan) => Promise<void>;
 }) {
   const [fileName, setFileName] = useState("");
+  const [sourceKind, setSourceKind] = useState<"csv" | "json">("csv");
+  const [conflictPolicy, setConflictPolicy] =
+    useState<ImportConflictPolicy>("error");
   const [parsed, setParsed] = useState<ReturnType<typeof parseCsv> | null>(
     null,
   );
@@ -3315,8 +3320,16 @@ function CsvImportDialog({
   const [loading, setLoading] = useState(false);
   const plan = useMemo(
     () =>
-      parsed ? buildCsvImportPlan(table, parsed, mappings, driverKind) : null,
-    [driverKind, mappings, parsed, table],
+      parsed
+        ? buildCsvImportPlan(
+            table,
+            parsed,
+            mappings,
+            driverKind,
+            conflictPolicy,
+          )
+        : null,
+    [conflictPolicy, driverKind, mappings, parsed, table],
   );
   const importTypes: ImportValueType[] = [
     "text",
@@ -3333,8 +3346,12 @@ function CsvImportDialog({
     setLoading(true);
     try {
       const text = await file.text();
-      const next = parseCsv(text);
+      const nextKind = file.name.toLowerCase().endsWith(".json")
+        ? "json"
+        : "csv";
+      const next = nextKind === "json" ? parseJsonRows(text) : parseCsv(text);
       setFileName(file.name);
+      setSourceKind(nextKind);
       setParsed(next);
       setMappings(defaultCsvImportMappings(next.headers, table.columns));
     } finally {
@@ -3361,10 +3378,11 @@ function CsvImportDialog({
         <div className="edit-preview-heading">
           <div>
             <p className="modal-kicker">
-              DATA IMPORT · {driverDisplayName(driverKind)}
+              DATA IMPORT · {sourceKind.toUpperCase()} ·{" "}
+              {driverDisplayName(driverKind)}
             </p>
             <h2 id="csv-import-title">
-              Import CSV into {table.schema}.{table.name}
+              Import data into {table.schema}.{table.name}
             </h2>
           </div>
           <button
@@ -3377,14 +3395,18 @@ function CsvImportDialog({
           </button>
         </div>
         <p className="modal-copy">
-          Select a CSV with a header row, map source columns to the target
-          table, then review the generated batch before importing.
+          Select a CSV or JSON object collection, map source columns to the
+          target table, then review the generated batch before importing.
         </p>
         <label className="import-file-picker">
-          <span>{fileName || "Choose CSV file"}</span>
-          <input type="file" accept=".csv,text/csv" onChange={handleFile} />
+          <span>{fileName || "Choose CSV or JSON file"}</span>
+          <input
+            type="file"
+            accept=".csv,.json,text/csv,application/json"
+            onChange={handleFile}
+          />
         </label>
-        {loading && <div className="import-status">Reading CSV…</div>}
+        {loading && <div className="import-status">Reading file…</div>}
         {parsed && (
           <>
             <div className="schema-diff-summary">
@@ -3398,6 +3420,18 @@ function CsvImportDialog({
                 </span>
               )}
             </div>
+            <label className="import-conflict-policy">
+              <span>On duplicate key</span>
+              <select
+                value={conflictPolicy}
+                onChange={(event) =>
+                  setConflictPolicy(event.target.value as ImportConflictPolicy)
+                }
+              >
+                <option value="error">Stop and rollback</option>
+                <option value="ignore">Ignore conflicting rows</option>
+              </select>
+            </label>
             <div className="import-mapping-list">
               {mappings.map((mapping, index) => (
                 <div className="import-mapping-row" key={mapping.sourceName}>

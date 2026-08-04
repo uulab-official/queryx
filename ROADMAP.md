@@ -113,7 +113,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [ ] Oracle driver and Oracle-specific object metadata
 - [ ] ER diagram with selective loading for large schemas
 - [ ] Data compare and controlled synchronization scripts
-- [x] CSV import wizard with header/type mapping, preview, validation errors, and transactional batches; JSON, transforms, upsert, and progress remain planned
+- [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, and ignore-conflict policy; transforms, update/upsert, and progress remain planned
 - [ ] Excel and Markdown export
 - [ ] Query performance diagnostics, lock/session explorer, and long-running query controls
 - [ ] Driver SDK, compatibility matrix, and community driver certification tests
