@@ -60,7 +60,9 @@ pub trait DatabaseDriver: Send + Sync {
 }
 ```
 
-`DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; prepare, execute, cancel, metadata, transaction, and disconnect commands remain driver-neutral. The prepare step closes the abort-before-execute race by registering the UUID before the frontend exposes cancellation.
+`DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; prepare, execute, cancel, metadata, transaction, disconnect, and read-only policy remain driver-neutral. The prepare step closes the abort-before-execute race by registering the UUID before the frontend exposes cancellation.
+
+`DriverConfig.readOnly` is enforced by the native connection: SQLite enables `PRAGMA query_only` for pooled connections and PostgreSQL sets `default_transaction_read_only`. `DatabaseDriver.isReadOnly()` and the `editing` capability expose the resulting policy to the UI, but UI state is not the security boundary.
 
 Generic Tauri commands:
 

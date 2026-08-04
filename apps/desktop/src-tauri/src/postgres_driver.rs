@@ -31,6 +31,7 @@ pub struct PostgresDriver {
     pool: PgPool,
     cancellation_pool: PgPool,
     active_queries: RwLock<HashMap<Uuid, Arc<ActiveQuery>>>,
+    read_only: bool,
 }
 
 #[derive(Debug)]
@@ -149,6 +150,9 @@ impl PostgresDriver {
         if let Some(password) = config.password.as_deref() {
             options = options.password(password);
         }
+        if config.read_only {
+            options = options.options([("default_transaction_read_only", "on")]);
+        }
 
         let cancellation_pool = PgPoolOptions::new()
             .max_connections(1)
@@ -165,6 +169,7 @@ impl PostgresDriver {
             pool,
             cancellation_pool,
             active_queries: RwLock::new(HashMap::new()),
+            read_only: config.read_only,
         })
     }
 
@@ -219,13 +224,20 @@ impl DatabaseDriver for PostgresDriver {
         &self.database
     }
 
+    fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
     fn capabilities(&self) -> Vec<DriverCapability> {
-        vec![
+        let mut capabilities = vec![
             DriverCapability::Transactions,
             DriverCapability::Explain,
             DriverCapability::Cancel,
-            DriverCapability::Editing,
-        ]
+        ];
+        if !self.read_only {
+            capabilities.push(DriverCapability::Editing);
+        }
+        capabilities
     }
 
     async fn prepare(&self, query_id: Uuid) -> Result<(), AppError> {
@@ -1046,6 +1058,7 @@ mod tests {
             username: Some("queryx".into()),
             password: None,
             ssl_mode: Some(SslMode::Disable),
+            read_only: false,
         }
     }
 
@@ -1159,6 +1172,40 @@ mod tests {
         assert_eq!(result.rows[0]["id"], Value::from(1));
         assert_eq!(result.rows[0]["product"], Value::from("QueryX"));
         assert!(metadata.databases.contains(&config.database));
+        driver.disconnect().await.expect("disconnect postgres");
+    }
+
+    #[tokio::test]
+    async fn read_only_rejects_writes_when_test_database_is_available() {
+        let Ok(database) = std::env::var("QUERYX_TEST_POSTGRES_DATABASE") else {
+            return;
+        };
+        let mut config = postgres_config();
+        config.database = database;
+        config.host = std::env::var("QUERYX_TEST_POSTGRES_HOST").ok();
+        config.port = std::env::var("QUERYX_TEST_POSTGRES_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok());
+        config.username = std::env::var("QUERYX_TEST_POSTGRES_USERNAME").ok();
+        config.password = std::env::var("QUERYX_TEST_POSTGRES_PASSWORD").ok();
+        config.read_only = true;
+
+        let driver = PostgresDriver::connect(&config)
+            .await
+            .expect("connect read-only postgres");
+        assert!(driver.is_read_only());
+        assert!(!driver.capabilities().contains(&DriverCapability::Editing));
+        let query_id = Uuid::new_v4();
+        driver.prepare(query_id).await.expect("prepare write probe");
+        let error = driver
+            .execute(
+                query_id,
+                "CREATE TEMP TABLE queryx_read_only_probe (id integer)",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect_err("read-only postgres must reject writes");
+        assert!(error.to_string().to_lowercase().contains("read-only"));
         driver.disconnect().await.expect("disconnect postgres");
     }
 

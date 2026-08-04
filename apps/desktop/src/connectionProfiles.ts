@@ -37,6 +37,7 @@ export function normalizeConnectionProfiles(
       name: (item.name as string).trim().slice(0, 120),
       kind: item.kind as DriverKind,
       database: (item.database as string).trim(),
+      readOnly: item.readOnly === true,
       ...(typeof item.host === "string" && item.host.trim()
         ? { host: item.host.trim() }
         : {}),

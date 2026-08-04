@@ -25,8 +25,11 @@ impl Default for DriverRegistry {
 
 impl DriverRegistry {
     pub async fn connect(&self, config: ConnectionConfig) -> Result<ConnectionSummary, AppError> {
+        let read_only = config.read_only;
         let driver: Arc<dyn DatabaseDriver> = match config.kind {
-            DriverKind::Sqlite => Arc::new(SqliteDriver::connect(&config.database).await?),
+            DriverKind::Sqlite => {
+                Arc::new(SqliteDriver::connect(&config.database, read_only).await?)
+            }
             DriverKind::Postgres => Arc::new(PostgresDriver::connect(&config).await?),
             DriverKind::Mysql => return Err(AppError::UnsupportedDriver(config.kind.to_string())),
         };
@@ -36,6 +39,7 @@ impl DriverRegistry {
             name: config.name,
             driver: driver.kind(),
             database: driver.database().to_string(),
+            read_only: driver.is_read_only(),
             capabilities: driver.capabilities(),
         };
         self.connections.write().await.insert(id, driver);
@@ -133,6 +137,7 @@ mod tests {
             username: None,
             password: None,
             ssl_mode: None,
+            read_only: false,
         }
     }
 
@@ -186,6 +191,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sqlite_read_only_rejects_writes() {
+        let registry = DriverRegistry::default();
+        let mut config = sqlite_config();
+        config.read_only = true;
+        let connection = registry
+            .connect(config)
+            .await
+            .expect("connect read-only SQLite");
+
+        assert!(connection.read_only);
+        assert!(!connection
+            .capabilities
+            .contains(&crate::models::DriverCapability::Editing));
+        let error = registry
+            .execute(
+                &connection.id,
+                &Uuid::new_v4().to_string(),
+                "UPDATE orders SET status = 'blocked' WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect_err("read-only SQLite must reject writes");
+        assert!(error.to_string().contains("readonly"));
+
+        let result = registry
+            .execute(
+                &connection.id,
+                &Uuid::new_v4().to_string(),
+                "SELECT status FROM orders WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("read-only SQLite still allows reads");
+        assert_eq!(result.rows[0]["status"], Value::from("paid"));
+    }
+
+    #[tokio::test]
     async fn unsupported_drivers_fail_at_the_factory_boundary() {
         let registry = DriverRegistry::default();
         let error = registry
@@ -198,6 +240,7 @@ mod tests {
                 username: None,
                 password: None,
                 ssl_mode: None,
+                read_only: false,
             })
             .await
             .expect_err("mysql is not implemented yet");

@@ -14,6 +14,7 @@ interface ConnectionSummary {
   name: string;
   driver: DriverKind;
   database: string;
+  readOnly: boolean;
   capabilities: DriverCapability[];
 }
 
@@ -21,6 +22,7 @@ export class TauriDatabaseDriver implements DatabaseDriver {
   readonly kind: DriverKind;
   private connectionId: string | null = null;
   private transactionMode = false;
+  private readOnly = false;
   private driverCapabilities = new Set<DriverCapability>();
 
   constructor(kind: DriverKind) {
@@ -33,6 +35,7 @@ export class TauriDatabaseDriver implements DatabaseDriver {
         kind: this.kind,
         name: config.name,
         database: config.database,
+        readOnly: config.readOnly === true,
         host: config.host,
         port: config.port,
         username: config.username,
@@ -41,6 +44,7 @@ export class TauriDatabaseDriver implements DatabaseDriver {
       },
     });
     this.connectionId = connection.id;
+    this.readOnly = connection.readOnly;
     this.driverCapabilities = new Set(connection.capabilities);
   }
 
@@ -143,10 +147,15 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     await invoke("disconnect_database", { connectionId: this.connectionId });
     this.connectionId = null;
     this.driverCapabilities.clear();
+    this.readOnly = false;
   }
 
   capabilities(): ReadonlySet<DriverCapability> {
     return new Set(this.driverCapabilities);
+  }
+
+  isReadOnly(): boolean {
+    return this.readOnly;
   }
 
   private requireConnection(): string {

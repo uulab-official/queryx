@@ -196,6 +196,7 @@ export interface DriverConfig {
   kind: DriverKind;
   name: string;
   database: string;
+  readOnly?: boolean;
   host?: string;
   port?: number;
   username?: string;
@@ -212,6 +213,7 @@ export interface ConnectionProfile {
   name: string;
   kind: DriverKind;
   database: string;
+  readOnly: boolean;
   host?: string;
   port?: number;
   username?: string;
@@ -231,4 +233,5 @@ export interface DatabaseDriver {
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
   capabilities(): ReadonlySet<DriverCapability>;
+  isReadOnly(): boolean;
 }

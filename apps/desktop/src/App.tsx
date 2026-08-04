@@ -397,6 +397,7 @@ function App() {
     connectionProfilesLoaded,
     driver,
     driverKind,
+    readOnlyConnection,
     appendResult,
     connectionName,
     connectionStatus,
@@ -828,7 +829,8 @@ function App() {
     [currentTable],
   );
   const canEditResults = Boolean(
-    driver.capabilities().has("editing") &&
+    !readOnlyConnection &&
+      driver.capabilities().has("editing") &&
       currentTable &&
       result &&
       primaryKeyColumns.length > 0 &&
@@ -2071,6 +2073,10 @@ function App() {
                       : "edit-results-button"
                   }
                   onClick={() => {
+                    if (readOnlyConnection) {
+                      notify("Read-only connection: data editing is disabled");
+                      return;
+                    }
                     if (!canEditResults) {
                       notify(
                         "Select a table and include its primary-key columns in the result before editing",
@@ -2080,12 +2086,16 @@ function App() {
                     setEditingEnabled((enabled) => !enabled);
                     cancelCellEdit();
                   }}
-                  disabled={!result || result.columns.length === 0}
+                  disabled={
+                    readOnlyConnection || !result || result.columns.length === 0
+                  }
                   aria-pressed={editingEnabled}
                   title={
                     canEditResults
                       ? "Double-click a non-primary-key cell to stage an edit"
-                      : "Requires a selected table, editing-capable driver, and primary-key columns in the result"
+                      : readOnlyConnection
+                        ? "Read-only connection: writes are disabled by the database"
+                        : "Requires a selected table, editing-capable driver, and primary-key columns in the result"
                   }
                 >
                   ✎ {editingEnabled ? "Editing" : "Edit"}
@@ -2096,7 +2106,7 @@ function App() {
                     type="button"
                     className="apply-edits-button"
                     onClick={() => setEditPreviewOpen(true)}
-                    disabled={Boolean(editPreview.error)}
+                    disabled={readOnlyConnection || Boolean(editPreview.error)}
                     title="Review generated UPDATE statements before running them in a transaction"
                   >
                     Review & Apply
@@ -2409,6 +2419,9 @@ function App() {
                 className={`status-dot ${connectionStatus === "connected" ? "green" : "orange"}`}
               />{" "}
               {connectionName}
+              {readOnlyConnection && (
+                <span className="read-only-badge">READ ONLY</span>
+              )}
             </span>
             <span>
               {driverKind === "sqlite"
@@ -3053,6 +3066,7 @@ function ConnectionDialog({
   const [database, setDatabase] = useState("postgres");
   const [username, setUsername] = useState("postgres");
   const [password, setPassword] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
   const [sslMode, setSslMode] = useState<"disable" | "prefer" | "require">(
     "prefer",
   );
@@ -3069,6 +3083,7 @@ function ConnectionDialog({
     setHost(profile.host ?? "localhost");
     setPort(String(profile.port ?? (profile.kind === "postgres" ? 5432 : "")));
     setDatabase(profile.database);
+    setReadOnly(profile.readOnly);
     setUsername(profile.username ?? "postgres");
     setPassword("");
     setSslMode(profile.sslMode ?? "prefer");
@@ -3083,6 +3098,7 @@ function ConnectionDialog({
     setHost("localhost");
     setPort("5432");
     setDatabase("postgres");
+    setReadOnly(false);
     setUsername("postgres");
     setPassword("");
     setSslMode("prefer");
@@ -3092,11 +3108,12 @@ function ConnectionDialog({
 
   const buildConfig = (): DriverConfig =>
     kind === "sqlite"
-      ? { kind, name, database: database || ":memory:" }
+      ? { kind, name, database: database || ":memory:", readOnly }
       : {
           kind,
           name,
           database,
+          readOnly,
           host,
           port: Number(port),
           username,
@@ -3111,6 +3128,7 @@ function ConnectionDialog({
       kind: config.kind,
       name: config.name,
       database: config.database,
+      readOnly: config.readOnly === true,
       ...(config.host ? { host: config.host } : {}),
       ...(config.port ? { port: config.port } : {}),
       ...(config.username ? { username: config.username } : {}),
@@ -3243,6 +3261,7 @@ function ConnectionDialog({
                     onChange={(event) => {
                       const nextKind = event.target.value as DriverKind;
                       setActiveProfileId(null);
+                      setReadOnly(false);
                       setKind(nextKind);
                       setDatabase(
                         nextKind === "sqlite" ? ":memory:" : "postgres",
@@ -3339,6 +3358,20 @@ function ConnectionDialog({
                   </>
                 )}
               </div>
+              <label className="connection-readonly">
+                <input
+                  type="checkbox"
+                  checked={readOnly}
+                  onChange={(event) => setReadOnly(event.target.checked)}
+                />
+                <span>
+                  <strong>Read-only session</strong>
+                  <small>
+                    Enforced by the database connection; writes are rejected
+                    even if a query is sent outside this UI.
+                  </small>
+                </span>
+              </label>
               {error && <p className="connection-error">{error}</p>}
               {testStatus === "success" && (
                 <p className="connection-success">

@@ -24,25 +24,38 @@ use crate::{
 pub struct SqliteDriver {
     path: String,
     pool: SqlitePool,
+    read_only: bool,
 }
 
 impl SqliteDriver {
-    pub async fn connect(path: &str) -> Result<Self, AppError> {
+    pub async fn connect(path: &str, read_only: bool) -> Result<Self, AppError> {
         let database_url = sqlite_url(path)?;
         let options = SqliteConnectOptions::from_str(&database_url)?.create_if_missing(true);
         let max_connections = if path == ":memory:" { 1 } else { 5 };
-        let pool = SqlitePoolOptions::new()
-            .max_connections(max_connections)
-            .connect_with(options)
-            .await?;
+        let mut pool_options = SqlitePoolOptions::new().max_connections(max_connections);
+        if read_only && path != ":memory:" {
+            pool_options = pool_options.after_connect(|connection, _| {
+                Box::pin(async move {
+                    sqlx::query("PRAGMA query_only = ON")
+                        .execute(connection)
+                        .await?;
+                    Ok(())
+                })
+            });
+        }
+        let pool = pool_options.connect_with(options).await?;
 
         if path == ":memory:" {
             seed_demo_database(&pool).await?;
+            if read_only {
+                sqlx::query("PRAGMA query_only = ON").execute(&pool).await?;
+            }
         }
 
         Ok(Self {
             path: path.to_string(),
             pool,
+            read_only,
         })
     }
 }
@@ -57,12 +70,16 @@ impl DatabaseDriver for SqliteDriver {
         &self.path
     }
 
+    fn is_read_only(&self) -> bool {
+        self.read_only
+    }
+
     fn capabilities(&self) -> Vec<DriverCapability> {
-        vec![
-            DriverCapability::Transactions,
-            DriverCapability::Explain,
-            DriverCapability::Editing,
-        ]
+        let mut capabilities = vec![DriverCapability::Transactions, DriverCapability::Explain];
+        if !self.read_only {
+            capabilities.push(DriverCapability::Editing);
+        }
+        capabilities
     }
 
     async fn execute(
@@ -555,7 +572,7 @@ mod tests {
 
     #[tokio::test]
     async fn reports_affected_rows_inside_a_transaction() {
-        let driver = SqliteDriver::connect(":memory:")
+        let driver = SqliteDriver::connect(":memory:", false)
             .await
             .expect("connect sqlite memory database");
         let result = driver
@@ -572,7 +589,7 @@ mod tests {
 
     #[tokio::test]
     async fn sums_affected_rows_for_staged_updates_in_one_transaction() {
-        let driver = SqliteDriver::connect(":memory:")
+        let driver = SqliteDriver::connect(":memory:", false)
             .await
             .expect("connect sqlite memory database");
         let result = driver
@@ -589,7 +606,7 @@ mod tests {
 
     #[tokio::test]
     async fn rolls_back_the_entire_edit_batch_on_a_conflict() {
-        let driver = SqliteDriver::connect(":memory:")
+        let driver = SqliteDriver::connect(":memory:", false)
             .await
             .expect("connect sqlite memory database");
         let error = driver
@@ -614,7 +631,7 @@ mod tests {
 
     #[tokio::test]
     async fn loads_views_and_composite_indexes_in_one_metadata_snapshot() {
-        let driver = SqliteDriver::connect(":memory:")
+        let driver = SqliteDriver::connect(":memory:", false)
             .await
             .expect("connect sqlite memory database");
         sqlx::query("CREATE TRIGGER orders_status_audit AFTER UPDATE OF status ON orders FOR EACH ROW WHEN NEW.status = 'paid' BEGIN SELECT NEW.id; END")
@@ -679,7 +696,7 @@ mod tests {
 
     #[tokio::test]
     async fn preserves_composite_foreign_key_column_pairing() {
-        let driver = SqliteDriver::connect(":memory:")
+        let driver = SqliteDriver::connect(":memory:", false)
             .await
             .expect("connect sqlite memory database");
         sqlx::query(

@@ -52,7 +52,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
 - [ ] OS keychain integration with migration and deletion tests
 - [x] Connection test and duplicate/delete profile actions with active-connection preservation
-- [ ] Profile color, read-only mode, timeout, and keepalive controls
+- [ ] Profile color, timeout, and keepalive controls
+- [x] Read-only connection enforcement in native SQLite/PostgreSQL pools and the result-editor UI; PostgreSQL live integration coverage remains part of the external driver matrix
 - [ ] SSH tunnel and PostgreSQL SSL certificate configuration
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
@@ -88,7 +89,7 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [ ] Explicit auto-commit state and begin/commit/rollback controls
 - [x] Keyed result-cell editing with staged local diffs, original-value predicates, affected-row conflict detection, atomic native batch rollback, explicit transaction apply, and refresh; stronger table identity/validation remains planned
 - [ ] Parser-backed destructive-statement analysis and database-backed affected-row estimates
-- [ ] Read-only connection enforcement in both UI and Rust execution layer
+- [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state remains separate work
 - [ ] Table data editor with filters, ordering, pagination, and optimistic conflict detection
 - [ ] Object creation/editing for tables, columns, indexes, views, and constraints
 - [ ] Schema compare and migration SQL preview with dependency ordering

@@ -16,6 +16,9 @@ pub enum ExecutionMode {
 pub trait DatabaseDriver: Send + Sync {
     fn kind(&self) -> DriverKind;
     fn database(&self) -> &str;
+    fn is_read_only(&self) -> bool {
+        false
+    }
     fn capabilities(&self) -> Vec<DriverCapability>;
     async fn prepare(&self, _query_id: Uuid) -> Result<(), AppError> {
         Ok(())

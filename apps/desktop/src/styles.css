@@ -2030,6 +2030,38 @@ button:disabled {
   border-color: #65773b;
   box-shadow: 0 0 0 2px rgba(226, 255, 103, 0.08);
 }
+.connection-readonly {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 15px;
+  color: #dce1e6;
+  font-size: 10px;
+}
+.connection-readonly input {
+  margin-top: 2px;
+  accent-color: var(--lime);
+}
+.connection-readonly strong,
+.connection-readonly small {
+  display: block;
+}
+.connection-readonly small {
+  margin-top: 4px;
+  color: #71808c;
+  font: 9px / 1.4 var(--mono);
+}
+.read-only-badge {
+  display: inline-block;
+  margin-left: 7px;
+  border: 1px solid #6e5932;
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: #f0bd6a;
+  font: 8px var(--mono);
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+}
 .credential-note {
   display: flex;
   align-items: center;

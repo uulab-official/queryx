@@ -23,7 +23,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 | Connections | Native SQLite and PostgreSQL, TLS modes, saved secret-free profiles, connection testing | OS keychain, read-only mode, tunnels |
 | SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
 | Results | Dynamic table/JSON view, local filter/sort, guarded CSV export | Virtualized streaming, copy modes, paging |
-| Safety | Destructive-query warning, transaction execution path | Parser-backed analysis and affected-row estimate |
+| Safety | Destructive-query warning, native read-only sessions, transaction execution path | Parser-backed analysis, explicit transaction state, affected-row estimate |
 | Metadata | Schemas, relations, keys, indexes, FK navigation, functions/procedures/aggregates/window functions, relation/event triggers, direct Depends on / Used by navigation, and safe DDL-to-SQL handoff | Schema-aware DDL diff and migration history |
 | Runtime | Tauri 2, React, Rust, SQLx, signed updater integration, GitHub Release workflow | Platform notarization/codesigning and production key operations |
 

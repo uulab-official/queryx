@@ -23,6 +23,7 @@ For SQLite, select SQLite and enter `:memory:` for a temporary database or an ab
 - `Disable` is intended for trusted local development servers.
 - The prior connection stays active until the replacement connection and its metadata both load successfully.
 - **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
+- **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only` for every native pool connection, and PostgreSQL enables `default_transaction_read_only`; direct write attempts are rejected by the database/runtime.
 - On native desktop, profiles are stored in the QueryX app-local data directory. The browser preview uses localStorage as a development fallback.
 - PostgreSQL and SQLite return the same result and metadata shapes to the UI.
 

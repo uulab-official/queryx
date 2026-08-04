@@ -58,6 +58,8 @@ The table browser can fetch another 100 rows with **Load next 100**. For keyed t
 - If writing fails, QueryX reports the native error and leaves the active query result intact.
 - If the data looks truncated, rerun the query with an explicit ordering and limit, then confirm the visible row count before export.
 
+When the active connection is marked **READ ONLY**, QueryX hides or disables result editing and rejects the edit batch at the database connection as a second enforcement layer. Query execution and metadata inspection remain available.
+
 ## Related
 
 - [SQL Editor](sql-editor.md)

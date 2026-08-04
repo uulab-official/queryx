@@ -87,6 +87,7 @@ interface QueryState {
   workspaceRestored: boolean;
   driver: DatabaseDriver;
   driverKind: DriverKind;
+  readOnlyConnection: boolean;
   connectionName: string;
   connectionStatus: "connecting" | "connected" | "error";
   connectionError: string | null;
@@ -401,6 +402,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     workspaceLoaded: false,
     driver,
     driverKind: driver.kind,
+    readOnlyConnection: driver.isReadOnly(),
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
     connectionStatus: "connecting",
     connectionError: null,
@@ -698,6 +700,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         set({
           driver: nextDriver,
           driverKind: nextDriver.kind,
+          readOnlyConnection: nextDriver.isReadOnly(),
           canCancel: nextDriver.capabilities().has("cancel"),
           canExplain: nextDriver.capabilities().has("explain"),
           connectionName: config.name,

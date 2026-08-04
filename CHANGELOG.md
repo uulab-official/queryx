@@ -51,6 +51,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added optimistic edit conflict detection using original-value predicates, per-row affected-row verification, and atomic native batch rollback before refreshing results.
 - Added a connection-manager vertical slice with secret-free native app-local profiles, browser fallback persistence, duplicate/delete actions, isolated connection tests, and session-only passwords.
 - Added versioned native workspace snapshots for tabs, active documents, query history, and favorites, with browser-preview migration and no-query-execution recovery.
+- Added read-only connection sessions with secret-free profile persistence, database/runtime enforcement for SQLite and PostgreSQL, and disabled result editing as a secondary UI guard.
 
 ## [0.1.0] — 2026-08-03
 

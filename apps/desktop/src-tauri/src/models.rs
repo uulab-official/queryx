@@ -36,6 +36,8 @@ pub struct ConnectionConfig {
     pub kind: DriverKind,
     pub name: String,
     pub database: String,
+    #[serde(default)]
+    pub read_only: bool,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub username: Option<String>,
@@ -50,6 +52,7 @@ pub struct ConnectionSummary {
     pub name: String,
     pub driver: DriverKind,
     pub database: String,
+    pub read_only: bool,
     pub capabilities: Vec<DriverCapability>,
 }
 

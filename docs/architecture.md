@@ -36,6 +36,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 - Driver state: connection lifecycle, query execution, metadata, transactions, capabilities.
 - Local persistence: the native desktop stores secret-free connection profiles and a versioned workspace snapshot in app-local data; the browser preview stores the same workspace schema in localStorage. Native settings, migrations, cross-profile workspaces, and OS-keychain integration remain future storage boundaries.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
+- Safety policy: read-only sessions are enforced in the native database connection and reflected through `DatabaseDriver.isReadOnly()`; disabling the React editor is only a secondary guard.
 
 ## Editor boundary
 

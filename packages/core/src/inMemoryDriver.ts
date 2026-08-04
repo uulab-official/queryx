@@ -307,13 +307,21 @@ $function$`,
 
 export class InMemoryDriver implements DatabaseDriver {
   readonly kind = "postgres" as const;
+  private readOnly = false;
+
   capabilities(): ReadonlySet<DriverCapability> {
-    return new Set(["transactions", "explain", "cancel", "editing"]);
+    return new Set([
+      "transactions",
+      "explain",
+      "cancel",
+      ...(this.readOnly ? [] : ["editing" as const]),
+    ]);
   }
   private connected = false;
 
-  async connect(_config: DriverConfig): Promise<void> {
+  async connect(config: DriverConfig): Promise<void> {
     this.connected = true;
+    this.readOnly = config.readOnly === true;
   }
 
   async execute(sql: string, signal?: AbortSignal): Promise<QueryResult> {
@@ -322,6 +330,14 @@ export class InMemoryDriver implements DatabaseDriver {
     }
     if (signal?.aborted) {
       throw new DOMException("Query cancelled", "AbortError");
+    }
+    if (
+      this.readOnly &&
+      /\b(INSERT|UPDATE|DELETE|MERGE|ALTER|CREATE|DROP|TRUNCATE|GRANT|REVOKE|VACUUM|REINDEX)\b/i.test(
+        sql,
+      )
+    ) {
+      throw new Error("read-only connection rejected a write statement");
     }
     const delay = /\bpg_sleep\s*\(/i.test(sql) ? 30_000 : 120;
     await new Promise<void>((resolve, reject) => {
@@ -368,6 +384,9 @@ export class InMemoryDriver implements DatabaseDriver {
     expectedRows: number,
     signal?: AbortSignal,
   ): Promise<QueryResult> {
+    if (this.readOnly) {
+      throw new Error("read-only connection rejected an edit batch");
+    }
     const result = await this.execute(statements.join("\n"), signal);
     return { ...result, affectedRows: expectedRows };
   }
@@ -382,5 +401,10 @@ export class InMemoryDriver implements DatabaseDriver {
 
   async disconnect(): Promise<void> {
     this.connected = false;
+    this.readOnly = false;
+  }
+
+  isReadOnly(): boolean {
+    return this.readOnly;
   }
 }

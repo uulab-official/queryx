@@ -259,6 +259,7 @@ describe("query tabs", () => {
         name: "Analytics",
         kind: "postgres",
         database: "analytics",
+        readOnly: false,
         host: "localhost",
         port: 5432,
         username: "readonly",
@@ -298,5 +299,44 @@ describe("query tabs", () => {
 
     expect(result).toEqual({ ok: true });
     expect(useQueryStore.getState().driver).toBe(previousDriver);
+  });
+
+  it("surfaces read-only policy after a successful connection", async () => {
+    const fakeWindow = {
+      setTimeout,
+      localStorage: {
+        getItem: () => null,
+        setItem: () => undefined,
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      await expect(
+        useQueryStore.getState().connectDatabase({
+          kind: "postgres",
+          name: "Read-only preview",
+          database: "preview",
+          readOnly: true,
+        }),
+      ).resolves.toBe(true);
+      expect(useQueryStore.getState().readOnlyConnection).toBe(true);
+      expect(useQueryStore.getState().driver.isReadOnly()).toBe(true);
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
   });
 });
