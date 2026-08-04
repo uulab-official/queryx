@@ -253,7 +253,8 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add same-dialect cross-connection compare using temporary read-only metadata connections.
 - [x] Add foreign-key/view diffing, dialect-aware SQL/manual-review markers, and deterministic create/remove object-category ordering.
 - [x] Add metadata dependency-graph ordering and reverse rollback SQL preview with manual-review fallbacks.
-- [ ] Add privilege preflight and persistent migration history.
+- [x] Add driver-specific read-only privilege preflight SQL and local preview history with forward/rollback recall.
+- [ ] Add applied-migration confirmation and native durable migration history.
 
 ## Final verification for this plan
 

@@ -58,7 +58,7 @@ The next integration steps are:
 2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
 3. Add long-query progress channels and timeout policies.
 4. Expand the initial MySQL/MariaDB driver with foreign keys, routines, triggers, streaming, cancellation, and hosted integration coverage.
-5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to schema-aware DDL diffing and migration history. The current safe editor handoff is documented in [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
+5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to object-specific DDL forms and applied migration state. The current generic schema-aware DDL diff, dependency ordering, rollback/preflight preview, and local preview ledger are documented in [Schema Compare](schema-compare.md) and [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
 6. Add structured plan trees and explicit `EXPLAIN ANALYZE` controls on top of the current non-executing Explain slice documented in [ADR-0012](decisions/ADR-0012-non-executing-explain-slice.md).
 7. Keep result-grid clipboard serialization in the shared core so browser preview, native results, and the desktop virtualized grid share TSV quoting and null semantics.
 

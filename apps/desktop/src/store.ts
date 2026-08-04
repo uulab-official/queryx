@@ -41,6 +41,21 @@ export interface QueryFavorite {
   createdAt: string;
 }
 
+export interface MigrationHistoryEntry {
+  id: string;
+  baselineLabel: string;
+  targetLabel: string;
+  driver: DriverKind;
+  createdAt: string;
+  changeCount: number;
+  added: number;
+  removed: number;
+  manual: number;
+  migrationSql: string;
+  rollbackSql: string;
+  privilegePreflightSql: string;
+}
+
 export type ConnectionProfileDraft = Omit<ConnectionProfile, "id"> & {
   id?: string;
 };
@@ -81,6 +96,7 @@ interface QueryState {
   toast: string | null;
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
+  migrationHistory: MigrationHistoryEntry[];
   connectionProfiles: ConnectionProfile[];
   connectionProfilesLoaded: boolean;
   workspaceLoaded: boolean;
@@ -126,11 +142,14 @@ interface QueryState {
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
   clearHistory: () => void;
+  addMigrationHistory: (entry: MigrationHistoryEntry) => void;
+  clearMigrationHistory: () => void;
   toggleFavorite: (sql: string) => boolean;
 }
 
 const historyStorageKey = "queryx:query-history";
 const favoritesStorageKey = "queryx:query-favorites";
+const migrationHistoryStorageKey = "queryx:migration-history";
 const workspaceTabsStorageKey = "queryx:workspace-tabs";
 
 interface QueryWorkspaceSnapshot {
@@ -234,6 +253,37 @@ function writeHistory(history: QueryHistoryEntry[]): void {
 function clearStoredHistory(): void {
   try {
     window.localStorage.removeItem(historyStorageKey);
+  } catch {
+    // Local persistence is best-effort until the Tauri SQLite store lands.
+  }
+}
+
+function readMigrationHistory(): MigrationHistoryEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(migrationHistoryStorageKey);
+    return stored
+      ? (JSON.parse(stored) as MigrationHistoryEntry[]).slice(0, 30)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeMigrationHistory(history: MigrationHistoryEntry[]): void {
+  try {
+    window.localStorage.setItem(
+      migrationHistoryStorageKey,
+      JSON.stringify(history.slice(0, 30)),
+    );
+  } catch {
+    // Local persistence is best-effort until the Tauri SQLite store lands.
+  }
+}
+
+function clearStoredMigrationHistory(): void {
+  try {
+    window.localStorage.removeItem(migrationHistoryStorageKey);
   } catch {
     // Local persistence is best-effort until the Tauri SQLite store lands.
   }
@@ -416,6 +466,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     toast: null,
     history: readHistory(),
     favorites: readFavorites(),
+    migrationHistory: readMigrationHistory(),
     connectionProfiles: [],
     connectionProfilesLoaded: false,
     workspaceLoaded: false,
@@ -771,6 +822,23 @@ export const useQueryStore = create<QueryState>((set, get) => {
       clearStoredHistory();
       set({ history: [] });
       persistWorkspaceState(get());
+    },
+    addMigrationHistory: (entry) => {
+      const history = [
+        entry,
+        ...get().migrationHistory.filter(
+          (item) =>
+            item.migrationSql !== entry.migrationSql ||
+            item.baselineLabel !== entry.baselineLabel ||
+            item.targetLabel !== entry.targetLabel,
+        ),
+      ];
+      writeMigrationHistory(history);
+      set({ migrationHistory: history.slice(0, 30) });
+    },
+    clearMigrationHistory: () => {
+      clearStoredMigrationHistory();
+      set({ migrationHistory: [] });
     },
     toggleFavorite: (sql) => {
       const normalizedSql = sql.trim();

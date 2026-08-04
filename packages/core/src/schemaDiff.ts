@@ -694,3 +694,93 @@ export function buildSchemaRollbackSql(diff: SchemaDiff): string {
     })
     .join("\n\n");
 }
+
+function sqlLiteral(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function affectedSchemas(diff: SchemaDiff): string[] {
+  return [
+    ...new Set(
+      diff.changes
+        .map((change) => change.objectKey?.split("\u0000", 1)[0])
+        .map((key) => key?.split(":", 2)[1])
+        .filter((schema): schema is string => Boolean(schema)),
+    ),
+  ];
+}
+
+function affectedRelations(diff: SchemaDiff): string[] {
+  const addedObjects = new Set(
+    diff.changes
+      .filter(
+        (change) => change.kind === "tableAdded" || change.kind === "viewAdded",
+      )
+      .map((change) => change.objectKey),
+  );
+  return [
+    ...new Set(
+      diff.changes
+        .filter(
+          (change) => change.objectKey && !addedObjects.has(change.objectKey),
+        )
+        .map((change) => {
+          const objectKey = change.objectKey;
+          if (!objectKey) return null;
+          const [kindAndSchema, name] = objectKey.split("\u0000");
+          if (!name) return null;
+          const schema = kindAndSchema.split(":")[1];
+          return schema ? `${schema}.${name}` : null;
+        })
+        .filter((relation): relation is string => Boolean(relation)),
+    ),
+  ];
+}
+
+export function buildSchemaPrivilegePreflightSql(
+  diff: SchemaDiff,
+  driver: DriverKind,
+): string {
+  const schemas = affectedSchemas(diff);
+  const relations = affectedRelations(diff);
+  if (driver === "mysql") {
+    return [
+      "-- QueryX privilege preflight · review the active account before applying migration SQL",
+      "SELECT CURRENT_USER() AS account, DATABASE() AS database_name;",
+      "SHOW GRANTS FOR CURRENT_USER();",
+      `-- Affected schemas: ${schemas.join(", ") || "not available"}`,
+      `-- Affected relations: ${relations.join(", ") || "new relations or metadata unavailable"}`,
+    ].join("\n");
+  }
+  if (driver === "sqlite") {
+    return [
+      "-- QueryX privilege preflight · SQLite delegates DDL permission to the database file/runtime",
+      "PRAGMA database_list;",
+      "SELECT 1 AS queryx_runtime_preflight, 'Confirm the SQLite file is writable before applying DDL' AS note;",
+    ].join("\n");
+  }
+  const schemaValues = schemas.length
+    ? schemas.map((schema) => `(${sqlLiteral(schema)})`).join(", ")
+    : "('public')";
+  const relationValues = relations.length
+    ? relations.map((relation) => `(${sqlLiteral(relation)})`).join(", ")
+    : "('public.<existing_relation>')";
+  return [
+    "-- QueryX privilege preflight · read-only checks; no schema mutation is performed",
+    "SELECT current_user AS role, current_database() AS database_name,",
+    "       has_database_privilege(current_user, current_database(), 'CONNECT') AS can_connect;",
+    "",
+    "SELECT schema_name,",
+    "       has_schema_privilege(current_user, schema_name, 'USAGE') AS can_use,",
+    "       has_schema_privilege(current_user, schema_name, 'CREATE') AS can_create",
+    `FROM (VALUES ${schemaValues}) AS schemas(schema_name);`,
+    "",
+    "SELECT relation_name,",
+    "       has_table_privilege(current_user, relation_name, 'SELECT') AS can_select,",
+    "       has_table_privilege(current_user, relation_name, 'INSERT') AS can_insert,",
+    "       has_table_privilege(current_user, relation_name, 'UPDATE') AS can_update,",
+    "       has_table_privilege(current_user, relation_name, 'DELETE') AS can_delete,",
+    "       has_table_privilege(current_user, relation_name, 'REFERENCES') AS can_reference",
+    `FROM (VALUES ${relationValues}) AS relations(relation_name);`,
+  ].join("\n");
+}

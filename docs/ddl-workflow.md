@@ -23,7 +23,7 @@ Use a least-privilege account and confirm the target database supports transacti
 - **Edit in SQL** creates a regular tab, preserving normal undo, close-confirmation, query history, and editor behavior.
 - **Run in Transaction** is explicit and runs the complete document, not only a selected fragment. A statement error rolls back the transaction and leaves the SQL available for correction.
 - **Refresh metadata** asks the active driver for a new eager snapshot. It does not execute user SQL and does not alter database state.
-- There is no automatic privilege preflight, schema diff, migration ledger, or object-specific Apply button yet.
+- There is no automatic privilege gate, automatic schema mutation, applied-migration confirmation, or object-specific Apply button yet; preflight and history are explicit review tools.
 
 ## Safety and privacy
 
@@ -41,7 +41,7 @@ The native transaction path owns commit and rollback behavior. If execution fail
 
 ## Current limits and next gate
 
-This workflow is a safe editor handoff. [Schema Compare](schema-compare.md) provides a session-local baseline diff, metadata dependency ordering, forward migration preview, and reverse/rollback preview for tables, columns, indexes, foreign keys, and views. Privilege checks, object forms, migration history, and vendor capability declarations remain roadmap work. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
+This workflow is a safe editor handoff. [Schema Compare](schema-compare.md) provides a session-local baseline diff, metadata dependency ordering, forward migration preview, reverse/rollback preview, driver-specific privilege preflight, and local preview history for tables, columns, indexes, foreign keys, and views. Object forms, applied-migration confirmation, native durable history, and vendor capability declarations remain roadmap work. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
 
 ## Related
 

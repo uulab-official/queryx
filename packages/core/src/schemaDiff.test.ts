@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DatabaseMetadata, DependencyMetadata } from "@queryx/shared";
 import {
   buildSchemaMigrationSql,
+  buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
   compareSchemaSnapshots,
 } from "./schemaDiff";
@@ -302,6 +303,35 @@ describe("compareSchemaSnapshots", () => {
     const rollback = buildSchemaRollbackSql(addedViews);
     expect(rollback.indexOf("report_view")).toBeLessThan(
       rollback.indexOf("base_view"),
+    );
+  });
+
+  it("builds read-only privilege preflight SQL per driver", () => {
+    const diff = compareSchemaSnapshots(
+      snapshot(),
+      snapshot({
+        tables: [
+          {
+            ...snapshot().tables[0],
+            columns: [
+              ...snapshot().tables[0].columns,
+              { name: "display_name", type: "text", nullable: true },
+            ],
+          },
+        ],
+      }),
+      "postgres",
+    );
+
+    const postgres = buildSchemaPrivilegePreflightSql(diff, "postgres");
+    expect(postgres).toContain("has_schema_privilege");
+    expect(postgres).toContain("has_table_privilege");
+    expect(postgres).toContain("public.users");
+    expect(buildSchemaPrivilegePreflightSql(diff, "mysql")).toContain(
+      "SHOW GRANTS FOR CURRENT_USER()",
+    );
+    expect(buildSchemaPrivilegePreflightSql(diff, "sqlite")).toContain(
+      "PRAGMA database_list",
     );
   });
 });

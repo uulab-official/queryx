@@ -1630,6 +1630,49 @@ button:disabled {
   font: 10px var(--mono);
   text-align: center;
 }
+.migration-history-modal {
+  width: min(920px, calc(100vw - 40px));
+}
+.migration-history-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 11px;
+  border-bottom: 1px solid #202b30;
+}
+.migration-history-row:last-child {
+  border-bottom: 0;
+}
+.migration-history-copy {
+  min-width: 0;
+}
+.migration-history-copy strong,
+.migration-history-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.migration-history-copy strong {
+  color: #cdd9dc;
+  font: 10px var(--mono);
+}
+.migration-history-copy small {
+  margin-top: 4px;
+  color: #71848b;
+  font: 9px var(--mono);
+}
+.migration-history-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+.migration-history-actions .mini-button {
+  min-width: 0;
+  padding: 0 7px;
+  font: 9px var(--mono);
+}
 .schema-target-modal {
   width: min(500px, calc(100vw - 40px));
   margin: 0;

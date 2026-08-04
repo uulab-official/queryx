@@ -141,6 +141,64 @@ describe("query tabs", () => {
     }
   });
 
+  it("stores migration preview history without replacing the active query", () => {
+    const values = new Map<string, string>();
+    const fakeWindow = {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      const entry = {
+        id: "migration-1",
+        baselineLabel: "Baseline",
+        targetLabel: "Current",
+        driver: "postgres" as const,
+        createdAt: new Date().toISOString(),
+        changeCount: 1,
+        added: 1,
+        removed: 0,
+        manual: 0,
+        migrationSql: "CREATE TABLE public.audit (id integer);",
+        rollbackSql: "DROP TABLE public.audit;",
+        privilegePreflightSql: "SELECT current_user;",
+      };
+      useQueryStore.setState({ migrationHistory: [] });
+      useQueryStore.getState().addMigrationHistory(entry);
+      useQueryStore.getState().addMigrationHistory({
+        ...entry,
+        id: "migration-2",
+      });
+
+      expect(useQueryStore.getState().migrationHistory).toHaveLength(1);
+      expect(
+        JSON.parse(values.get("queryx:migration-history") ?? "[]"),
+      ).toHaveLength(1);
+      useQueryStore.getState().clearMigrationHistory();
+      expect(useQueryStore.getState().migrationHistory).toEqual([]);
+      expect(values.has("queryx:migration-history")).toBe(false);
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("returns the id of a new editable document", () => {
     const newTabId = useQueryStore.getState().newQuery();
     const state = useQueryStore.getState();

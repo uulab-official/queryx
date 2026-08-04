@@ -66,7 +66,7 @@ Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, us
 
 - Cancellation uses `pg_cancel_backend` because SQLx 0.8 does not expose a protocol cancel token; PostgreSQL permission policies still apply.
 - Multi-statement interactive transaction sessions need a dedicated transaction ID.
-- Object-specific DDL diff, privilege preflight, and migration history are not yet part of the shared metadata model. Inspector definitions for ordinary functions/procedures, relation triggers, and event triggers can be handed off to a normal SQL tab; aggregate/window entries remain inspection-only because PostgreSQL does not expose the same executable routine definition contract for those catalog kinds.
+- Object-specific DDL diff and applied-migration state are not yet part of the shared metadata model. The generic Schema Compare workflow provides dependency-aware diffing, rollback preview, and PostgreSQL privilege-preflight SQL. Inspector definitions for ordinary functions/procedures, relation triggers, and event triggers can be handed off to a normal SQL tab; aggregate/window entries remain inspection-only because PostgreSQL does not expose the same executable routine definition contract for those catalog kinds.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
 - Saved credentials must wait for OS keychain integration.
 

@@ -21,6 +21,7 @@ import {
   buildForeignKeyIndex,
   buildExplainQuery,
   buildSchemaMigrationSql,
+  buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
   compareSchemaSnapshots,
   formatSql,
@@ -58,6 +59,7 @@ import { getVirtualRowWindow } from "./resultGrid";
 import {
   useQueryStore,
   type ConnectionProfileDraft,
+  type MigrationHistoryEntry,
   type RunMode,
 } from "./store";
 
@@ -411,6 +413,7 @@ function App() {
     toast,
     history,
     favorites,
+    migrationHistory,
     connectionProfiles,
     connectionProfilesLoaded,
     driver,
@@ -440,6 +443,8 @@ function App() {
     connectDatabase,
     notify,
     clearHistory,
+    addMigrationHistory,
+    clearMigrationHistory,
     toggleFavorite,
   } = useQueryStore();
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -481,6 +486,7 @@ function App() {
     useState("Current connection");
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false);
   const [schemaTargetOpen, setSchemaTargetOpen] = useState(false);
+  const [migrationHistoryOpen, setMigrationHistoryOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -518,6 +524,27 @@ function App() {
     }
     setSchemaDiffOpen(true);
   };
+  const recordMigrationPreview = () => {
+    if (!schemaDiff) return;
+    addMigrationHistory({
+      id: crypto.randomUUID(),
+      baselineLabel: schemaBaselineLabel,
+      targetLabel: `Current connection · ${connectionName}`,
+      driver: driverKind,
+      createdAt: new Date().toISOString(),
+      changeCount: schemaDiff.changes.length,
+      added: schemaDiff.added,
+      removed: schemaDiff.removed,
+      manual: schemaDiff.manual,
+      migrationSql: buildSchemaMigrationSql(schemaDiff),
+      rollbackSql: buildSchemaRollbackSql(schemaDiff),
+      privilegePreflightSql: buildSchemaPrivilegePreflightSql(
+        schemaDiff,
+        driverKind,
+      ),
+    });
+  };
+  const openMigrationHistory = () => setMigrationHistoryOpen(true);
   const compareSavedConnection = async (
     config: DriverConfig,
     label: string,
@@ -1559,6 +1586,12 @@ function App() {
         : "baseline required",
       disabled: !schemaBaseline || !metadata,
       execute: openSchemaDiff,
+    },
+    {
+      id: "migration-history",
+      label: "Migration history",
+      hint: `${migrationHistory.length} saved previews`,
+      execute: openMigrationHistory,
     },
     {
       id: "connection",
@@ -2644,6 +2677,7 @@ function App() {
             setSchemaTargetOpen(true);
           }}
           onOpenSql={() => {
+            recordMigrationPreview();
             const migrationSql = buildSchemaMigrationSql(schemaDiff);
             newQuery();
             setSql(migrationSql);
@@ -2651,11 +2685,26 @@ function App() {
             notify("Opened schema migration preview in a new SQL tab");
           }}
           onOpenRollback={() => {
+            recordMigrationPreview();
             const rollbackSql = buildSchemaRollbackSql(schemaDiff);
             newQuery();
             setSql(rollbackSql);
             setSchemaDiffOpen(false);
             notify("Opened schema rollback preview in a new SQL tab");
+          }}
+          onOpenPrivilegePreflight={() => {
+            const preflightSql = buildSchemaPrivilegePreflightSql(
+              schemaDiff,
+              driverKind,
+            );
+            newQuery();
+            setSql(preflightSql);
+            setSchemaDiffOpen(false);
+            notify("Opened privilege preflight in a new SQL tab");
+          }}
+          onOpenHistory={() => {
+            setSchemaDiffOpen(false);
+            openMigrationHistory();
           }}
         />
       )}
@@ -2665,6 +2714,29 @@ function App() {
           driverKind={driverKind}
           onClose={() => setSchemaTargetOpen(false)}
           onCompare={compareSavedConnection}
+        />
+      )}
+      {migrationHistoryOpen && (
+        <MigrationHistoryDialog
+          entries={migrationHistory}
+          onClose={() => setMigrationHistoryOpen(false)}
+          onClear={() => {
+            if (!window.confirm("Clear all saved migration previews?")) return;
+            clearMigrationHistory();
+            notify("Cleared migration preview history");
+          }}
+          onOpen={(entry, kind) => {
+            newQuery();
+            setSql(
+              kind === "migration"
+                ? entry.migrationSql
+                : kind === "rollback"
+                  ? entry.rollbackSql
+                  : entry.privilegePreflightSql,
+            );
+            setMigrationHistoryOpen(false);
+            notify(`Opened ${kind} preview in a new SQL tab`);
+          }}
         />
       )}
       {editPreviewOpen && (
@@ -3165,6 +3237,8 @@ function SchemaDiffDialog({
   onCompareConnection,
   onOpenSql,
   onOpenRollback,
+  onOpenPrivilegePreflight,
+  onOpenHistory,
 }: {
   diff: SchemaDiff;
   driverKind: DriverKind;
@@ -3173,6 +3247,8 @@ function SchemaDiffDialog({
   onCompareConnection: () => void;
   onOpenSql: () => void;
   onOpenRollback: () => void;
+  onOpenPrivilegePreflight: () => void;
+  onOpenHistory: () => void;
 }) {
   const migrationSql = buildSchemaMigrationSql(diff);
   return (
@@ -3264,11 +3340,126 @@ function SchemaDiffDialog({
           </button>
           <button
             type="button"
+            className="modal-secondary"
+            onClick={onOpenPrivilegePreflight}
+          >
+            Privilege preflight
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={onOpenHistory}
+          >
+            History
+          </button>
+          <button
+            type="button"
             className="modal-transaction"
             onClick={onOpenSql}
             disabled={diff.changes.length === 0}
           >
             Open SQL preview
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function MigrationHistoryDialog({
+  entries,
+  onClose,
+  onClear,
+  onOpen,
+}: {
+  entries: MigrationHistoryEntry[];
+  onClose: () => void;
+  onClear: () => void;
+  onOpen: (
+    entry: MigrationHistoryEntry,
+    kind: "migration" | "rollback" | "privilege",
+  ) => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-diff-modal migration-history-modal"
+        aria-modal="true"
+        aria-labelledby="migration-history-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">SCHEMA WORKFLOW · LOCAL LEDGER</p>
+            <h2 id="migration-history-title">Migration history</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close migration history"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          QueryX stores generated previews locally without passwords. Entries
+          are review records, not proof that SQL was applied to a database.
+        </p>
+        {entries.length === 0 ? (
+          <div className="schema-diff-empty">
+            No migration previews have been opened yet.
+          </div>
+        ) : (
+          <div
+            className="schema-diff-list"
+            aria-label="Migration history entries"
+          >
+            {entries.map((entry) => (
+              <div className="migration-history-row" key={entry.id}>
+                <div className="migration-history-copy">
+                  <strong>
+                    {entry.baselineLabel} → {entry.targetLabel}
+                  </strong>
+                  <small>
+                    {driverDisplayName(entry.driver)} ·{" "}
+                    {new Date(entry.createdAt).toLocaleString()} ·{" "}
+                    {entry.changeCount} changes · {entry.manual} manual
+                  </small>
+                </div>
+                <div className="migration-history-actions">
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={() => onOpen(entry, "migration")}
+                  >
+                    Forward
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={() => onOpen(entry, "rollback")}
+                  >
+                    Rollback
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={() => onOpen(entry, "privilege")}
+                  >
+                    Privileges
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClear}>
+            Clear history
+          </button>
+          <button type="button" className="modal-transaction" onClick={onClose}>
+            Close
           </button>
         </div>
       </dialog>

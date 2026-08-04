@@ -28,7 +28,7 @@ The shared metadata model remains additive. Aggregate/window routines without an
 - Selecting or copying catalog text cannot mutate the database.
 - The editor can support review, undo, correction, and ordinary query history without a second DDL state model.
 - Users must review reconstructed SQL and understand database-specific transactional DDL behavior.
-- Schema diffing, privilege checks, dependency ordering, migration history, and object-specific previews remain explicit roadmap work.
+- Generic schema diffing, privilege-preflight SQL, dependency ordering, rollback preview, and local preview history now live in Schema Compare. Applied-migration confirmation, native durable history, and object-specific previews remain explicit roadmap work.
 
 ## Verification
 
