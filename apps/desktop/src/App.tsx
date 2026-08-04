@@ -13,6 +13,7 @@ import {
   buildDependencyIndex,
   buildForeignKeyIndex,
   buildExplainQuery,
+  formatSql,
   inspectQuerySafety,
   serializeRowsToCsv,
   serializeRowsToTsv,
@@ -1028,13 +1029,8 @@ function App() {
                 <button
                   type="button"
                   className="toolbar-button"
-                  onClick={() =>
-                    setSql(
-                      sql
-                        .replace(/\s+/g, " ")
-                        .replaceAll(" SELECT", "\nSELECT"),
-                    )
-                  }
+                  onClick={() => setSql(formatSql(sql))}
+                  title="Format the active SQL while preserving strings and comments"
                 >
                   Format <kbd>⌘L</kbd>
                 </button>

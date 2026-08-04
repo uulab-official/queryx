@@ -48,7 +48,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [ ] OS keychain integration with migration and deletion tests
 - [ ] Connection test, duplicate, color, read-only mode, timeout, and keepalive controls
 - [ ] SSH tunnel and PostgreSQL SSL certificate configuration
-- [ ] Dialect-aware parser, formatter, diagnostics, snippets, and function completion
+- [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
 - [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls
 - [ ] Virtualized result grid with incremental fetch, server paging, resize/reorder/freeze

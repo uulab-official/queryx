@@ -14,6 +14,8 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 4. On a driver with cancellation support, choose **Cancel** or press Escape while a query is running.
 5. Close the active tab with Cmd/Ctrl+W or its close button. QueryX confirms before discarding modified SQL and always keeps at least one editable tab open.
 
+Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common clauses move to separate lines and keywords are uppercased; quoted strings, quoted identifiers, and SQL comments are preserved. This is intentionally dialect-neutral and does not claim parser-level formatting.
+
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
 ## Result grid
@@ -57,7 +59,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 
 ## Known limitations
 
-- SQL formatting is still a lightweight placeholder and needs a dialect-aware formatter.
+- SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs are session state and are not restored after restart yet.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
