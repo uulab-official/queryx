@@ -251,7 +251,8 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add Explorer and command-palette actions without automatic execution; open preview in a normal SQL tab.
 - [x] Add deterministic tests and document destructive/dependency-ordering limitations.
 - [x] Add same-dialect cross-connection compare using temporary read-only metadata connections.
-- [ ] Add dependency-ordered migrations, view/FK diffing, privilege preflight, and migration history.
+- [x] Add foreign-key/view diffing, dialect-aware SQL/manual-review markers, and deterministic create/remove object-category ordering.
+- [ ] Add a full dependency graph, privilege preflight, rollback SQL, and migration history.
 
 ## Final verification for this plan
 

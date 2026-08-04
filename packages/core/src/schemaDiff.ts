@@ -1,9 +1,11 @@
 import type {
   ColumnMetadata,
   DriverKind,
+  ForeignKeyMetadata,
   IndexMetadata,
   TableMetadata,
   DatabaseMetadata,
+  ViewMetadata,
 } from "@queryx/shared";
 
 export type SchemaDiffKind =
@@ -13,7 +15,12 @@ export type SchemaDiffKind =
   | "columnRemoved"
   | "columnChanged"
   | "indexAdded"
-  | "indexRemoved";
+  | "indexRemoved"
+  | "foreignKeyAdded"
+  | "foreignKeyRemoved"
+  | "viewAdded"
+  | "viewRemoved"
+  | "viewChanged";
 
 export interface SchemaDiffChange {
   kind: SchemaDiffKind;
@@ -108,6 +115,80 @@ function dropIndexSql(
   return `DROP INDEX ${qualifiedName(table.schema, index.name, driver)};`;
 }
 
+function foreignKeySignature(foreignKey: ForeignKeyMetadata): string {
+  return [
+    foreignKey.name ?? foreignKey.id,
+    foreignKey.columns
+      .map(
+        (column) => `${column.sourceColumn}:${column.referencedColumn ?? ""}`,
+      )
+      .join(","),
+    `${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
+    foreignKey.onUpdate,
+    foreignKey.onDelete,
+    foreignKey.match ?? "",
+    foreignKey.deferrable ?? "",
+    foreignKey.initiallyDeferred ?? "",
+  ].join("\u0000");
+}
+
+function foreignKeySql(
+  table: TableMetadata,
+  foreignKey: ForeignKeyMetadata,
+  driver: DriverKind,
+): string | null {
+  if (
+    driver === "sqlite" ||
+    foreignKey.columns.some((column) => !column.referencedColumn)
+  ) {
+    return null;
+  }
+  const constraintName = foreignKey.name
+    ? `CONSTRAINT ${quoteIdentifier(foreignKey.name, driver)} `
+    : "";
+  const sourceColumns = foreignKey.columns
+    .map((column) => quoteIdentifier(column.sourceColumn, driver))
+    .join(", ");
+  const referencedColumns = foreignKey.columns
+    .map((column) => quoteIdentifier(column.referencedColumn ?? "", driver))
+    .join(", ");
+  const actions = [foreignKey.onUpdate, foreignKey.onDelete]
+    .map((action, index) => {
+      const normalized = action.trim().toUpperCase();
+      if (!normalized) return "";
+      return `${index === 0 ? "ON UPDATE" : "ON DELETE"} ${normalized}`;
+    })
+    .filter(Boolean)
+    .join(" ");
+  return `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ADD ${constraintName}FOREIGN KEY (${sourceColumns}) REFERENCES ${qualifiedName(foreignKey.referencedRelation.schema, foreignKey.referencedRelation.name, driver)} (${referencedColumns})${actions ? ` ${actions}` : ""};`;
+}
+
+function dropForeignKeySql(
+  table: TableMetadata,
+  foreignKey: ForeignKeyMetadata,
+  driver: DriverKind,
+): string | null {
+  if (driver === "sqlite" || !foreignKey.name) return null;
+  const clause = driver === "mysql" ? "DROP FOREIGN KEY" : "DROP CONSTRAINT";
+  return `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${clause} ${quoteIdentifier(foreignKey.name, driver)};`;
+}
+
+function viewCreateSql(view: ViewMetadata, driver: DriverKind): string | null {
+  const definition = view.definition?.trim();
+  if (!definition) return null;
+  return `CREATE VIEW ${qualifiedName(view.schema, view.name, driver)} AS ${definition.replace(/;$/, "")};`;
+}
+
+function viewReplaceSql(view: ViewMetadata, driver: DriverKind): string | null {
+  const definition = view.definition?.trim();
+  if (!definition || driver === "sqlite") return null;
+  return `CREATE OR REPLACE VIEW ${qualifiedName(view.schema, view.name, driver)} AS ${definition.replace(/;$/, "")};`;
+}
+
+function viewDropSql(view: ViewMetadata, driver: DriverKind): string {
+  return `DROP VIEW ${qualifiedName(view.schema, view.name, driver)};`;
+}
+
 function addColumnSql(
   table: TableMetadata,
   column: ColumnMetadata,
@@ -180,6 +261,25 @@ export function compareSchemaSnapshots(
         sql: createTableSql(table, driver),
         destructive: false,
       });
+      for (const index of table.indexes) {
+        if (index.primary) continue;
+        addChange(changes, {
+          kind: "indexAdded",
+          label: `Add index ${table.schema}.${table.name}.${index.name}`,
+          detail: index.columns.join(", "),
+          sql: indexSql(table, index, driver),
+          destructive: false,
+        });
+      }
+      for (const foreignKey of table.foreignKeys) {
+        addChange(changes, {
+          kind: "foreignKeyAdded",
+          label: `Add foreign key ${table.schema}.${table.name}.${foreignKey.name ?? foreignKey.id}`,
+          detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
+          sql: foreignKeySql(table, foreignKey, driver),
+          destructive: false,
+        });
+      }
       continue;
     }
     const baselineTable = baselineTables.get(tableKey(table));
@@ -254,10 +354,54 @@ export function compareSchemaSnapshots(
         });
       }
     }
+
+    const baselineForeignKeys = new Map(
+      baselineTable.foreignKeys.map((foreignKey) => [
+        foreignKeySignature(foreignKey),
+        foreignKey,
+      ]),
+    );
+    const currentForeignKeys = new Map(
+      table.foreignKeys.map((foreignKey) => [
+        foreignKeySignature(foreignKey),
+        foreignKey,
+      ]),
+    );
+    for (const foreignKey of table.foreignKeys) {
+      if (!baselineForeignKeys.has(foreignKeySignature(foreignKey))) {
+        addChange(changes, {
+          kind: "foreignKeyAdded",
+          label: `Add foreign key ${table.schema}.${table.name}.${foreignKey.name ?? foreignKey.id}`,
+          detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
+          sql: foreignKeySql(table, foreignKey, driver),
+          destructive: false,
+        });
+      }
+    }
+    for (const foreignKey of baselineTable.foreignKeys) {
+      if (!currentForeignKeys.has(foreignKeySignature(foreignKey))) {
+        addChange(changes, {
+          kind: "foreignKeyRemoved",
+          label: `Drop foreign key ${table.schema}.${table.name}.${foreignKey.name ?? foreignKey.id}`,
+          detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
+          sql: dropForeignKeySql(table, foreignKey, driver),
+          destructive: true,
+        });
+      }
+    }
   }
 
   for (const table of baseline.tables) {
     if (!currentTables.has(tableKey(table))) {
+      for (const foreignKey of table.foreignKeys) {
+        addChange(changes, {
+          kind: "foreignKeyRemoved",
+          label: `Drop foreign key ${table.schema}.${table.name}.${foreignKey.name ?? foreignKey.id}`,
+          detail: `${foreignKey.columns.map((column) => column.sourceColumn).join(", ")} → ${foreignKey.referencedRelation.schema}.${foreignKey.referencedRelation.name}`,
+          sql: dropForeignKeySql(table, foreignKey, driver),
+          destructive: true,
+        });
+      }
       addChange(changes, {
         kind: "tableRemoved",
         label: `Drop table ${table.schema}.${table.name}`,
@@ -268,14 +412,57 @@ export function compareSchemaSnapshots(
     }
   }
 
+  const baselineViews = new Map(
+    baseline.views.map((view) => [tableKey(view), view]),
+  );
+  const currentViews = new Map(
+    current.views.map((view) => [tableKey(view), view]),
+  );
+  for (const view of current.views) {
+    const previous = baselineViews.get(tableKey(view));
+    if (!previous) {
+      addChange(changes, {
+        kind: "viewAdded",
+        label: `Add view ${view.schema}.${view.name}`,
+        detail: view.definition?.trim() || "View definition unavailable",
+        sql: viewCreateSql(view, driver),
+        destructive: false,
+      });
+    } else if (previous.definition?.trim() !== view.definition?.trim()) {
+      addChange(changes, {
+        kind: "viewChanged",
+        label: `Change view ${view.schema}.${view.name}`,
+        detail: "View definition changed",
+        sql: viewReplaceSql(view, driver),
+        destructive: true,
+      });
+    }
+  }
+  for (const view of baseline.views) {
+    if (!currentViews.has(tableKey(view))) {
+      addChange(changes, {
+        kind: "viewRemoved",
+        label: `Drop view ${view.schema}.${view.name}`,
+        detail: "View no longer exists in the current schema",
+        sql: viewDropSql(view, driver),
+        destructive: true,
+      });
+    }
+  }
+
   const changeOrder: Record<SchemaDiffKind, number> = {
     tableAdded: 0,
     columnAdded: 1,
-    columnChanged: 2,
-    indexAdded: 3,
-    indexRemoved: 4,
-    columnRemoved: 5,
-    tableRemoved: 6,
+    indexAdded: 2,
+    foreignKeyAdded: 3,
+    viewAdded: 4,
+    columnChanged: 5,
+    foreignKeyRemoved: 6,
+    indexRemoved: 7,
+    columnRemoved: 8,
+    viewChanged: 9,
+    viewRemoved: 10,
+    tableRemoved: 11,
   };
   changes.sort(
     (left, right) =>
@@ -286,7 +473,10 @@ export function compareSchemaSnapshots(
     changes,
     added: changes.filter((change) => !change.destructive).length,
     removed: changes.filter((change) => change.destructive).length,
-    changed: changes.filter((change) => change.kind === "columnChanged").length,
+    changed: changes.filter(
+      (change) =>
+        change.kind === "columnChanged" || change.kind === "viewChanged",
+    ).length,
     manual: changes.filter((change) => change.sql === null).length,
   };
 }

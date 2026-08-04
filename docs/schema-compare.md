@@ -15,16 +15,16 @@ To compare another saved connection, choose **Compare connection** in the diff d
 
 ## Current coverage
 
-The comparison engine detects added/removed tables, added/removed/changed columns, and added/removed indexes. It emits dialect-aware SQL for PostgreSQL and MySQL/MariaDB. SQLite column type/nullability changes are marked **MANUAL REVIEW REQUIRED** because SQLite's ALTER TABLE capabilities do not provide a safe generic column alteration path.
+The comparison engine detects added/removed tables, added/removed/changed columns, added/removed indexes, foreign keys, and views. It emits dialect-aware SQL for PostgreSQL and MySQL/MariaDB. SQLite foreign-key changes and view replacements are marked **MANUAL REVIEW REQUIRED** because SQLite does not provide a safe generic `ALTER TABLE ... ADD/DROP CONSTRAINT` or `CREATE OR REPLACE VIEW` path.
 
-Table creation includes the available primary-key columns. The current preview does not yet order foreign-key operations, compare view definitions, or maintain a migration ledger. Those are explicit roadmap items; review dependencies before running a destructive or cross-table migration.
+Table creation includes the available primary-key columns. Preview statements are grouped into a safe review order: create tables, add columns and indexes, add foreign keys, then create views. Destructive foreign-key and view operations are placed before table removal. This is deterministic object-category ordering, not yet a full dependency graph or privilege preflight; review cross-schema dependencies before running a destructive migration. A migration ledger and rollback SQL are still planned.
 
 The baseline lives in the active desktop session only. Switching the active connection clears it so a snapshot from one database cannot accidentally be compared with another. Cross-dialect comparison is intentionally blocked because generated migration SQL must target a known dialect.
 
 ## Safety
 
 - No SQL is sent by Capture or Compare.
-- Generated `DROP TABLE`, `DROP COLUMN`, `DROP INDEX`, and type/nullability changes are marked destructive.
+- Generated `DROP TABLE`, `DROP COLUMN`, `DROP INDEX`, `DROP VIEW`, foreign-key removals, and type/nullability changes are marked destructive.
 - Manual-review changes are emitted as comments instead of executable SQL.
 - Open SQL preview creates a normal query tab, preserving the same history, Safe Mode, transaction, and read-only boundaries as other SQL.
 
