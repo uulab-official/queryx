@@ -34,7 +34,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 - UI state: tabs, editor text, selected database object, result view, filters, running status, toasts.
 - Driver state: connection lifecycle, query execution, metadata, transactions, capabilities.
-- Local persistence: the native desktop stores secret-free connection profiles in app-local data; the browser preview stores the same profile shape in localStorage. Tabs, history, favorites, settings, and workspace indexes remain best-effort browser-local data until the native SQLite workspace migration.
+- Local persistence: the native desktop stores secret-free connection profiles and a versioned workspace snapshot in app-local data; the browser preview stores the same workspace schema in localStorage. Native settings, migrations, cross-profile workspaces, and OS-keychain integration remain future storage boundaries.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 
 ## Editor boundary
@@ -53,7 +53,7 @@ PostgreSQL passwords cross only the local Tauri IPC boundary and remain in proce
 
 The next integration steps are:
 
-1. Move tabs, history, favorites, and settings into a versioned native SQLite workspace store.
+1. Migrate the versioned native workspace snapshot to SQLite after the schema has stabilized, adding settings and cross-profile workspaces.
 2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
 3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
@@ -72,3 +72,4 @@ The next integration steps are:
 - [ADR-0009: Model event triggers as database-scoped objects](decisions/ADR-0009-database-scoped-event-triggers.md)
 - [ADR-0011: Use a safe editor handoff for DDL changes](decisions/ADR-0011-safe-ddl-editor-handoff.md)
 - [ADR-0012: Reuse the execution path for non-executing EXPLAIN plans](decisions/ADR-0012-non-executing-explain-slice.md)
+- [ADR-0013: Use a versioned workspace snapshot before the SQLite migration](decisions/ADR-0013-versioned-workspace-snapshot.md)

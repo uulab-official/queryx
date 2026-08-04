@@ -30,7 +30,7 @@ The result also includes columns, execution time, affected rows, warnings, and a
 
 ## Known limitations
 
-- The connection dialog accepts a path, but a native file picker and saved profiles are not implemented yet.
+- The connection dialog accepts a path and saves reusable secret-free profiles in the native app-local workspace. A native file picker remains planned.
 - SQLite deliberately does not advertise query cancellation yet; the UI keeps running state visible without offering a control that cannot safely interrupt SQLx execution.
 - A transaction invocation currently wraps one statement; multi-step transaction sessions need a dedicated transaction ID.
 - Empty SELECT results do not yet include described column metadata.

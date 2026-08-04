@@ -12,6 +12,10 @@ import {
   loadConnectionProfiles,
   persistConnectionProfiles,
 } from "./connectionProfiles";
+import {
+  loadWorkspaceSnapshot,
+  persistWorkspaceSnapshot,
+} from "./workspaceStorage";
 
 type ResultView = "table" | "json";
 export type RunMode = "normal" | "transaction" | "execute-anyway" | "explain";
@@ -79,6 +83,7 @@ interface QueryState {
   favorites: QueryFavorite[];
   connectionProfiles: ConnectionProfile[];
   connectionProfilesLoaded: boolean;
+  workspaceLoaded: boolean;
   workspaceRestored: boolean;
   driver: DatabaseDriver;
   driverKind: DriverKind;
@@ -103,6 +108,7 @@ interface QueryState {
   appendResult: (result: QueryResult) => void;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
+  loadWorkspace: () => Promise<boolean>;
   loadConnectionProfiles: () => Promise<void>;
   saveConnectionProfile: (
     draft: ConnectionProfileDraft,
@@ -127,6 +133,18 @@ interface QueryWorkspaceSnapshot {
   version: 1;
   tabs: QueryTab[];
   activeTabId: string;
+}
+
+function persistWorkspaceState(
+  state: Pick<QueryState, "tabs" | "activeTabId" | "history" | "favorites">,
+): void {
+  void persistWorkspaceSnapshot({
+    version: 1,
+    tabs: state.tabs,
+    activeTabId: state.activeTabId,
+    history: state.history,
+    favorites: state.favorites,
+  }).catch(() => undefined);
 }
 
 function defaultObject(
@@ -380,19 +398,22 @@ export const useQueryStore = create<QueryState>((set, get) => {
     favorites: readFavorites(),
     connectionProfiles: [],
     connectionProfilesLoaded: false,
+    workspaceLoaded: false,
     driver,
     driverKind: driver.kind,
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
     connectionStatus: "connecting",
     connectionError: null,
-    setSql: (sql) =>
+    setSql: (sql) => {
       set((state) => {
         const tabs = state.tabs.map((tab) =>
           tab.id === state.activeTabId ? { ...tab, sql, isDirty: true } : tab,
         );
         writeWorkspaceTabs(tabs, state.activeTabId);
         return { sql, tabs };
-      }),
+      });
+      persistWorkspaceState(get());
+    },
     newQuery: () => {
       const id = crypto.randomUUID();
       const nextNumber = get().tabs.length + 1;
@@ -407,6 +428,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         writeWorkspaceTabs(tabs, id);
         return { tabs, activeTabId: id, sql: tab.sql };
       });
+      persistWorkspaceState(get());
       return id;
     },
     selectQuery: (id) => {
@@ -414,6 +436,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
       if (tab) {
         writeWorkspaceTabs(get().tabs, id);
         set({ activeTabId: id, sql: tab.sql });
+        persistWorkspaceState(get());
       }
     },
     closeQuery: (id) => {
@@ -430,11 +453,13 @@ export const useQueryStore = create<QueryState>((set, get) => {
         };
         writeWorkspaceTabs([replacement], replacement.id);
         set({ tabs: [replacement], activeTabId: replacement.id, sql: "" });
+        persistWorkspaceState(get());
         return;
       }
       if (state.activeTabId !== id) {
         writeWorkspaceTabs(remaining, state.activeTabId);
         set({ tabs: remaining });
+        persistWorkspaceState(get());
         return;
       }
       const replacement = remaining[Math.min(index, remaining.length - 1)];
@@ -444,6 +469,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         activeTabId: replacement.id,
         sql: replacement.sql,
       });
+      persistWorkspaceState(get());
     },
     setFilter: (filter) => set({ filter }),
     setResultView: (resultView) => set({ resultView }),
@@ -547,6 +573,24 @@ export const useQueryStore = create<QueryState>((set, get) => {
       if (!get().isRunning || !get().canCancel) return;
       activeQueryController?.abort();
       set({ toast: "Cancelling query…" });
+    },
+    loadWorkspace: async () => {
+      const result = await loadWorkspaceSnapshot(get().tabs);
+      const activeTab =
+        result.snapshot.tabs.find(
+          (tab) => tab.id === result.snapshot.activeTabId,
+        ) ?? result.snapshot.tabs[0];
+      set({
+        tabs: result.snapshot.tabs,
+        activeTabId: result.snapshot.activeTabId,
+        sql: activeTab.sql,
+        history: result.snapshot.history,
+        favorites: result.snapshot.favorites,
+        workspaceRestored: result.restored,
+        workspaceLoaded: true,
+      });
+      if (result.migratedFromBrowser) persistWorkspaceState(get());
+      return result.restored;
     },
     loadMetadata: async () => {
       try {
@@ -667,6 +711,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           executionStatus: "idle",
           toast: `Connected to ${config.name}`,
         });
+        persistWorkspaceState(get());
         window.setTimeout(() => set({ toast: null }), 2200);
         return true;
       } catch (error) {
@@ -690,10 +735,12 @@ export const useQueryStore = create<QueryState>((set, get) => {
       ];
       writeHistory(history);
       set({ history });
+      persistWorkspaceState(get());
     },
     clearHistory: () => {
       clearStoredHistory();
       set({ history: [] });
+      persistWorkspaceState(get());
     },
     toggleFavorite: (sql) => {
       const normalizedSql = sql.trim();
@@ -714,6 +761,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           ];
       writeFavorites(favorites);
       set({ favorites });
+      persistWorkspaceState(get());
       return !existing;
     },
   };

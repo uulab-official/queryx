@@ -395,7 +395,6 @@ function App() {
     favorites,
     connectionProfiles,
     connectionProfilesLoaded,
-    workspaceRestored,
     driver,
     driverKind,
     appendResult,
@@ -411,6 +410,7 @@ function App() {
     setSelectedObject,
     runQuery,
     cancelQuery,
+    loadWorkspace,
     loadMetadata,
     loadConnectionProfiles,
     saveConnectionProfile,
@@ -516,10 +516,12 @@ function App() {
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
-    void loadMetadata();
-    void loadConnectionProfiles();
-    if (!workspaceRestored) void runQuery();
-  }, [loadConnectionProfiles, loadMetadata, runQuery, workspaceRestored]);
+    void (async () => {
+      const restored = await loadWorkspace();
+      await Promise.all([loadMetadata(), loadConnectionProfiles()]);
+      if (!restored) await runQuery();
+    })();
+  }, [loadConnectionProfiles, loadMetadata, loadWorkspace, runQuery]);
   const handleRun = (mode: RunMode = "normal", sqlOverride?: string) => {
     if (pendingEditCount > 0) {
       notify("Review or discard staged row edits before running another query");

@@ -57,7 +57,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 
 ## Safety and privacy
 
-Editor models live in the local renderer process. SQL is sent only over the local Tauri bridge to the selected database when explicitly executed. Query text currently enters local browser storage for history and favorites; migration to the encrypted/local workspace storage boundary remains planned.
+Editor models live in the local renderer process. SQL is sent only over the local Tauri bridge to the selected database when explicitly executed. On native desktop, query text in tabs, history, and favorites is stored in the versioned local workspace snapshot; browser preview uses localStorage until the native storage migration is complete.
 
 Safe Mode analyzes exactly the selected SQL when a selection is executed, so an unrelated safe statement elsewhere in the tab cannot bypass a destructive-query warning. QueryX does not run a preflight `COUNT` or claim an affected-row estimate; the warning clearly marks the impact as unknown until the statement is reviewed or executed inside a transaction.
 
@@ -70,7 +70,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
 - The command palette currently covers the core query/editor/result actions; extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
-- Tabs, active-tab selection, and dirty SQL are restored in browser-local preview storage; native workspace migration and cross-profile recovery remain planned.
+- Tabs, active-tab selection, dirty SQL, history, and favorites are restored from the native workspace snapshot or browser preview fallback; settings, cross-profile recovery, and SQLite migration remain planned.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
 - Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
 - Result-grid copy operates on the currently visible filtered/sorted page; CSV export includes all loaded filtered/sorted rows. Binary viewers, virtualized streaming, and server paging remain planned.

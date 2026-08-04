@@ -34,7 +34,7 @@ Available and tested:
 
 Known alpha limitations:
 
-- Query tabs, history, and favorites use best-effort browser-local persistence in the preview; native workspace persistence is still pending. Secret-free connection profiles now persist in the native app-local data directory.
+- Native desktop now restores tabs, history, favorites, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
 - Passwords are intentionally session-only until OS keychain support lands.
 - Result rows are loaded into memory; virtualized streaming and server paging are not implemented.
 - Safety analysis is lexical, not yet parser/plan backed.
@@ -45,7 +45,8 @@ Known alpha limitations:
 Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 
 - [ ] SQLite workspace storage for profiles, tabs, history, favorites, and settings
-- [x] Secret-free connection profile lifecycle with native app-local persistence, duplicate/delete actions, and explicit connection testing; tabs/history/favorites still await the native workspace store
+- [x] Versioned native workspace snapshot with browser migration, tab/history/favorite recovery, and no-secret persistence; SQLite migration remains planned
+- [x] Secret-free connection profile lifecycle with native app-local persistence, duplicate/delete actions, and explicit connection testing; SQLite workspace migration remains planned
 - [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
 - [x] Confirmed local-history clearing with truthful empty-state behavior; favorites and tabs remain intact
 - [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
