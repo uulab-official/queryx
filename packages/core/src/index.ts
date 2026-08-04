@@ -30,23 +30,28 @@ export type {
 export { InMemoryDriver } from "./inMemoryDriver";
 export {
   buildAddColumnPlan,
+  buildAddForeignKeyPlan,
   buildAlterViewPlan,
   buildCreateIndexPlan,
   buildCreateTablePlan,
   buildCreateViewPlan,
   buildDropIndexPlan,
+  buildDropForeignKeyPlan,
   buildDropViewPlan,
   buildEditTableColumnsPlan,
 } from "./ddlForms";
 export type {
   AddColumnInput,
   AddColumnPlan,
+  AddForeignKeyInput,
+  AddForeignKeyPlan,
   AlterViewPlan,
   CreateIndexInput,
   CreateIndexPlan,
   CreateViewInput,
   CreateViewPlan,
   DropIndexPlan,
+  DropForeignKeyPlan,
   DropViewPlan,
   CreateTableColumnInput,
   CreateTableInput,

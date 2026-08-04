@@ -1561,6 +1561,69 @@ button:disabled {
   background: #141a18;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
 }
+.foreign-key-modal {
+  width: min(820px, calc(100vw - 40px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+}
+.foreign-key-modal .create-index-fields {
+  grid-template-columns: 1fr 1fr;
+}
+.foreign-key-modal .create-index-fields label {
+  display: grid;
+  gap: 5px;
+  color: #879b9b;
+  font: 9px var(--mono);
+}
+.foreign-key-modal .create-index-fields input,
+.foreign-key-modal .create-index-fields select {
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.foreign-key-modal .create-index-fields input:focus,
+.foreign-key-modal .create-index-fields select:focus {
+  border-color: #a6cc91;
+  outline: 0;
+}
+.foreign-key-pair-list {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #2d4038;
+  border-radius: 5px;
+  background: #0e1412;
+}
+.foreign-key-pair-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+.foreign-key-pair-row select {
+  height: 30px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.foreign-key-pair-row > span {
+  color: #a6cc91;
+  font: 12px var(--mono);
+  text-align: center;
+}
+.foreign-key-actions {
+  margin-top: 14px;
+}
 .drop-index-modal {
   width: min(620px, calc(100vw - 40px));
   margin: 0;

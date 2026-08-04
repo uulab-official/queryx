@@ -93,7 +93,7 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [ ] Parser-backed destructive-statement analysis and database-backed affected-row estimates
 - [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state remains separate work
 - [ ] Table data editor with filters, ordering, pagination, and optimistic conflict detection
-- [x] Table creation, add-column, type/nullability/non-PK-drop, ordered UNIQUE/non-unique index-create, regular index-drop, and view create/alter/drop forms with validation, SQL preview, explicit transaction apply, driver-aware manual review, dependency warnings, and metadata refresh; rename/index-alter/constraint forms remain planned
+- [x] Table creation, add-column, type/nullability/non-PK-drop, ordered UNIQUE/non-unique index-create, regular index-drop, named foreign-key add/drop, and view create/alter/drop forms with validation, SQL preview, explicit transaction apply, driver-aware manual review, dependency warnings, and metadata refresh; rename/index-alter/CHECK/unique constraint forms remain planned
 - [x] Schema compare applied-migration confirmation and native durable migration history on top of the metadata dependency graph, privilege preflight, and forward/rollback preview; object-specific DDL forms remain planned
 - [ ] Session audit trail stored locally with configurable retention and redaction
 - [ ] Backup/export warning flows before high-risk schema operations

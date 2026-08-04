@@ -71,6 +71,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added selected-table regular index deletion with dialect-aware SQL and primary-index protection.
 - Added a validated view-creation form for single SELECT/WITH definitions with duplicate-name, delimiter, comment, and mutating-query guards, SQL preview, explicit transaction apply, and metadata refresh.
 - Added selected-view definition editing and deletion with PostgreSQL/MySQL replacement SQL, SQLite drop/create review warnings, dependency-aware drop warnings, explicit transaction batches, and metadata refresh.
+- Added named foreign-key add/drop forms with composite-column mapping, referential-action validation, PostgreSQL/MySQL SQL generation, and SQLite/manual-rebuild protection.
 - Added conservative dialect-aware server paging for single SELECT/WITH results, 100-row incremental loading, original-SQL history preservation, and fallback for mutation, locking, or multi-statement queries.
 
 ## [0.1.0] — 2026-08-03

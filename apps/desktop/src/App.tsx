@@ -18,6 +18,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
   buildAddColumnPlan,
+  buildAddForeignKeyPlan,
   buildAlterViewPlan,
   buildCsvImportPlan,
   buildCreateTablePlan,
@@ -25,6 +26,7 @@ import {
   buildCreateViewPlan,
   buildEditTableColumnsPlan,
   buildDropIndexPlan,
+  buildDropForeignKeyPlan,
   buildDropViewPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
@@ -52,6 +54,8 @@ import {
 import type {
   AddColumnInput,
   AddColumnPlan,
+  AddForeignKeyInput,
+  AddForeignKeyPlan,
   AlterViewPlan,
   CsvImportMapping,
   CsvImportPlan,
@@ -61,6 +65,7 @@ import type {
   CreateIndexPlan,
   CreateViewPlan,
   DropIndexPlan,
+  DropForeignKeyPlan,
   DropViewPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
@@ -509,6 +514,8 @@ function App() {
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
   const [dropIndexOpen, setDropIndexOpen] = useState(false);
+  const [addForeignKeyOpen, setAddForeignKeyOpen] = useState(false);
+  const [dropForeignKeyOpen, setDropForeignKeyOpen] = useState(false);
   const [createViewOpen, setCreateViewOpen] = useState(false);
   const [alterViewOpen, setAlterViewOpen] = useState(false);
   const [dropViewOpen, setDropViewOpen] = useState(false);
@@ -771,6 +778,58 @@ function App() {
     await loadMetadata();
     setDropIndexOpen(false);
     notify("Index dropped and metadata refreshed");
+  };
+  const openAddForeignKey = () => {
+    if (!currentTable) {
+      notify("Select a table before adding a foreign key");
+      return;
+    }
+    setAddForeignKeyOpen(true);
+  };
+  const addForeignKey = async (plan: AddForeignKeyPlan) => {
+    if (!plan.sql || plan.errors.length > 0 || plan.manual.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Foreign-key changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Add this foreign key in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Foreign-key creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setAddForeignKeyOpen(false);
+    notify("Foreign key added and metadata refreshed");
+  };
+  const openDropForeignKey = () => {
+    if (!currentTable) {
+      notify("Select a table before dropping a foreign key");
+      return;
+    }
+    setDropForeignKeyOpen(true);
+  };
+  const dropForeignKey = async (plan: DropForeignKeyPlan) => {
+    if (!plan.sql || plan.errors.length > 0 || plan.manual.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Foreign-key changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Drop this foreign key in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Foreign-key deletion failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setDropForeignKeyOpen(false);
+    notify("Foreign key dropped and metadata refreshed");
   };
   const openCreateView = () => {
     if (!metadata) {
@@ -2061,6 +2120,24 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: openDropIndex,
+    },
+    {
+      id: "add-foreign-key",
+      label: "Add foreign key to selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openAddForeignKey,
+    },
+    {
+      id: "drop-foreign-key",
+      label: "Drop foreign key from selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openDropForeignKey,
     },
     {
       id: "create-view",
@@ -3361,6 +3438,35 @@ function App() {
           }}
         />
       )}
+      {addForeignKeyOpen && currentTable && (
+        <AddForeignKeyDialog
+          driverKind={driverKind}
+          table={currentTable}
+          tables={tables}
+          onClose={() => setAddForeignKeyOpen(false)}
+          onAdd={addForeignKey}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setAddForeignKeyOpen(false);
+            notify("Opened ADD FOREIGN KEY preview in a new SQL tab");
+          }}
+        />
+      )}
+      {dropForeignKeyOpen && currentTable && (
+        <DropForeignKeyDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setDropForeignKeyOpen(false)}
+          onDrop={dropForeignKey}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setDropForeignKeyOpen(false);
+            notify("Opened DROP FOREIGN KEY preview in a new SQL tab");
+          }}
+        />
+      )}
       {createViewOpen && metadata && (
         <CreateViewDialog
           driverKind={driverKind}
@@ -4343,6 +4449,417 @@ function DropIndexDialog({
             }
           >
             Drop index
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function AddForeignKeyDialog({
+  driverKind,
+  table,
+  tables,
+  onClose,
+  onAdd,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  tables: TableMetadata[];
+  onClose: () => void;
+  onAdd: (plan: AddForeignKeyPlan) => Promise<void>;
+  onOpenSql: (plan: AddForeignKeyPlan) => void;
+}) {
+  const targetTables = tables.filter(
+    (candidate) =>
+      candidate.schema !== table.schema || candidate.name !== table.name,
+  );
+  const [name, setName] = useState(`${table.name}_fk`);
+  const [targetKey, setTargetKey] = useState(
+    targetTables[0]
+      ? `${targetTables[0].schema}\u0000${targetTables[0].name}`
+      : "",
+  );
+  const targetTable = targetTables.find(
+    (candidate) => `${candidate.schema}\u0000${candidate.name}` === targetKey,
+  );
+  const firstSourceColumn =
+    table.columns.find((column) => !column.primaryKey)?.name ??
+    table.columns[0]?.name ??
+    "";
+  const firstReferencedColumn =
+    targetTable?.columns.find((column) => column.primaryKey)?.name ??
+    targetTable?.columns[0]?.name ??
+    "";
+  const [pairs, setPairs] = useState<
+    Array<{ id: string; sourceColumn: string; referencedColumn: string }>
+  >([
+    {
+      id: crypto.randomUUID(),
+      sourceColumn: firstSourceColumn,
+      referencedColumn: firstReferencedColumn,
+    },
+  ]);
+  const [onUpdate, setOnUpdate] = useState("NO ACTION");
+  const [onDelete, setOnDelete] = useState("NO ACTION");
+  useEffect(() => {
+    setPairs([
+      {
+        id: crypto.randomUUID(),
+        sourceColumn: firstSourceColumn,
+        referencedColumn: firstReferencedColumn,
+      },
+    ]);
+  }, [firstReferencedColumn, firstSourceColumn]);
+  const plan = useMemo<AddForeignKeyPlan>(
+    () =>
+      targetTable
+        ? buildAddForeignKeyPlan(
+            table,
+            targetTable,
+            {
+              name,
+              columns: pairs.map((pair) => pair.sourceColumn),
+              referencedColumns: pairs.map((pair) => pair.referencedColumn),
+              referencedSchema: targetTable.schema,
+              referencedTable: targetTable.name,
+              onUpdate,
+              onDelete,
+            },
+            driverKind,
+          )
+        : {
+            sql: "",
+            statements: [],
+            errors: ["Choose a referenced table"],
+            manual: [],
+            warnings: [],
+          },
+    [driverKind, name, onDelete, onUpdate, pairs, table, targetTable],
+  );
+  const updatePair = (
+    index: number,
+    field: "sourceColumn" | "referencedColumn",
+    value: string,
+  ) => {
+    setPairs((current) =>
+      current.map((pair, pairIndex) =>
+        pairIndex === index ? { ...pair, [field]: value } : pair,
+      ),
+    );
+  };
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-index-modal foreign-key-modal"
+        aria-modal="true"
+        aria-labelledby="add-foreign-key-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · CONSTRAINT</p>
+            <h2 id="add-foreign-key-title">Add foreign key</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close add foreign key form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Add a named foreign key from{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>{" "}
+          to a visible table. Column order is preserved for composite keys.
+        </p>
+        <div className="create-index-fields">
+          <label htmlFor="add-foreign-key-name">
+            Constraint name
+            <input
+              id="add-foreign-key-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={`${table.name}_fk`}
+            />
+          </label>
+          <label htmlFor="add-foreign-key-target">
+            Referenced table
+            <select
+              id="add-foreign-key-target"
+              value={targetKey}
+              onChange={(event) => setTargetKey(event.target.value)}
+            >
+              {targetTables.map((candidate) => (
+                <option
+                  key={`${candidate.schema}.${candidate.name}`}
+                  value={`${candidate.schema}\u0000${candidate.name}`}
+                >
+                  {candidate.schema}.{candidate.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="create-table-columns-heading">
+          <strong>Column pairs (order matters)</strong>
+          <button
+            type="button"
+            className="mini-button"
+            onClick={() =>
+              setPairs((current) => [
+                ...current,
+                {
+                  id: crypto.randomUUID(),
+                  sourceColumn: "",
+                  referencedColumn: "",
+                },
+              ])
+            }
+          >
+            + Add pair
+          </button>
+        </div>
+        <div
+          className="foreign-key-pair-list"
+          aria-label="Foreign-key column pairs"
+        >
+          {pairs.map((pair, index) => (
+            <div className="foreign-key-pair-row" key={pair.id}>
+              <select
+                value={pair.sourceColumn}
+                onChange={(event) =>
+                  updatePair(index, "sourceColumn", event.target.value)
+                }
+                aria-label="Source column pair"
+              >
+                <option value="">Source column…</option>
+                {table.columns.map((column) => (
+                  <option key={column.name} value={column.name}>
+                    {column.name}
+                  </option>
+                ))}
+              </select>
+              <span>→</span>
+              <select
+                value={pair.referencedColumn}
+                onChange={(event) =>
+                  updatePair(index, "referencedColumn", event.target.value)
+                }
+                aria-label="Referenced column pair"
+              >
+                <option value="">Referenced column…</option>
+                {targetTable?.columns.map((column) => (
+                  <option key={column.name} value={column.name}>
+                    {column.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="mini-button"
+                onClick={() =>
+                  setPairs((current) =>
+                    current.filter((_, pairIndex) => pairIndex !== index),
+                  )
+                }
+                disabled={pairs.length === 1}
+                aria-label="Remove foreign-key pair"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="create-index-fields foreign-key-actions">
+          <label htmlFor="add-foreign-key-update">
+            ON UPDATE
+            <select
+              id="add-foreign-key-update"
+              value={onUpdate}
+              onChange={(event) => setOnUpdate(event.target.value)}
+            >
+              <option>NO ACTION</option>
+              <option>RESTRICT</option>
+              <option>CASCADE</option>
+              <option>SET NULL</option>
+              <option>SET DEFAULT</option>
+            </select>
+          </label>
+          <label htmlFor="add-foreign-key-delete">
+            ON DELETE
+            <select
+              id="add-foreign-key-delete"
+              value={onDelete}
+              onChange={(event) => setOnDelete(event.target.value)}
+            >
+              <option>NO ACTION</option>
+              <option>RESTRICT</option>
+              <option>CASCADE</option>
+              <option>SET NULL</option>
+              <option>SET DEFAULT</option>
+            </select>
+          </label>
+        </div>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {plan.sql && <pre className="create-table-preview">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onAdd(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Add foreign key
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DropForeignKeyDialog({
+  driverKind,
+  table,
+  onClose,
+  onDrop,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onDrop: (plan: DropForeignKeyPlan) => Promise<void>;
+  onOpenSql: (plan: DropForeignKeyPlan) => void;
+}) {
+  const [foreignKeyId, setForeignKeyId] = useState(
+    table.foreignKeys[0]?.id ?? "",
+  );
+  const plan = useMemo(
+    () =>
+      buildDropForeignKeyPlan(
+        table,
+        table.foreignKeys,
+        foreignKeyId,
+        driverKind,
+      ),
+    [driverKind, foreignKeyId, table],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="drop-index-modal"
+        aria-modal="true"
+        aria-labelledby="drop-foreign-key-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · CONSTRAINT</p>
+            <h2 id="drop-foreign-key-title">Drop foreign key</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close drop foreign key form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Remove a named foreign key from{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>
+          . SQLite and unnamed constraints require a manual table rebuild.
+        </p>
+        <label className="drop-index-select" htmlFor="drop-foreign-key-name">
+          Foreign key
+          <select
+            id="drop-foreign-key-name"
+            value={foreignKeyId}
+            onChange={(event) => setForeignKeyId(event.target.value)}
+          >
+            {table.foreignKeys.map((foreignKey) => (
+              <option key={foreignKey.id} value={foreignKey.id}>
+                {foreignKey.name ?? "Unnamed foreign key"} ·{" "}
+                {foreignKey.referencedRelation.schema}.
+                {foreignKey.referencedRelation.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {plan.sql && <pre className="create-table-preview">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-danger"
+            onClick={() => void onDrop(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Drop foreign key
           </button>
         </div>
       </dialog>

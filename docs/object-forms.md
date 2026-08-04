@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
+QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, **Add foreign key to selected table**, **Drop foreign key from selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
 
 The form supports:
 
@@ -19,10 +19,12 @@ The index form supports ordered single- and multi-column indexes, UNIQUE indexes
 
 The drop-index form supports regular indexes and protects primary indexes. PostgreSQL/SQLite use schema-qualified `DROP INDEX`; MySQL/MariaDB uses `DROP INDEX ... ON table`. Primary-key removal remains a manual SQL operation.
 
+The foreign-key forms support named single- and composite-column relationships, visible referenced tables, `ON UPDATE`/`ON DELETE` actions, duplicate/missing-column validation, and dialect-aware SQL. PostgreSQL uses `DROP CONSTRAINT`, MySQL/MariaDB uses `DROP FOREIGN KEY`, and SQLite additions/removals remain manual table-rebuild operations.
+
 The create-view form accepts one read-only `SELECT` or `WITH` definition, checks schema/name collisions against the current metadata snapshot, rejects comments, delimiters, and mutating DML/DDL keywords, and applies the generated dialect-aware `CREATE VIEW` statement only after confirmation. The SQL preview can also be opened in a normal query tab for review or vendor-specific edits.
 
 The edit-view form validates the replacement definition against the current view snapshot. PostgreSQL and MySQL/MariaDB use `CREATE OR REPLACE VIEW`; SQLite uses a two-statement drop/create transaction and displays a dependent-object warning because SQLite has no replace form. The drop-view form always previews quoted SQL and warns when the dependency graph reports known objects using the view; the database remains authoritative and may reject the operation.
 
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Column renames, index alteration, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Column renames, index alteration, CHECK/unique constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

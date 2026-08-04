@@ -1,4 +1,9 @@
-import type { DriverKind, TableMetadata, ViewMetadata } from "@queryx/shared";
+import type {
+  DriverKind,
+  ForeignKeyMetadata,
+  TableMetadata,
+  ViewMetadata,
+} from "@queryx/shared";
 
 export interface CreateTableColumnInput {
   name: string;
@@ -62,6 +67,31 @@ export interface DropIndexPlan {
   manual: string[];
 }
 
+export interface AddForeignKeyInput {
+  name: string;
+  columns: string[];
+  referencedColumns: string[];
+  referencedSchema: string;
+  referencedTable: string;
+  onUpdate: string;
+  onDelete: string;
+}
+
+export interface AddForeignKeyPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+  warnings: string[];
+}
+
+export interface DropForeignKeyPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+}
+
 export interface CreateViewInput {
   schema: string;
   name: string;
@@ -108,6 +138,18 @@ function identifierError(label: string, value: string): string | null {
   if (!value) return `${label} is required`;
   if (value.includes("\u0000")) return `${label} contains an invalid character`;
   return null;
+}
+
+function foreignKeyActionError(label: string, action: string): string | null {
+  const normalized = action.trim().toUpperCase().replace(/\s+/g, " ");
+  if (!/^(NO ACTION|RESTRICT|CASCADE|SET NULL|SET DEFAULT)$/.test(normalized)) {
+    return `${label} must be NO ACTION, RESTRICT, CASCADE, SET NULL, or SET DEFAULT`;
+  }
+  return null;
+}
+
+function normalizedForeignKeyAction(action: string): string {
+  return action.trim().toUpperCase().replace(/\s+/g, " ");
 }
 
 function inspectViewDefinition(definition: string): {
@@ -448,6 +490,129 @@ export function buildDropIndexPlan(
       ? `DROP INDEX ${quoteIdentifier(name, driver)} ON ${qualifiedTable};`
       : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
   return { sql, errors: [], manual: [] };
+}
+
+export function buildAddForeignKeyPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns" | "foreignKeys">,
+  referencedTable: Pick<TableMetadata, "schema" | "name" | "columns">,
+  input: AddForeignKeyInput,
+  driver: DriverKind,
+): AddForeignKeyPlan {
+  const name = normalizeIdentifier(input.name);
+  const referencedSchema = normalizeIdentifier(input.referencedSchema);
+  const referencedTableName = normalizeIdentifier(input.referencedTable);
+  const columns = input.columns.map(normalizeIdentifier);
+  const referencedColumns = input.referencedColumns.map(normalizeIdentifier);
+  const errors = [
+    identifierError("Constraint name", name),
+    identifierError("Referenced schema", referencedSchema),
+    identifierError("Referenced table", referencedTableName),
+    foreignKeyActionError("ON UPDATE", input.onUpdate),
+    foreignKeyActionError("ON DELETE", input.onDelete),
+  ].filter((error): error is string => Boolean(error));
+  const manual: string[] = [];
+  const warnings: string[] = [];
+  if (columns.length === 0) errors.push("Select at least one source column");
+  if (columns.length !== referencedColumns.length) {
+    errors.push("Source and referenced column counts must match");
+  }
+  const sourceSeen = new Set<string>();
+  for (const column of columns) {
+    const normalized = column.toLocaleLowerCase();
+    if (!column) errors.push("Source column name is required");
+    if (sourceSeen.has(normalized))
+      errors.push(`Duplicate source column: ${column}`);
+    sourceSeen.add(normalized);
+    if (!table.columns.some((candidate) => candidate.name === column)) {
+      errors.push(`Source column does not exist: ${column}`);
+    }
+  }
+  const referencedSeen = new Set<string>();
+  for (const column of referencedColumns) {
+    const normalized = column.toLocaleLowerCase();
+    if (!column) errors.push("Referenced column name is required");
+    if (referencedSeen.has(normalized)) {
+      errors.push(`Duplicate referenced column: ${column}`);
+    }
+    referencedSeen.add(normalized);
+    if (
+      !referencedTable.columns.some((candidate) => candidate.name === column)
+    ) {
+      errors.push(`Referenced column does not exist: ${column}`);
+    }
+  }
+  if (
+    table.foreignKeys.some(
+      (foreignKey) =>
+        foreignKey.name?.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    )
+  ) {
+    errors.push(`Foreign-key constraint already exists: ${name}`);
+  }
+  if (
+    referencedTable.schema.toLocaleLowerCase() !==
+      referencedSchema.toLocaleLowerCase() ||
+    referencedTable.name.toLocaleLowerCase() !==
+      referencedTableName.toLocaleLowerCase()
+  ) {
+    errors.push(
+      `Referenced table metadata does not match: ${referencedSchema}.${referencedTableName}`,
+    );
+  }
+  if (driver === "sqlite") {
+    manual.push("SQLite foreign-key additions require a manual table rebuild");
+  }
+  if (errors.length > 0 || manual.length > 0) {
+    return { sql: "", statements: [], errors, manual, warnings };
+  }
+  const qualifiedTable = qualifiedName(table.schema, table.name, driver);
+  const sourceSql = columns
+    .map((column) => quoteIdentifier(column, driver))
+    .join(", ");
+  const referencedSql = referencedColumns
+    .map((column) => quoteIdentifier(column, driver))
+    .join(", ");
+  const statement = `ALTER TABLE ${qualifiedTable} ADD CONSTRAINT ${quoteIdentifier(name, driver)} FOREIGN KEY (${sourceSql}) REFERENCES ${qualifiedName(referencedSchema, referencedTableName, driver)} (${referencedSql}) ON UPDATE ${normalizedForeignKeyAction(input.onUpdate)} ON DELETE ${normalizedForeignKeyAction(input.onDelete)};`;
+  return { sql: statement, statements: [statement], errors, manual, warnings };
+}
+
+export function buildDropForeignKeyPlan(
+  table: Pick<TableMetadata, "schema" | "name">,
+  foreignKeys: ForeignKeyMetadata[],
+  foreignKeyId: string,
+  driver: DriverKind,
+): DropForeignKeyPlan {
+  const foreignKey = foreignKeys.find(
+    (candidate) => candidate.id === foreignKeyId,
+  );
+  const errors: string[] = [];
+  const manual: string[] = [];
+  if (!foreignKey) errors.push(`Foreign key does not exist: ${foreignKeyId}`);
+  if (!foreignKey) return { sql: "", statements: [], errors, manual };
+  if (!foreignKey.name) {
+    manual.push(
+      "This foreign key has no physical name and requires manual review",
+    );
+  } else if (driver === "sqlite") {
+    manual.push("SQLite foreign-key removal requires a manual table rebuild");
+  }
+  if (errors.length > 0 || manual.length > 0) {
+    return { sql: "", statements: [], errors, manual };
+  }
+  const foreignKeyName = foreignKey.name;
+  if (!foreignKeyName) {
+    return {
+      sql: "",
+      statements: [],
+      errors,
+      manual: [
+        "This foreign key has no physical name and requires manual review",
+      ],
+    };
+  }
+  const clause = driver === "mysql" ? "DROP FOREIGN KEY" : "DROP CONSTRAINT";
+  const statement = `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${clause} ${quoteIdentifier(foreignKeyName, driver)};`;
+  return { sql: statement, statements: [statement], errors, manual };
 }
 
 export function buildCreateViewPlan(
