@@ -119,6 +119,9 @@ interface QueryState {
   testDatabaseConnection: (
     config: DriverConfig,
   ) => Promise<{ ok: boolean; error?: string }>;
+  inspectConnectionMetadata: (
+    config: DriverConfig,
+  ) => Promise<DatabaseMetadata>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
@@ -683,6 +686,15 @@ export const useQueryStore = create<QueryState>((set, get) => {
         };
       } finally {
         await testDriver.disconnect().catch(() => undefined);
+      }
+    },
+    inspectConnectionMetadata: async (config) => {
+      const inspectDriver = createRuntimeDriver(config.kind);
+      try {
+        await inspectDriver.connect({ ...config, readOnly: true });
+        return await inspectDriver.metadata();
+      } finally {
+        await inspectDriver.disconnect().catch(() => undefined);
       }
     },
     connectDatabase: async (config) => {

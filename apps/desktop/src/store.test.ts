@@ -301,6 +301,19 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().driver).toBe(previousDriver);
   });
 
+  it("inspects a saved connection without replacing the active driver", async () => {
+    const previousDriver = useQueryStore.getState().driver;
+    const metadata = await useQueryStore.getState().inspectConnectionMetadata({
+      kind: "postgres",
+      name: "schema target",
+      database: "target",
+      readOnly: false,
+    });
+
+    expect(metadata.tables.length).toBeGreaterThan(0);
+    expect(useQueryStore.getState().driver).toBe(previousDriver);
+  });
+
   it("surfaces read-only policy after a successful connection", async () => {
     const fakeWindow = {
       setTimeout,

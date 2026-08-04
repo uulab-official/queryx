@@ -12,7 +12,7 @@ This matrix is the source of truth for QueryX parity claims. It compares workflo
 | Read-only safety boundary | Available for SQLite/PostgreSQL/MySQL initial driver | Available | Available | Available | Available | [connections](connections.md), native read-only tests |
 | Schema/object explorer | Partial — broad SQLite/PostgreSQL metadata, initial MySQL basics | Available | Available | Available | Available | [metadata explorer](metadata-explorer.md) |
 | DDL inspect → edit → transaction | Partial — safe handoff, no object form builder | Available | Available | Available | Available | [DDL workflow](ddl-workflow.md) |
-| Schema diff and migration history | Partial — session baseline and table/column/index SQL preview; ordering/history pending | Available | Partial | Partial | Available | [schema compare](schema-compare.md), [roadmap](../ROADMAP.md) |
+| Schema diff and migration history | Partial — same-dialect cross-connection/session baseline and table/column/index SQL preview; ordering/history pending | Available | Partial | Partial | Available | [schema compare](schema-compare.md), [roadmap](../ROADMAP.md) |
 | Import wizard and type mapping | Planned | Available | Partial | Available | Available | [roadmap](../ROADMAP.md) |
 | SSH tunnels, keychain, certificate files | Planned | Available | Partial | Partial | Available | [connections](connections.md) |
 | Signed release and OTA update path | Available — repository workflow and signed updater contract | Varies by distribution | Varies by distribution | Varies by distribution | Varies by distribution | [updates](updates.md), GitHub Actions workflows |

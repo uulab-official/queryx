@@ -56,6 +56,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added the initial native MySQL/MariaDB driver with SQLx query/transaction execution, read-only enforcement, common value normalization, and information_schema tables/views/columns/index metadata.
 - Expanded MySQL/MariaDB metadata with foreign-key relationships, direct dependency edges, routines, and relation triggers.
 - Added session-local schema compare with baseline capture, table/column/index diffing, dialect-aware migration preview SQL, destructive markers, and SQLite manual-review safeguards.
+- Added same-dialect cross-connection schema comparison through temporary read-only metadata connections without replacing the active session.
 
 ## [0.1.0] — 2026-08-03
 

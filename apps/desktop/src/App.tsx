@@ -435,6 +435,7 @@ function App() {
     deleteConnectionProfile,
     duplicateConnectionProfile,
     testDatabaseConnection,
+    inspectConnectionMetadata,
     connectDatabase,
     notify,
     clearHistory,
@@ -475,7 +476,10 @@ function App() {
   const [schemaBaseline, setSchemaBaseline] = useState<DatabaseMetadata | null>(
     null,
   );
+  const [schemaBaselineLabel, setSchemaBaselineLabel] =
+    useState("Current connection");
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false);
+  const [schemaTargetOpen, setSchemaTargetOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -502,6 +506,7 @@ function App() {
       return;
     }
     setSchemaBaseline(metadata);
+    setSchemaBaselineLabel(`Current connection · ${connectionName}`);
     setSchemaDiffOpen(false);
     notify("Schema baseline captured; refresh metadata to compare changes");
   };
@@ -511,6 +516,25 @@ function App() {
       return;
     }
     setSchemaDiffOpen(true);
+  };
+  const compareSavedConnection = async (
+    config: DriverConfig,
+    label: string,
+  ): Promise<string | null> => {
+    if (config.kind !== driverKind) {
+      return `Compare connections with the same driver only (${driverDisplayName(driverKind)})`;
+    }
+    try {
+      const targetMetadata = await inspectConnectionMetadata(config);
+      setSchemaBaseline(targetMetadata);
+      setSchemaBaselineLabel(`Saved connection · ${label}`);
+      setSchemaTargetOpen(false);
+      setSchemaDiffOpen(true);
+      notify(`Loaded schema from ${label} for comparison`);
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
   };
   const handleToggleFavorite = () => {
     if (!sql.trim()) {
@@ -1091,7 +1115,9 @@ function App() {
   useEffect(() => {
     if (!connectionIdentity) return;
     setSchemaBaseline(null);
+    setSchemaBaselineLabel("Current connection");
     setSchemaDiffOpen(false);
+    setSchemaTargetOpen(false);
   }, [connectionIdentity]);
   useEffect(() => {
     if (selectedObjectIdentity === "none") {
@@ -2610,7 +2636,12 @@ function App() {
         <SchemaDiffDialog
           diff={schemaDiff}
           driverKind={driverKind}
+          baselineLabel={schemaBaselineLabel}
           onClose={() => setSchemaDiffOpen(false)}
+          onCompareConnection={() => {
+            setSchemaDiffOpen(false);
+            setSchemaTargetOpen(true);
+          }}
           onOpenSql={() => {
             const migrationSql = buildSchemaMigrationSql(schemaDiff);
             newQuery();
@@ -2618,6 +2649,14 @@ function App() {
             setSchemaDiffOpen(false);
             notify("Opened schema migration preview in a new SQL tab");
           }}
+        />
+      )}
+      {schemaTargetOpen && (
+        <SchemaTargetDialog
+          profiles={connectionProfiles}
+          driverKind={driverKind}
+          onClose={() => setSchemaTargetOpen(false)}
+          onCompare={compareSavedConnection}
         />
       )}
       {editPreviewOpen && (
@@ -3113,12 +3152,16 @@ function EditPreviewDialog({
 function SchemaDiffDialog({
   diff,
   driverKind,
+  baselineLabel,
   onClose,
+  onCompareConnection,
   onOpenSql,
 }: {
   diff: SchemaDiff;
   driverKind: DriverKind;
+  baselineLabel: string;
   onClose: () => void;
+  onCompareConnection: () => void;
   onOpenSql: () => void;
 }) {
   const migrationSql = buildSchemaMigrationSql(diff);
@@ -3147,9 +3190,9 @@ function SchemaDiffDialog({
           </button>
         </div>
         <p className="modal-copy">
-          This compares the captured baseline with the latest metadata snapshot.
-          Nothing runs automatically; review the generated SQL before opening it
-          in a query tab.
+          Comparing <strong>{baselineLabel}</strong> with the current metadata
+          snapshot. Nothing runs automatically; review the generated SQL before
+          opening it in a query tab.
         </p>
         <div className="schema-diff-summary" aria-label="Schema change summary">
           <span>{diff.changes.length} changes</span>
@@ -3196,6 +3239,13 @@ function SchemaDiffDialog({
           </button>
           <button
             type="button"
+            className="modal-secondary"
+            onClick={onCompareConnection}
+          >
+            Compare connection
+          </button>
+          <button
+            type="button"
             className="modal-transaction"
             onClick={onOpenSql}
             disabled={diff.changes.length === 0}
@@ -3203,6 +3253,142 @@ function SchemaDiffDialog({
             Open SQL preview
           </button>
         </div>
+      </dialog>
+    </div>
+  );
+}
+
+function SchemaTargetDialog({
+  profiles,
+  driverKind,
+  onClose,
+  onCompare,
+}: {
+  profiles: ConnectionProfile[];
+  driverKind: DriverKind;
+  onClose: () => void;
+  onCompare: (config: DriverConfig, label: string) => Promise<string | null>;
+}) {
+  const candidates = profiles.filter((profile) => profile.kind === driverKind);
+  const [selectedId, setSelectedId] = useState(candidates[0]?.id ?? "");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const selected = candidates.find((profile) => profile.id === selectedId);
+
+  const handleCompare = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) {
+      setError(
+        "Save a profile for the same driver before comparing connections",
+      );
+      return;
+    }
+    const config: DriverConfig =
+      selected.kind === "sqlite"
+        ? {
+            kind: selected.kind,
+            name: selected.name,
+            database: selected.database,
+            readOnly: true,
+          }
+        : {
+            kind: selected.kind,
+            name: selected.name,
+            database: selected.database,
+            readOnly: true,
+            host: selected.host,
+            port: selected.port,
+            username: selected.username,
+            password: password || undefined,
+            sslMode: selected.sslMode,
+          };
+    setLoading(true);
+    setError(null);
+    const nextError = await onCompare(config, selected.name);
+    setLoading(false);
+    if (nextError) setError(nextError);
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-target-modal"
+        aria-modal="true"
+        aria-labelledby="schema-target-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">CROSS-CONNECTION COMPARE</p>
+            <h2 id="schema-target-title">
+              Choose a {driverDisplayName(driverKind)} target
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close connection comparison"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        {candidates.length === 0 ? (
+          <p className="schema-diff-empty">
+            Save another {driverDisplayName(driverKind)} profile first.
+            Passwords are never stored in profiles.
+          </p>
+        ) : (
+          <form onSubmit={handleCompare}>
+            <label className="schema-target-field">
+              <span>Saved connection</span>
+              <select
+                value={selectedId}
+                onChange={(event) => setSelectedId(event.target.value)}
+              >
+                {candidates.map((profile) => (
+                  <option value={profile.id} key={profile.id}>
+                    {profile.name} · {profile.database}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selected?.kind !== "sqlite" && (
+              <label className="schema-target-field">
+                <span>Password for this session</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  placeholder="Optional"
+                />
+              </label>
+            )}
+            <p className="modal-copy">
+              QueryX opens a temporary read-only connection, reads metadata, and
+              disconnects it. The active connection is not replaced.
+            </p>
+            {error && <p className="connection-error">{error}</p>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-secondary"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="modal-transaction"
+                disabled={loading}
+              >
+                {loading ? "Loading metadata…" : "Compare"}
+              </button>
+            </div>
+          </form>
+        )}
       </dialog>
     </div>
   );

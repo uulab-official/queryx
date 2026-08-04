@@ -74,7 +74,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL database-scoped event triggers with tags, activation status, function navigation, and reconstructed DDL
 - [x] PostgreSQL aggregates/window functions with catalog-specific Inspector metadata
 - [x] DDL Inspector handoff to editable SQL tabs with explicit transaction execution, rollback-on-error, and metadata refresh
-- [x] Session-local schema compare with table/column/index migration SQL preview and manual-review markers; dependency ordering, object-specific forms, privilege checks, and migration history remain planned
+- [x] Session-local and same-dialect cross-connection schema compare with table/column/index migration SQL preview and manual-review markers; dependency ordering, object-specific forms, privilege checks, and migration history remain planned
 - [x] Searchable command palette and Quick Open for core query/editor/result actions; complete keyboard map and full accessibility audit remain planned
 - [x] Inspector close behavior, modal Escape handling, and accessible labels for primary navigation controls
 
