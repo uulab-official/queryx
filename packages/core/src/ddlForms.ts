@@ -44,6 +44,18 @@ export interface EditTableColumnsPlan {
   manual: string[];
 }
 
+export interface CreateIndexInput {
+  name: string;
+  columns: string[];
+  unique: boolean;
+}
+
+export interface CreateIndexPlan {
+  sql: string;
+  errors: string[];
+  warnings: string[];
+}
+
 function quoteIdentifier(value: string, driver: DriverKind): string {
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -251,4 +263,55 @@ export function buildEditTableColumnsPlan(
     ...statements,
   ].join("\n\n");
   return { sql: preview, statements, errors, manual };
+}
+
+export function buildCreateIndexPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns" | "indexes">,
+  input: CreateIndexInput,
+  driver: DriverKind,
+): CreateIndexPlan {
+  const name = normalizeIdentifier(input.name);
+  const errors = [identifierError("Index name", name)].filter(
+    (error): error is string => Boolean(error),
+  );
+  const columns = input.columns.map(normalizeIdentifier).filter(Boolean);
+  if (columns.length === 0) errors.push("Select at least one column");
+  const seen = new Set<string>();
+  for (const column of columns) {
+    if (seen.has(column.toLocaleLowerCase())) {
+      errors.push(`Duplicate index column: ${column}`);
+    }
+    seen.add(column.toLocaleLowerCase());
+    if (!table.columns.some((candidate) => candidate.name === column)) {
+      errors.push(`Column does not exist: ${column}`);
+    }
+  }
+  if (
+    table.indexes.some(
+      (index) => index.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    )
+  ) {
+    errors.push(`Index already exists: ${name}`);
+  }
+  if (errors.length > 0) return { sql: "", errors, warnings: [] };
+  const sameColumns = table.indexes.some(
+    (index) =>
+      index.columns.length === columns.length &&
+      index.columns.every(
+        (column, indexPosition) => column === columns[indexPosition],
+      ),
+  );
+  const warnings = sameColumns
+    ? ["An index with the same column order already exists"]
+    : [];
+  const indexName =
+    driver === "mysql"
+      ? quoteIdentifier(name, driver)
+      : qualifiedName(table.schema, name, driver);
+  const tableName = qualifiedName(table.schema, table.name, driver);
+  return {
+    sql: `CREATE ${input.unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${tableName} (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")});`,
+    errors: [],
+    warnings,
+  };
 }

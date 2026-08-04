@@ -20,6 +20,7 @@ import {
   buildAddColumnPlan,
   buildCsvImportPlan,
   buildCreateTablePlan,
+  buildCreateIndexPlan,
   buildEditTableColumnsPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
@@ -50,6 +51,8 @@ import type {
   CsvImportPlan,
   CreateTableColumnInput,
   CreateTablePlan,
+  CreateIndexInput,
+  CreateIndexPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
   ErdNode,
@@ -487,6 +490,7 @@ function App() {
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
+  const [createIndexOpen, setCreateIndexOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -696,6 +700,31 @@ function App() {
     await loadMetadata();
     setEditColumnsOpen(false);
     notify("Column changes applied and metadata refreshed");
+  };
+  const openCreateIndex = () => {
+    if (!currentTable) {
+      notify("Select a table before creating an index");
+      return;
+    }
+    setCreateIndexOpen(true);
+  };
+  const createIndex = async (plan: CreateIndexPlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Index creation is disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Create this index in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+    });
+    if (!result) {
+      notify("Index creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setCreateIndexOpen(false);
+    notify("Index created and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1813,6 +1842,15 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: openEditColumns,
+    },
+    {
+      id: "create-index",
+      label: "Create index on selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openCreateIndex,
     },
     {
       id: "connection",
@@ -3040,6 +3078,20 @@ function App() {
           }}
         />
       )}
+      {createIndexOpen && currentTable && (
+        <CreateIndexDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setCreateIndexOpen(false)}
+          onCreate={createIndex}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setCreateIndexOpen(false);
+            notify("Opened CREATE INDEX preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3523,6 +3575,188 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function CreateIndexDialog({
+  driverKind,
+  table,
+  onClose,
+  onCreate,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onCreate: (plan: CreateIndexPlan) => Promise<void>;
+  onOpenSql: (plan: CreateIndexPlan) => void;
+}) {
+  const [input, setInput] = useState<CreateIndexInput>({
+    name: "",
+    columns: [table.columns[0]?.name ?? ""],
+    unique: false,
+  });
+  const plan = useMemo(
+    () => buildCreateIndexPlan(table, input, driverKind),
+    [driverKind, input, table],
+  );
+  const updateColumn = (index: number, value: string) => {
+    setInput((current) => ({
+      ...current,
+      columns: current.columns.map((column, columnIndex) =>
+        columnIndex === index ? value : column,
+      ),
+    }));
+  };
+  const addIndexColumn = () => {
+    setInput((current) => ({ ...current, columns: [...current.columns, ""] }));
+  };
+  const removeIndexColumn = (index: number) => {
+    setInput((current) => ({
+      ...current,
+      columns: current.columns.filter(
+        (_, columnIndex) => columnIndex !== index,
+      ),
+    }));
+  };
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-index-modal"
+        aria-modal="true"
+        aria-labelledby="create-index-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · INDEX</p>
+            <h2 id="create-index-title">Create index</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close create index form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Create an ordered index on{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>{" "}
+          using {driverDisplayName(driverKind)} identifier quoting. QueryX warns
+          about redundant column orders but leaves final constraint behavior to
+          the database.
+        </p>
+        <div className="create-index-fields">
+          <label htmlFor="create-index-name">
+            Index name
+            <input
+              id="create-index-name"
+              value={input.name}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              placeholder={`${table.name}_column_idx`}
+            />
+          </label>
+          <label className="create-table-check create-index-unique">
+            <input
+              type="checkbox"
+              checked={input.unique}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  unique: event.target.checked,
+                }))
+              }
+            />
+            UNIQUE
+          </label>
+        </div>
+        <div className="create-table-columns-heading">
+          <strong>Indexed columns (order matters)</strong>
+          <button
+            type="button"
+            className="mini-button"
+            onClick={addIndexColumn}
+          >
+            + Add column
+          </button>
+        </div>
+        <div className="index-column-list" aria-label="Indexed columns">
+          {input.columns.map((column, index) => (
+            <div className="index-column-row" key={`${index}-${column}`}>
+              <span>{index + 1}</span>
+              <select
+                value={column}
+                onChange={(event) => updateColumn(index, event.target.value)}
+                aria-label={`Index column ${index + 1}`}
+              >
+                <option value="">Select column…</option>
+                {table.columns.map((candidate) => (
+                  <option key={candidate.name} value={candidate.name}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="mini-button"
+                onClick={() => removeIndexColumn(index)}
+                disabled={input.columns.length === 1}
+                aria-label={`Remove index column ${index + 1}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.warnings.length > 0 && (
+          <output className="create-index-warning">
+            {plan.warnings.map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
+          </output>
+        )}
+        {!plan.errors.length && (
+          <pre className="create-table-preview">{plan.sql}</pre>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onCreate(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Create index
           </button>
         </div>
       </dialog>
