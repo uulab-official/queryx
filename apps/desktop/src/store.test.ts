@@ -108,4 +108,24 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().tabs).toHaveLength(1);
     expect(useQueryStore.getState().sql).toBe("");
   });
+
+  it("saves and removes normalized SQL favorites without duplicates", () => {
+    useQueryStore.setState({ favorites: [] });
+    const store = useQueryStore.getState();
+
+    expect(store.toggleFavorite("  SELECT 1  ")).toBe(true);
+    expect(useQueryStore.getState().favorites).toHaveLength(1);
+    expect(useQueryStore.getState().favorites[0]?.sql).toBe("SELECT 1");
+    expect(useQueryStore.getState().favorites[0]?.label).toBe("SELECT 1");
+
+    expect(useQueryStore.getState().toggleFavorite("SELECT 1")).toBe(false);
+    expect(useQueryStore.getState().favorites).toHaveLength(0);
+  });
+
+  it("does not save an empty favorite", () => {
+    useQueryStore.setState({ favorites: [] });
+
+    expect(useQueryStore.getState().toggleFavorite("  \n ")).toBe(false);
+    expect(useQueryStore.getState().favorites).toHaveLength(0);
+  });
 });

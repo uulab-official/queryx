@@ -358,6 +358,14 @@ button:disabled {
 .section-label .mini-button {
   margin-left: auto;
 }
+.section-label .count {
+  margin-left: auto;
+}
+.sidebar-empty {
+  padding: 3px 6px 8px 31px;
+  color: #626d78;
+  font: 10px var(--mono);
+}
 .recent-list {
   padding: 0 9px;
 }
@@ -378,6 +386,15 @@ button:disabled {
 .recent-query strong,
 .recent-query small {
   display: block;
+}
+.favorite-query .favorite-star {
+  width: 16px;
+  color: #d8aa64;
+  font-size: 12px;
+  text-align: center;
+}
+.favorite-button.active {
+  color: #e3b56c;
 }
 .recent-query strong {
   color: #bbc1c8;

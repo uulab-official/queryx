@@ -18,6 +18,8 @@ Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common
 
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
+Click the ♡ toolbar button to save the active SQL to local **Favorites**. Saved queries can be recalled from the Explorer sidebar or Cmd/Ctrl+K and are never executed during recall. Favorites are deduplicated by SQL text and capped at 50 entries; see [Workspaces](workspaces.md) for the persistence boundary.
+
 ## Result grid
 
 The table view supports spreadsheet-oriented copy without sending result data anywhere except the local clipboard:
@@ -41,7 +43,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Cmd/Ctrl+W — close active query tab
 - Cmd/Ctrl+F while editing — Monaco find
 - Cmd/Ctrl+F outside the editor — focus result filtering
-- Cmd/Ctrl+K — open the searchable command palette
+- Cmd/Ctrl+K — open the searchable command palette, including favorite actions
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation
 - Run in Transaction — execute the complete active document in one native transaction
@@ -50,7 +52,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 
 ## Safety and privacy
 
-Editor models live in the local renderer process. SQL is sent only over the local Tauri bridge to the selected database when explicitly executed. Query text currently enters local browser history after execution; migration to the encrypted/local workspace storage boundary remains planned.
+Editor models live in the local renderer process. SQL is sent only over the local Tauri bridge to the selected database when explicitly executed. Query text currently enters local browser storage for history and favorites; migration to the encrypted/local workspace storage boundary remains planned.
 
 Safe Mode analyzes exactly the selected SQL when a selection is executed, so an unrelated safe statement elsewhere in the tab cannot bypass a destructive-query warning.
 
@@ -63,7 +65,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
 - The command palette currently covers the core query/editor/result actions; Quick Open and extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
-- Tabs are session state and are not restored after restart yet.
+- Tabs are session state and are not restored after restart yet; history and favorites are browser-local preview persistence until native workspace storage lands.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
 - Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
 - Result-grid copy operates on the currently visible filtered/sorted rows. Binary viewers, virtualized streaming, and server paging remain planned.
@@ -71,5 +73,6 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 ## Related
 
 - [Database Connections](connections.md)
+- [Workspaces](workspaces.md)
 - [Driver API](driver-api.md)
 - [Testing Guide](testing.md)

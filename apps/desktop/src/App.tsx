@@ -122,6 +122,7 @@ function App() {
     canExplain,
     toast,
     history,
+    favorites,
     driverKind,
     connectionName,
     connectionStatus,
@@ -138,6 +139,7 @@ function App() {
     loadMetadata,
     connectDatabase,
     notify,
+    toggleFavorite,
   } = useQueryStore();
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
@@ -159,6 +161,19 @@ function App() {
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
   const editorRef = useRef<SqlEditorHandle>(null);
+  const activeFavorite = favorites.find(
+    (favorite) => favorite.sql === sql.trim(),
+  );
+  const handleToggleFavorite = () => {
+    if (!sql.trim()) {
+      notify("Enter SQL before saving a favorite");
+      return;
+    }
+    const saved = toggleFavorite(sql);
+    notify(
+      saved ? "Saved query to local favorites" : "Removed query from favorites",
+    );
+  };
 
   useEffect(() => {
     if (initialized.current) return;
@@ -652,6 +667,13 @@ function App() {
       execute: () => setSql(formatSql(sql)),
     },
     {
+      id: "favorite",
+      label: activeFavorite ? "Remove favorite" : "Save favorite",
+      hint: "local workspace",
+      disabled: !sql.trim(),
+      execute: handleToggleFavorite,
+    },
+    {
       id: "new-query",
       label: "New query tab",
       hint: "⌘T",
@@ -1018,6 +1040,24 @@ function App() {
             )}
           </div>
           <div className="section-label">
+            FAVORITES <span className="count">{favorites.length}</span>
+          </div>
+          <div className="recent-list">
+            {favorites.length > 0 ? (
+              favorites
+                .slice(0, 3)
+                .map((favorite) => (
+                  <FavoriteQuery
+                    key={favorite.id}
+                    name={favorite.label}
+                    onClick={() => setSql(favorite.sql)}
+                  />
+                ))
+            ) : (
+              <div className="sidebar-empty">Save a query with ♡</div>
+            )}
+          </div>
+          <div className="section-label">
             RECENT QUERIES{" "}
             <button type="button" className="mini-button">
               •••
@@ -1159,10 +1199,20 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  className="toolbar-button"
-                  onClick={() => notify("Query saved to local favorites")}
+                  className={`toolbar-button favorite-button ${activeFavorite ? "active" : ""}`}
+                  onClick={handleToggleFavorite}
+                  aria-label={
+                    activeFavorite
+                      ? "Remove query from favorites"
+                      : "Save query to favorites"
+                  }
+                  title={
+                    activeFavorite
+                      ? "Remove query from local favorites"
+                      : "Save query to local favorites"
+                  }
                 >
-                  ♡
+                  {activeFavorite ? "♥" : "♡"}
                 </button>
                 <button type="button" className="toolbar-button">
                   •••
@@ -1616,6 +1666,30 @@ function Recent({
       <span>
         <strong>{name}</strong>
         <small>{time}</small>
+      </span>
+    </button>
+  );
+}
+
+function FavoriteQuery({
+  name,
+  onClick,
+}: {
+  name: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="recent-query favorite-query"
+      onClick={onClick}
+    >
+      <span className="favorite-star" aria-hidden="true">
+        ♥
+      </span>
+      <span>
+        <strong>{name}</strong>
+        <small>Saved locally</small>
       </span>
     </button>
   );

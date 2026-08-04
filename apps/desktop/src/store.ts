@@ -25,6 +25,13 @@ export interface QueryHistoryEntry {
   status: "success" | "error" | "cancelled";
 }
 
+export interface QueryFavorite {
+  id: string;
+  label: string;
+  sql: string;
+  createdAt: string;
+}
+
 export interface QueryTab {
   id: string;
   title: string;
@@ -60,6 +67,7 @@ interface QueryState {
   canExplain: boolean;
   toast: string | null;
   history: QueryHistoryEntry[];
+  favorites: QueryFavorite[];
   driver: DatabaseDriver;
   driverKind: DriverKind;
   connectionName: string;
@@ -78,9 +86,11 @@ interface QueryState {
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
+  toggleFavorite: (sql: string) => boolean;
 }
 
 const historyStorageKey = "queryx:query-history";
+const favoritesStorageKey = "queryx:query-favorites";
 
 function defaultObject(
   metadata: DatabaseMetadata,
@@ -162,6 +172,37 @@ function writeHistory(history: QueryHistoryEntry[]): void {
   }
 }
 
+function readFavorites(): QueryFavorite[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(favoritesStorageKey);
+    return stored ? (JSON.parse(stored) as QueryFavorite[]).slice(0, 50) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeFavorites(favorites: QueryFavorite[]): void {
+  try {
+    window.localStorage.setItem(
+      favoritesStorageKey,
+      JSON.stringify(favorites.slice(0, 50)),
+    );
+  } catch {
+    // Local persistence is best-effort until the Tauri SQLite store lands.
+  }
+}
+
+function queryLabel(sql: string): string {
+  return (
+    sql
+      .split("\n")
+      .find((line) => line.trim() && !line.trim().startsWith("--"))
+      ?.trim()
+      .slice(0, 32) ?? "Untitled query"
+  );
+}
+
 const postgresInitialSql = `-- Revenue by day · last 30 days
 SELECT
   DATE_TRUNC('day', created_at)::date AS day,
@@ -216,6 +257,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     canExplain: driver.capabilities().has("explain"),
     toast: null,
     history: readHistory(),
+    favorites: readFavorites(),
     driver,
     driverKind: driver.kind,
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
@@ -293,14 +335,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
             : await execute();
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
-          label:
-            mode === "explain"
-              ? "Explain plan"
-              : (executedSql
-                  .split("\n")
-                  .find((line) => line.trim() && !line.trim().startsWith("--"))
-                  ?.trim()
-                  .slice(0, 32) ?? "Untitled query"),
+          label: mode === "explain" ? "Explain plan" : queryLabel(executedSql),
           sql: executedSql,
           executedAt: new Date().toISOString(),
           status: "success",
@@ -438,6 +473,27 @@ export const useQueryStore = create<QueryState>((set, get) => {
       ];
       writeHistory(history);
       set({ history });
+    },
+    toggleFavorite: (sql) => {
+      const normalizedSql = sql.trim();
+      if (!normalizedSql) return false;
+      const existing = get().favorites.find(
+        (favorite) => favorite.sql === normalizedSql,
+      );
+      const favorites = existing
+        ? get().favorites.filter((favorite) => favorite.id !== existing.id)
+        : [
+            {
+              id: crypto.randomUUID(),
+              label: queryLabel(normalizedSql),
+              sql: normalizedSql,
+              createdAt: new Date().toISOString(),
+            },
+            ...get().favorites,
+          ];
+      writeFavorites(favorites);
+      set({ favorites });
+      return !existing;
     },
   };
 });

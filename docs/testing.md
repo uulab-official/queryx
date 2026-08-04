@@ -22,6 +22,8 @@ The formatter smoke path enters a query containing a quoted value with repeated 
 
 The command-palette smoke path opens Cmd/Ctrl+K, filters for **Format SQL**, runs it with Enter, then opens the palette again and uses ArrowDown/ArrowUp plus Enter to run a selected action. Escape and clicking the backdrop must close the palette without changing SQL.
 
+The workspace smoke path saves the active query with the ♡ button, confirms the filled-heart state and a new **Favorites** entry, recalls that entry without executing it, then removes it and confirms the empty state. It repeats the save/remove flow through Cmd/Ctrl+K and verifies that whitespace-only SQL is rejected.
+
 The result-grid smoke path clicks a cell, Shift-clicks another cell, presses Cmd/Ctrl+C, and pastes into a spreadsheet or plain-text editor to verify rectangular TSV output. It repeats the check with a row-number selection and the **NULL** display toggle, then confirms Copy uses only the visible filtered/sorted rows when no range is selected.
 
 ## Local commands

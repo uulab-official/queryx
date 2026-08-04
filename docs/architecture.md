@@ -34,7 +34,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 - UI state: tabs, editor text, selected database object, result view, filters, running status, toasts.
 - Driver state: connection lifecycle, query execution, metadata, transactions, capabilities.
-- Local persistence: connections without secrets, history, favorites, settings, workspace indexes.
+- Local persistence: connections without secrets, history, favorites, settings, workspace indexes. The browser preview currently provides best-effort history/favorite storage; native Tauri SQLite workspace migrations remain a v0.2 boundary.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 
 ## Editor boundary

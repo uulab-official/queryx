@@ -34,7 +34,7 @@ Available and tested:
 
 Known alpha limitations:
 
-- Connection profiles, query history, and favorites are not yet persisted in the native workspace database.
+- Query history and favorites use best-effort browser-local persistence in the preview; native workspace persistence is still pending.
 - Passwords are intentionally session-only until OS keychain support lands.
 - Result rows are loaded into memory; virtualized streaming and server paging are not implemented.
 - Safety analysis is lexical, not yet parser/plan backed.
@@ -45,6 +45,7 @@ Known alpha limitations:
 Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 
 - [ ] SQLite workspace storage for profiles, tabs, history, favorites, and settings
+- [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
 - [ ] OS keychain integration with migration and deletion tests
 - [ ] Connection test, duplicate, color, read-only mode, timeout, and keepalive controls
 - [ ] SSH tunnel and PostgreSQL SSL certificate configuration

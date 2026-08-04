@@ -34,6 +34,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Result-grid cell, row, and range selection with Cmd/Ctrl+C clipboard export, visible-result copy, and configurable NULL display.
 - Safe baseline SQL formatter that preserves quoted literals, identifiers, and comments while laying out common clauses.
 - Searchable Cmd/Ctrl+K command palette for running, explaining, formatting, filtering, metadata refresh, and connection actions.
+- Local query favorites with save/remove toggle, sidebar recall, SQL deduplication, empty-query protection, and command-palette actions.
 
 ## [0.1.0] — 2026-08-03
 
