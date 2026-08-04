@@ -63,7 +63,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL aggregates/window functions with catalog-specific Inspector metadata
 - [x] DDL Inspector handoff to editable SQL tabs with explicit transaction execution, rollback-on-error, and metadata refresh
 - [ ] Schema-aware DDL diff, object-specific preview, and migration history
-- [ ] Command palette, Quick Open, complete keyboard map, and accessibility baseline
+- [x] Searchable command palette for core query/editor/result actions; Quick Open, complete keyboard map, and full accessibility audit remain planned
 
 Release gates:
 

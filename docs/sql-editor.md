@@ -41,6 +41,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Cmd/Ctrl+W — close active query tab
 - Cmd/Ctrl+F while editing — Monaco find
 - Cmd/Ctrl+F outside the editor — focus result filtering
+- Cmd/Ctrl+K — open the searchable command palette
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation
 - Run in Transaction — execute the complete active document in one native transaction
@@ -60,6 +61,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 ## Known limitations
 
 - SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
+- The command palette currently covers the core query/editor/result actions; Quick Open and extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs are session state and are not restored after restart yet.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.

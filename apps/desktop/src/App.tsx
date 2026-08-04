@@ -60,6 +60,14 @@ type GridSelection =
   | { kind: "cells"; anchor: GridPoint; focus: GridPoint }
   | { kind: "rows"; anchor: number; focus: number };
 
+interface PaletteCommand {
+  id: string;
+  label: string;
+  hint: string;
+  disabled?: boolean;
+  execute: () => void;
+}
+
 function rangeBounds(first: number, second: number): [number, number] {
   return first <= second ? [first, second] : [second, first];
 }
@@ -140,6 +148,9 @@ function App() {
   const [gridSelection, setGridSelection] = useState<GridSelection | null>(
     null,
   );
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandIndex, setCommandIndex] = useState(0);
   const [pendingSafety, setPendingSafety] = useState<{
     report: QuerySafetyReport;
     sql: string;
@@ -186,6 +197,11 @@ function App() {
     setGridSelection(null);
     void runQuery("explain", explain.query.sql);
   };
+  const openCommandPalette = () => {
+    setCommandQuery("");
+    setCommandIndex(0);
+    setCommandPaletteOpen(true);
+  };
   const requestCloseQuery = (id: string) => {
     const tab = tabs.find((candidate) => candidate.id === id);
     if (
@@ -216,6 +232,10 @@ function App() {
       ) {
         event.preventDefault();
         document.getElementById("result-filter")?.focus();
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openCommandPalette();
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
         event.preventDefault();
@@ -603,6 +623,81 @@ function App() {
     );
   };
 
+  const paletteCommands: PaletteCommand[] = [
+    {
+      id: "run",
+      label: "Run query",
+      hint: "⌘↵",
+      disabled: isRunning,
+      execute: () => editorRef.current?.runSelectionOrDocument(),
+    },
+    {
+      id: "explain",
+      label: "Explain query plan",
+      hint: "non-executing",
+      disabled: isRunning || !canExplain,
+      execute: handleExplain,
+    },
+    {
+      id: "transaction",
+      label: "Run in transaction",
+      hint: "rollback on error",
+      disabled: isRunning,
+      execute: () => handleRun("transaction"),
+    },
+    {
+      id: "format",
+      label: "Format SQL",
+      hint: "⌘L",
+      execute: () => setSql(formatSql(sql)),
+    },
+    {
+      id: "new-query",
+      label: "New query tab",
+      hint: "⌘T",
+      execute: newQuery,
+    },
+    {
+      id: "copy-results",
+      label: "Copy visible results",
+      hint: "TSV",
+      disabled: !result || result.columns.length === 0,
+      execute: () => void copyGridSelection(),
+    },
+    {
+      id: "focus-filter",
+      label: "Focus result filter",
+      hint: "⌘F",
+      execute: () => document.getElementById("result-filter")?.focus(),
+    },
+    {
+      id: "refresh-metadata",
+      label: "Refresh metadata",
+      hint: "catalog snapshot",
+      execute: () => {
+        void loadMetadata();
+        notify("Refreshing metadata…");
+      },
+    },
+    {
+      id: "connection",
+      label: "Open connection dialog",
+      hint: connectionName,
+      execute: () => setConnectionOpen(true),
+    },
+  ];
+  const filteredCommands = paletteCommands.filter((command) =>
+    `${command.label} ${command.hint}`
+      .toLowerCase()
+      .includes(commandQuery.trim().toLowerCase()),
+  );
+  const executePaletteCommand = () => {
+    const command = filteredCommands[commandIndex];
+    if (!command || command.disabled) return;
+    setCommandPaletteOpen(false);
+    command.execute();
+  };
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -625,7 +720,8 @@ function App() {
           <button
             type="button"
             className="icon-button"
-            onClick={() => notify("Command palette · type to search commands")}
+            onClick={openCommandPalette}
+            aria-label="Open command palette"
           >
             ⌘K
           </button>
@@ -1357,6 +1453,120 @@ function App() {
           onConnect={connectDatabase}
         />
       )}
+      {commandPaletteOpen && (
+        <CommandPalette
+          query={commandQuery}
+          commands={filteredCommands}
+          selectedIndex={commandIndex}
+          onQueryChange={(value) => {
+            setCommandQuery(value);
+            setCommandIndex(0);
+          }}
+          onSelectedIndexChange={setCommandIndex}
+          onExecute={executePaletteCommand}
+          onClose={() => setCommandPaletteOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CommandPalette({
+  query,
+  commands,
+  selectedIndex,
+  onQueryChange,
+  onSelectedIndexChange,
+  onExecute,
+  onClose,
+}: {
+  query: string;
+  commands: PaletteCommand[];
+  selectedIndex: number;
+  onQueryChange: (value: string) => void;
+  onSelectedIndexChange: (index: number) => void;
+  onExecute: () => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+  const moveSelection = (direction: 1 | -1) => {
+    if (commands.length === 0) return;
+    onSelectedIndexChange(
+      (selectedIndex + direction + commands.length) % commands.length,
+    );
+  };
+
+  return (
+    <div
+      className="modal-backdrop command-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <dialog
+        open
+        className="command-palette"
+        aria-labelledby="command-palette-title"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+          } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveSelection(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveSelection(-1);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            onExecute();
+          }
+        }}
+      >
+        <div className="command-palette-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search commands…"
+            aria-label="Search commands"
+          />
+          <kbd>ESC</kbd>
+        </div>
+        <div className="command-palette-heading" id="command-palette-title">
+          COMMAND PALETTE
+        </div>
+        <div className="command-list" aria-label="Commands">
+          {commands.length === 0 ? (
+            <div className="command-empty">No matching commands</div>
+          ) : (
+            commands.map((command, index) => (
+              <button
+                type="button"
+                aria-current={index === selectedIndex ? "true" : undefined}
+                className={`command-item ${index === selectedIndex ? "selected" : ""}`}
+                key={command.id}
+                disabled={command.disabled}
+                onMouseEnter={() => onSelectedIndexChange(index)}
+                onClick={onExecute}
+              >
+                <span>{command.label}</span>
+                <small>{command.hint}</small>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="command-palette-footer">
+          <span>↑↓ Navigate</span>
+          <span>↵ Run</span>
+          <span>ESC Close</span>
+        </div>
+      </dialog>
     </div>
   );
 }

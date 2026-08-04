@@ -33,6 +33,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Real non-executing EXPLAIN plan action for PostgreSQL/SQLite capability-aware connections, with single-statement validation, cancellation, history, and result-grid reuse.
 - Result-grid cell, row, and range selection with Cmd/Ctrl+C clipboard export, visible-result copy, and configurable NULL display.
 - Safe baseline SQL formatter that preserves quoted literals, identifiers, and comments while laying out common clauses.
+- Searchable Cmd/Ctrl+K command palette for running, explaining, formatting, filtering, metadata refresh, and connection actions.
 
 ## [0.1.0] — 2026-08-03
 

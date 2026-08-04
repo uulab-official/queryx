@@ -20,6 +20,8 @@ The editor smoke path creates a second query with Cmd/Ctrl+T, enters distinct SQ
 
 The formatter smoke path enters a query containing a quoted value with repeated spaces and a comment containing SQL keywords, chooses **Format**, and confirms those protected sections are unchanged while clauses are laid out.
 
+The command-palette smoke path opens Cmd/Ctrl+K, filters for **Format SQL**, runs it with Enter, then opens the palette again and uses ArrowDown/ArrowUp plus Enter to run a selected action. Escape and clicking the backdrop must close the palette without changing SQL.
+
 The result-grid smoke path clicks a cell, Shift-clicks another cell, presses Cmd/Ctrl+C, and pastes into a spreadsheet or plain-text editor to verify rectangular TSV output. It repeats the check with a row-number selection and the **NULL** display toggle, then confirms Copy uses only the visible filtered/sorted rows when no range is selected.
 
 ## Local commands
