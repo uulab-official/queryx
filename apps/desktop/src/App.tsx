@@ -20,6 +20,7 @@ import {
   buildAddColumnPlan,
   buildCsvImportPlan,
   buildCreateTablePlan,
+  buildEditTableColumnsPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
   buildRowsToSqlUpdateStatements,
@@ -49,6 +50,8 @@ import type {
   CsvImportPlan,
   CreateTableColumnInput,
   CreateTablePlan,
+  EditTableColumnInput,
+  EditTableColumnsPlan,
   ErdNode,
   ForeignKeyRelations,
   ImportConflictPolicy,
@@ -483,6 +486,7 @@ function App() {
   const [importOpen, setImportOpen] = useState(false);
   const [createTableOpen, setCreateTableOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
+  const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -665,6 +669,33 @@ function App() {
     await loadMetadata();
     setAddColumnOpen(false);
     notify("Column added and metadata refreshed");
+  };
+  const openEditColumns = () => {
+    if (!currentTable) {
+      notify("Select a table before editing columns");
+      return;
+    }
+    setEditColumnsOpen(true);
+  };
+  const editTableColumns = async (plan: EditTableColumnsPlan) => {
+    if (!plan.sql || plan.errors.length > 0 || plan.manual.length > 0) return;
+    if (readOnlyConnection) {
+      notify("Column changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Apply these column changes in one transaction?"))
+      return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Column changes failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setEditColumnsOpen(false);
+    notify("Column changes applied and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1773,6 +1804,15 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: openAddColumn,
+    },
+    {
+      id: "edit-columns",
+      label: "Edit columns in selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openEditColumns,
     },
     {
       id: "connection",
@@ -2986,6 +3026,20 @@ function App() {
           }}
         />
       )}
+      {editColumnsOpen && currentTable && (
+        <EditTableColumnsDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setEditColumnsOpen(false)}
+          onApply={editTableColumns}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setEditColumnsOpen(false);
+            notify("Opened table column migration preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3467,6 +3521,166 @@ function EditPreviewDialog({
             className="modal-transaction"
             onClick={onApply}
             disabled={Boolean(error) || !sql}
+          >
+            Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function EditTableColumnsDialog({
+  driverKind,
+  table,
+  onClose,
+  onApply,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onApply: (plan: EditTableColumnsPlan) => Promise<void>;
+  onOpenSql: (plan: EditTableColumnsPlan) => void;
+}) {
+  const [columns, setColumns] = useState<EditTableColumnInput[]>(
+    table.columns.map((column) => ({
+      name: column.name,
+      type: column.type,
+      nullable: column.nullable,
+      primaryKey: Boolean(column.primaryKey),
+      remove: false,
+    })),
+  );
+  const plan = useMemo(
+    () => buildEditTableColumnsPlan(table, columns, driverKind),
+    [columns, driverKind, table],
+  );
+  const updateColumn = (
+    index: number,
+    patch: Partial<EditTableColumnInput>,
+  ) => {
+    setColumns((current) =>
+      current.map((column, columnIndex) =>
+        columnIndex === index ? { ...column, ...patch } : column,
+      ),
+    );
+  };
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="edit-columns-modal"
+        aria-modal="true"
+        aria-labelledby="edit-columns-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · COLUMNS</p>
+            <h2 id="edit-columns-title">Edit table columns</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close edit columns form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Edit type and nullability or mark a non-primary-key column for removal
+          on{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>
+          . Primary-key changes and SQLite rebuilds require manual SQL review.
+        </p>
+        <div className="edit-columns-list" aria-label="Editable table columns">
+          {columns.map((column, index) => (
+            <div
+              className={`edit-column-row ${column.remove ? "marked-remove" : ""}`}
+              key={column.name}
+            >
+              <input
+                value={column.name}
+                readOnly
+                aria-label={`Column ${index + 1} name`}
+              />
+              <input
+                value={column.type}
+                onChange={(event) =>
+                  updateColumn(index, { type: event.target.value })
+                }
+                aria-label={`Column ${index + 1} type`}
+                disabled={column.remove}
+              />
+              <label className="create-table-check">
+                <input
+                  type="checkbox"
+                  checked={!column.nullable}
+                  onChange={(event) =>
+                    updateColumn(index, { nullable: !event.target.checked })
+                  }
+                  disabled={column.remove}
+                />
+                Required
+              </label>
+              <span className="edit-column-pk">
+                {column.primaryKey ? "PK" : ""}
+              </span>
+              <label className="create-table-check">
+                <input
+                  type="checkbox"
+                  checked={column.remove}
+                  onChange={(event) =>
+                    updateColumn(index, { remove: event.target.checked })
+                  }
+                  disabled={column.primaryKey}
+                />
+                Remove
+              </label>
+            </div>
+          ))}
+        </div>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="edit-columns-manual">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        <pre className="create-table-preview">
+          {plan.sql || "No executable changes yet."}
+        </pre>
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onApply(plan)}
+            disabled={
+              plan.errors.length > 0 ||
+              plan.manual.length > 0 ||
+              plan.statements.length === 0
+            }
           >
             Apply changes
           </button>

@@ -29,6 +29,21 @@ export interface AddColumnPlan {
   errors: string[];
 }
 
+export interface EditTableColumnInput {
+  name: string;
+  type: string;
+  nullable: boolean;
+  primaryKey: boolean;
+  remove: boolean;
+}
+
+export interface EditTableColumnsPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+}
+
 function quoteIdentifier(value: string, driver: DriverKind): string {
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -147,4 +162,93 @@ export function buildAddColumnPlan(
     sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ADD COLUMN ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
     errors: [],
   };
+}
+
+export function buildEditTableColumnsPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns">,
+  input: EditTableColumnInput[],
+  driver: DriverKind,
+): EditTableColumnsPlan {
+  const errors: string[] = [];
+  const manual: string[] = [];
+  const statements: string[] = [];
+  const existing = new Map(
+    table.columns.map((column) => [column.name.toLocaleLowerCase(), column]),
+  );
+  const seen = new Set<string>();
+  for (const column of input) {
+    const name = normalizeIdentifier(column.name);
+    const normalizedName = name.toLocaleLowerCase();
+    if (seen.has(normalizedName)) errors.push(`Duplicate column name: ${name}`);
+    seen.add(normalizedName);
+    const current = existing.get(normalizedName);
+    if (!current) {
+      errors.push(`Unknown column: ${name}`);
+      continue;
+    }
+    const type = column.type.trim();
+    const columnTypeError = typeError({ name, type });
+    if (columnTypeError) errors.push(columnTypeError);
+    if (column.primaryKey !== Boolean(current.primaryKey)) {
+      manual.push(`Primary-key change requires manual review: ${name}`);
+      continue;
+    }
+    if (column.remove) {
+      if (column.primaryKey) {
+        manual.push(
+          `Cannot automatically remove a primary-key column: ${name}`,
+        );
+      } else if (driver === "sqlite") {
+        manual.push(
+          `SQLite column drop requires manual table rebuild: ${name}`,
+        );
+      } else {
+        statements.push(
+          `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} DROP COLUMN ${quoteIdentifier(name, driver)};`,
+        );
+      }
+      continue;
+    }
+    const typeChanged = type !== current.type;
+    const nullabilityChanged = column.nullable !== current.nullable;
+    if (!typeChanged && !nullabilityChanged) continue;
+    if (driver === "sqlite") {
+      manual.push(
+        `SQLite column alteration requires manual table rebuild: ${name}`,
+      );
+      continue;
+    }
+    const qualified = qualifiedName(table.schema, table.name, driver);
+    const identifier = quoteIdentifier(name, driver);
+    if (driver === "mysql") {
+      statements.push(
+        `ALTER TABLE ${qualified} MODIFY COLUMN ${identifier} ${type}${column.nullable ? "" : " NOT NULL"};`,
+      );
+      continue;
+    }
+    if (typeChanged) {
+      statements.push(
+        `ALTER TABLE ${qualified} ALTER COLUMN ${identifier} TYPE ${type};`,
+      );
+    }
+    if (nullabilityChanged) {
+      statements.push(
+        `ALTER TABLE ${qualified} ALTER COLUMN ${identifier} ${column.nullable ? "DROP NOT NULL" : "SET NOT NULL"};`,
+      );
+    }
+  }
+  if (errors.length > 0) {
+    return { sql: "", statements: [], errors, manual };
+  }
+  if (input.every((column) => column.remove)) {
+    errors.push("Keep at least one column in the table");
+  }
+  if (statements.length === 0 && manual.length === 0 && errors.length === 0) {
+    errors.push("Change at least one column before continuing");
+  }
+  const preview = [
+    ...manual.map((message) => `-- MANUAL REVIEW REQUIRED: ${message}`),
+    ...statements,
+  ].join("\n\n");
+  return { sql: preview, statements, errors, manual };
 }

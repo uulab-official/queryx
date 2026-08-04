@@ -1541,6 +1541,66 @@ button:disabled {
   background: #141a18;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
 }
+.edit-columns-modal {
+  width: min(900px, calc(100vw - 40px));
+  max-height: calc(100vh - 32px);
+  margin: 0;
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid #526b4a;
+  border-radius: 9px;
+  background: #141a18;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.edit-columns-list {
+  display: grid;
+  gap: 6px;
+  max-height: 330px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #2d4038;
+  border-radius: 5px;
+  background: #0e1412;
+}
+.edit-column-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1.2fr) auto 34px auto;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.edit-column-row.marked-remove {
+  opacity: 0.68;
+}
+.edit-column-row > input:not([type="checkbox"]) {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.edit-column-row > input[readonly] {
+  color: #8ea59a;
+  background: #111916;
+}
+.edit-column-pk {
+  color: #b8dc9c;
+  font: 700 9px var(--mono);
+}
+.edit-columns-manual {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid #705d32;
+  border-radius: 4px;
+  background: #282318;
+  color: #e0c27e;
+  font: 9px / 1.45 var(--mono);
+}
 .add-column-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

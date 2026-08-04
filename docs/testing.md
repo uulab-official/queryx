@@ -11,7 +11,7 @@ QueryX uses a small, explicit test pyramid:
 5. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 6. **Native matrix checks** test and build Tauri on Linux, macOS, and Windows.
 7. **Live database contract checks** execute PostgreSQL behavior against a disposable service and optionally exercise MySQL/MariaDB when the corresponding environment is available.
-8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export CSV/JSON/SQL INSERT → import a typed CSV into a selected table and confirm batch rollback behavior → open Create table or Add column from the command palette, preview SQL, apply a disposable change, and refresh metadata → inspect and navigate object dependencies.
+8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export CSV/JSON/SQL INSERT → import a typed CSV into a selected table and confirm batch rollback behavior → open Create table, Add column, or Edit columns from the command palette, preview SQL, apply a disposable change, and refresh metadata → inspect and navigate object dependencies.
 9. **Browser workflow checks** cover Monaco load, query-tab creation/switching/closing, document preservation, and keyboard execution.
 
 The desktop preview also has a Safe Mode smoke path: replace the editor query with an UPDATE or DELETE without WHERE, press Cmd/Ctrl+Enter, confirm the warning, then choose Cancel, Run in Transaction, or Execute Anyway. This is a UI contract preview; native transaction semantics belong to the Rust driver.

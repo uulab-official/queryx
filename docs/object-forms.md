@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides table-focused object-specific DDL forms from the command palette: **Create table from form** and **Add column to selected table**.
+QueryX now provides table-focused object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, and **Edit columns in selected table**.
 
 The form supports:
 
@@ -13,6 +13,8 @@ The form supports:
 
 The add-column form additionally checks the selected table for duplicate names and generates a dialect-aware `ALTER TABLE ... ADD COLUMN` statement. It supports required/nullability and leaves defaults, generated values, and constraints in the editable SQL preview.
 
+The edit-columns form supports type and nullability changes plus non-primary-key column removal. PostgreSQL and MySQL/MariaDB receive dialect-aware executable statements. SQLite rebuild-required changes are shown as manual review and cannot be applied from the form. Primary-key changes remain manual across drivers.
+
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Table type changes, column drops, primary-key changes, view, index, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Column renames, view, index, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

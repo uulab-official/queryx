@@ -28,13 +28,19 @@ export type {
   IncomingForeignKey,
 } from "./foreignKeyIndex";
 export { InMemoryDriver } from "./inMemoryDriver";
-export { buildAddColumnPlan, buildCreateTablePlan } from "./ddlForms";
+export {
+  buildAddColumnPlan,
+  buildCreateTablePlan,
+  buildEditTableColumnsPlan,
+} from "./ddlForms";
 export type {
   AddColumnInput,
   AddColumnPlan,
   CreateTableColumnInput,
   CreateTableInput,
   CreateTablePlan,
+  EditTableColumnInput,
+  EditTableColumnsPlan,
 } from "./ddlForms";
 export { buildErdDiagram, erdObjectId } from "./erd";
 export type {

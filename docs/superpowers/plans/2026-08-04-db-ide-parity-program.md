@@ -276,6 +276,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add command-palette access, editable column rows, SQL preview, explicit transaction apply, read-only gating, and metadata refresh.
 - [x] Document the table-form boundary while keeping alteration, drop, view, index, and constraint forms planned.
 - [x] Add selected-table add-column form with duplicate/type validation, dialect-aware ALTER TABLE preview, explicit transaction apply, and metadata refresh.
+- [x] Add selected-table type/nullability editing and non-primary-key drop planning with PostgreSQL/MySQL execution and SQLite manual-review boundaries.
 
 ## Final verification for this plan
 
