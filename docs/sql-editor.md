@@ -18,7 +18,7 @@ Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common
 
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
-Click the ♡ toolbar button to save the active SQL to local **Favorites**. Saved queries can be recalled from the Explorer sidebar or Cmd/Ctrl+K and are never executed during recall. Favorites are deduplicated by SQL text and capped at 50 entries; see [Workspaces](workspaces.md) for the persistence boundary.
+Click the ♡ toolbar button to save the active SQL to local **Favorites**. Press Cmd/Ctrl+P or click the Explorer search icon to open **Quick Open**, which searches favorites and recent queries by label or SQL. Selecting a result only loads it into the active tab; it never executes during recall. Favorites are deduplicated by SQL text and capped at 50 entries; see [Workspaces](workspaces.md) for the persistence boundary.
 
 ## Result grid
 
@@ -44,6 +44,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Cmd/Ctrl+F while editing — Monaco find
 - Cmd/Ctrl+F outside the editor — focus result filtering
 - Cmd/Ctrl+K — open the searchable command palette, including favorite actions
+- Cmd/Ctrl+P — open Quick Open for favorites and recent queries
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation
 - Run in Transaction — execute the complete active document in one native transaction
@@ -63,7 +64,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 ## Known limitations
 
 - SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
-- The command palette currently covers the core query/editor/result actions; Quick Open and extension-contributed commands remain planned.
+- The command palette currently covers the core query/editor/result actions; extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs are session state and are not restored after restart yet; history and favorites are browser-local preview persistence until native workspace storage lands.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.

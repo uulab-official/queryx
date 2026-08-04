@@ -1343,6 +1343,76 @@ button:disabled {
   place-items: start center;
   padding-top: 15vh;
 }
+.quick-open-backdrop {
+  place-items: start center;
+  padding-top: 13vh;
+}
+.quick-open {
+  width: min(720px, calc(100vw - 32px));
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #3a4652;
+  border-radius: 8px;
+  background: #151a20;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+}
+.quick-open-list {
+  max-height: 410px;
+  overflow: auto;
+  padding: 0 7px 7px;
+}
+.quick-open-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 4px;
+  padding: 10px 9px;
+  background: transparent;
+  color: #b8c2cb;
+  text-align: left;
+}
+.quick-open-item:hover,
+.quick-open-item.selected {
+  background: #26343f;
+  color: #f1f5f7;
+}
+.quick-open-icon {
+  width: 18px;
+  flex: 0 0 auto;
+  color: #d8aa64;
+  text-align: center;
+}
+.quick-open-copy {
+  min-width: 150px;
+  flex: 0 0 190px;
+}
+.quick-open-copy strong,
+.quick-open-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quick-open-copy strong {
+  color: #d5dde4;
+  font-size: 11px;
+  font-weight: 600;
+}
+.quick-open-copy small {
+  margin-top: 3px;
+  color: #71808d;
+  font: 9px var(--mono);
+}
+.quick-open-item code {
+  min-width: 0;
+  overflow: hidden;
+  color: #7f8d9a;
+  font: 9px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .command-palette {
   width: min(520px, calc(100vw - 32px));
   margin: 0;

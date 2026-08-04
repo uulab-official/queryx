@@ -24,6 +24,8 @@ The command-palette smoke path opens Cmd/Ctrl+K, filters for **Format SQL**, run
 
 The workspace smoke path saves the active query with the ♡ button, confirms the filled-heart state and a new **Favorites** entry, recalls that entry without executing it, then removes it and confirms the empty state. It repeats the save/remove flow through Cmd/Ctrl+K and verifies that whitespace-only SQL is rejected.
 
+The Quick Open smoke path opens Cmd/Ctrl+P or the Explorer search icon, confirms that favorites and recent queries are listed, filters by a SQL fragment, opens the matching entry with Enter, and verifies that the SQL is loaded without a new result execution. Escape and backdrop click must close Quick Open without changing the active SQL.
+
 The result-grid smoke path clicks a cell, Shift-clicks another cell, presses Cmd/Ctrl+C, and pastes into a spreadsheet or plain-text editor to verify rectangular TSV output. It repeats the check with a row-number selection and the **NULL** display toggle, then confirms Copy uses only the visible filtered/sorted rows when no range is selected.
 
 ## Local commands

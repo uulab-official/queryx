@@ -68,6 +68,14 @@ interface PaletteCommand {
   execute: () => void;
 }
 
+interface QuickOpenItem {
+  id: string;
+  label: string;
+  sql: string;
+  detail: string;
+  kind: "favorite" | "history";
+}
+
 function rangeBounds(first: number, second: number): [number, number] {
   return first <= second ? [first, second] : [second, first];
 }
@@ -153,6 +161,9 @@ function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [commandIndex, setCommandIndex] = useState(0);
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
+  const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [quickOpenIndex, setQuickOpenIndex] = useState(0);
   const [pendingSafety, setPendingSafety] = useState<{
     report: QuerySafetyReport;
     sql: string;
@@ -174,6 +185,35 @@ function App() {
       saved ? "Saved query to local favorites" : "Removed query from favorites",
     );
   };
+  const quickOpenItems = useMemo<QuickOpenItem[]>(() => {
+    const seen = new Set<string>();
+    const items: QuickOpenItem[] = [];
+    for (const favorite of favorites) {
+      const sqlKey = favorite.sql.trim();
+      if (seen.has(sqlKey)) continue;
+      seen.add(sqlKey);
+      items.push({
+        id: `favorite:${favorite.id}`,
+        label: favorite.label,
+        sql: favorite.sql,
+        detail: "Favorite · Saved locally",
+        kind: "favorite",
+      });
+    }
+    for (const entry of history) {
+      const sqlKey = entry.sql.trim();
+      if (seen.has(sqlKey)) continue;
+      seen.add(sqlKey);
+      items.push({
+        id: `history:${entry.id}`,
+        label: entry.label,
+        sql: entry.sql,
+        detail: `Recent · ${relativeTime(entry.executedAt)}`,
+        kind: "history",
+      });
+    }
+    return items;
+  }, [favorites, history]);
 
   useEffect(() => {
     if (initialized.current) return;
@@ -213,9 +253,32 @@ function App() {
     void runQuery("explain", explain.query.sql);
   };
   const openCommandPalette = () => {
+    setQuickOpenOpen(false);
     setCommandQuery("");
     setCommandIndex(0);
     setCommandPaletteOpen(true);
+  };
+  const openQuickOpen = () => {
+    setCommandPaletteOpen(false);
+    setQuickOpenQuery("");
+    setQuickOpenIndex(0);
+    setQuickOpenOpen(true);
+  };
+  const filteredQuickOpenItems = quickOpenItems.filter((item) =>
+    `${item.label} ${item.detail} ${item.sql}`
+      .toLowerCase()
+      .includes(quickOpenQuery.trim().toLowerCase()),
+  );
+  const executeQuickOpenItem = () => {
+    const item = filteredQuickOpenItems[quickOpenIndex];
+    if (!item) return;
+    setQuickOpenOpen(false);
+    setSql(item.sql);
+    notify(
+      item.kind === "favorite"
+        ? "Opened favorite without executing"
+        : "Opened recent query without executing",
+    );
   };
   const requestCloseQuery = (id: string) => {
     const tab = tabs.find((candidate) => candidate.id === id);
@@ -252,6 +315,10 @@ function App() {
         event.preventDefault();
         openCommandPalette();
       }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault();
+        openQuickOpen();
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "t") {
         event.preventDefault();
         newQuery();
@@ -265,8 +332,8 @@ function App() {
         cancelQuery();
       }
     };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
+    window.addEventListener("keydown", listener, true);
+    return () => window.removeEventListener("keydown", listener, true);
   });
 
   const tables = metadata?.tables ?? [];
@@ -674,6 +741,12 @@ function App() {
       execute: handleToggleFavorite,
     },
     {
+      id: "quick-open",
+      label: "Quick Open query",
+      hint: "⌘P",
+      execute: openQuickOpen,
+    },
+    {
       id: "new-query",
       label: "New query tab",
       hint: "⌘T",
@@ -762,7 +835,12 @@ function App() {
           <button type="button" className="activity-icon active">
             <Icon>◈</Icon>
           </button>
-          <button type="button" className="activity-icon">
+          <button
+            type="button"
+            className="activity-icon"
+            aria-label="Open Quick Open"
+            onClick={openQuickOpen}
+          >
             <Icon>⌕</Icon>
           </button>
           <button type="button" className="activity-icon">
@@ -1517,6 +1595,20 @@ function App() {
           onClose={() => setCommandPaletteOpen(false)}
         />
       )}
+      {quickOpenOpen && (
+        <QuickOpenDialog
+          query={quickOpenQuery}
+          items={filteredQuickOpenItems}
+          selectedIndex={quickOpenIndex}
+          onQueryChange={(value) => {
+            setQuickOpenQuery(value);
+            setQuickOpenIndex(0);
+          }}
+          onSelectedIndexChange={setQuickOpenIndex}
+          onExecute={executeQuickOpenItem}
+          onClose={() => setQuickOpenOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1614,6 +1706,113 @@ function CommandPalette({
         <div className="command-palette-footer">
           <span>↑↓ Navigate</span>
           <span>↵ Run</span>
+          <span>ESC Close</span>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function QuickOpenDialog({
+  query,
+  items,
+  selectedIndex,
+  onQueryChange,
+  onSelectedIndexChange,
+  onExecute,
+  onClose,
+}: {
+  query: string;
+  items: QuickOpenItem[];
+  selectedIndex: number;
+  onQueryChange: (value: string) => void;
+  onSelectedIndexChange: (index: number) => void;
+  onExecute: () => void;
+  onClose: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+  const moveSelection = (direction: 1 | -1) => {
+    if (items.length === 0) return;
+    onSelectedIndexChange(
+      (selectedIndex + direction + items.length) % items.length,
+    );
+  };
+
+  return (
+    <div
+      className="modal-backdrop quick-open-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <dialog
+        open
+        className="quick-open"
+        aria-labelledby="quick-open-title"
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose();
+          } else if (event.key === "ArrowDown") {
+            event.preventDefault();
+            moveSelection(1);
+          } else if (event.key === "ArrowUp") {
+            event.preventDefault();
+            moveSelection(-1);
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            onExecute();
+          }
+        }}
+      >
+        <div className="command-palette-search">
+          <span aria-hidden="true">⌕</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="Search queries, SQL, or favorites…"
+            aria-label="Search queries"
+          />
+          <kbd>ESC</kbd>
+        </div>
+        <div className="command-palette-heading" id="quick-open-title">
+          QUICK OPEN · {items.length} QUERIES
+        </div>
+        <div className="quick-open-list" aria-label="Saved and recent queries">
+          {items.length === 0 ? (
+            <div className="command-empty">
+              No matching queries. Run or save a query to find it here.
+            </div>
+          ) : (
+            items.map((item, index) => (
+              <button
+                type="button"
+                className={`quick-open-item ${index === selectedIndex ? "selected" : ""}`}
+                aria-current={index === selectedIndex ? "true" : undefined}
+                key={item.id}
+                onMouseEnter={() => onSelectedIndexChange(index)}
+                onClick={onExecute}
+              >
+                <span className="quick-open-icon" aria-hidden="true">
+                  {item.kind === "favorite" ? "♥" : "◷"}
+                </span>
+                <span className="quick-open-copy">
+                  <strong>{item.label}</strong>
+                  <small>{item.detail}</small>
+                </span>
+                <code>{item.sql.split("\n")[0].slice(0, 42)}</code>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="command-palette-footer">
+          <span>↑↓ Navigate</span>
+          <span>↵ Open</span>
           <span>ESC Close</span>
         </div>
       </dialog>

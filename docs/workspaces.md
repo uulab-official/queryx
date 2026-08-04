@@ -2,7 +2,7 @@
 
 ## What it does
 
-QueryX keeps the everyday query workflow close to the user: query history and favorites are available in the Explorer sidebar, and saved SQL can be recalled into the active tab without executing it.
+QueryX keeps the everyday query workflow close to the user: query history and favorites are available in the Explorer sidebar, and saved SQL can be recalled into the active tab without executing it. **Quick Open** searches both collections from Cmd/Ctrl+P.
 
 ## Before you start
 
@@ -15,6 +15,8 @@ The current alpha stores history and favorites in browser-local storage for the 
 3. Reopen it from **Favorites** in the Explorer. QueryX replaces the active tab text but never runs the saved SQL automatically.
 4. Click the filled heart again, or use Cmd/Ctrl+K → **Remove favorite**, to remove it.
 
+For a larger workspace, press Cmd/Ctrl+P or click the Explorer search icon. Type part of a query label, SQL statement, or “favorite”/“recent” to narrow the list, then press Enter to load the selected query.
+
 Favorites are deduplicated by normalized SQL text and capped at 50 entries. Labels are generated from the first non-comment line; SQL comments and the query body remain unchanged.
 
 ## Options and behavior
@@ -22,8 +24,9 @@ Favorites are deduplicated by normalized SQL text and capped at 50 entries. Labe
 - Recent history keeps the latest 20 distinct SQL statements and records execution status.
 - Favorites keep the latest saved statements and their local creation time.
 - Cmd/Ctrl+K includes **Save favorite** or **Remove favorite** for the active document.
+- Cmd/Ctrl+P opens Quick Open; it merges favorites first and then distinct recent queries, de-duplicated by SQL text.
 - Recalling a favorite marks the active tab dirty so the user can review the change before running it.
-- The sidebar shows the first three favorites and recent entries; the stored list remains available to the store for the upcoming Quick Open workflow.
+- The sidebar shows the first three favorites and recent entries; Quick Open searches the full stored lists.
 
 ## Safety and privacy
 
