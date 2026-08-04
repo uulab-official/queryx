@@ -1,6 +1,6 @@
 # Results and CSV Export
 
-QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. The current alpha renders all returned rows in memory.
+QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. The current alpha loads returned rows in memory and displays them in local pages of up to 100 rows.
 
 ## Table and JSON views
 
@@ -9,17 +9,17 @@ QueryX normalizes driver output into ordered columns, rows, execution time, affe
 - The filter matches a case-insensitive string representation across each row.
 - Selecting a column header toggles local ascending/descending sorting.
 
-Filtering and sorting do not run another database query. They affect only the loaded result in the desktop UI.
+Filtering and sorting do not run another database query. They affect only the loaded result in the desktop UI, reset to the first page, and keep page navigation local.
 
 ## Copy and NULL display
 
-Click a cell and Shift-click another cell to select a rectangular range. Click row numbers to select complete visible rows, then use Cmd/Ctrl+C or **Copy**. With no selection, **Copy** includes headers and copies the currently filtered/sorted rows. The shared clipboard serializer emits spreadsheet-safe TSV and quotes cells containing tabs, quotes, or line breaks.
+Click a cell and Shift-click another cell to select a rectangular range. Click row numbers to select complete visible rows, then use Cmd/Ctrl+C or **Copy**. With no selection, **Copy** includes headers and copies the current filtered/sorted page. The shared clipboard serializer emits spreadsheet-safe TSV and quotes cells containing tabs, quotes, or line breaks.
 
 The **NULL** button toggles between a visible `NULL` literal and a blank display. Copy follows that choice; CSV export keeps SQL NULL as an empty field so exported files remain compatible with the existing CSV contract.
 
 ## Export CSV
 
-Choose **Export** after a query returns columns. QueryX exports the rows currently visible after local filtering and sorting, in the displayed column order.
+Choose **Export** after a query returns columns. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; pagination only limits what is rendered at once.
 
 In the native app, a save dialog asks for an explicit `.csv` path. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
 
@@ -36,7 +36,7 @@ Formula protection changes the exported representation of affected text cells in
 
 ## Large results
 
-The alpha does not stream or virtualize results. Add a LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, server paging, progress, and cancellation are v0.2 roadmap items.
+The alpha does not stream or virtualize results. Client-side pages keep the result grid responsive for moderate result sets, but all rows still occupy memory. Add a LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, server paging, progress, and cancellation are v0.2 roadmap items.
 
 ## Recovery
 

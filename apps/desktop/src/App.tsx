@@ -46,6 +46,7 @@ const MonacoSqlEditor = lazy(async () => {
 
 const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
 let nextResultRowKey = 0;
+const resultPageSize = 100;
 
 function resultRowKey(row: Record<string, unknown>): string {
   const existing = resultRowKeys.get(row);
@@ -78,6 +79,15 @@ interface QuickOpenItem {
 
 function rangeBounds(first: number, second: number): [number, number] {
   return first <= second ? [first, second] : [second, first];
+}
+
+function pageWindow(page: number, pageCount: number): number[] {
+  const visiblePageCount = Math.min(5, pageCount);
+  const start = Math.min(
+    Math.max(0, page - 2),
+    Math.max(0, pageCount - visiblePageCount),
+  );
+  return Array.from({ length: visiblePageCount }, (_, index) => start + index);
 }
 
 function isCellInSelection(
@@ -154,6 +164,7 @@ function App() {
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+  const [resultPage, setResultPage] = useState(0);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
   );
@@ -484,7 +495,7 @@ function App() {
       })),
     ];
   }, [metadata]);
-  const visibleRows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     if (!result) return [];
     const query = filter.trim().toLowerCase();
     const rows = result.rows.filter((row) =>
@@ -500,8 +511,30 @@ function App() {
       );
     });
   }, [filter, result, sortBy, sortDirection]);
+  const resultPageCount = Math.max(
+    1,
+    Math.ceil(filteredRows.length / resultPageSize),
+  );
+  const visibleRows = useMemo(
+    () =>
+      filteredRows.slice(
+        resultPage * resultPageSize,
+        (resultPage + 1) * resultPageSize,
+      ),
+    [filteredRows, resultPage],
+  );
+  useEffect(() => {
+    setResultPage((page) => Math.min(page, resultPageCount - 1));
+  }, [resultPageCount]);
+  useEffect(() => {
+    if (executionStatus !== "idle") {
+      setResultPage(0);
+      setGridSelection(null);
+    }
+  }, [executionStatus]);
   const updateFilter = (value: string) => {
     setGridSelection(null);
+    setResultPage(0);
     setFilter(value);
   };
   const selectRelatedTable = (relation: RelationRef) => {
@@ -602,6 +635,7 @@ function App() {
 
   const sort = (key: string) => {
     setGridSelection(null);
+    setResultPage(0);
     if (key === sortBy)
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     else {
@@ -627,11 +661,11 @@ function App() {
       .slice(0, 19);
     try {
       const outcome = await saveCsvFile(
-        serializeRowsToCsv(result.columns, visibleRows),
+        serializeRowsToCsv(result.columns, filteredRows),
         `queryx-results-${timestamp}.csv`,
       );
       if (outcome === "saved")
-        notify(`Exported ${visibleRows.length.toLocaleString()} rows locally`);
+        notify(`Exported ${filteredRows.length.toLocaleString()} rows locally`);
     } catch (error) {
       notify(
         `CSV export failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -1368,7 +1402,7 @@ function App() {
           <section className="results-pane">
             <div className="results-heading">
               <div className="result-title">
-                <span>⌄</span> Results <small>{visibleRows.length} rows</small>
+                <span>⌄</span> Results <small>{filteredRows.length} rows</small>
                 <em>· {result?.executionTime ?? 0}ms</em>
               </div>
               <div className="result-actions">
@@ -1415,6 +1449,7 @@ function App() {
                   type="button"
                   onClick={() => void exportResults()}
                   disabled={!result || result.columns.length === 0}
+                  title="Export all filtered and sorted rows"
                 >
                   ⇩ Export
                 </button>
@@ -1541,9 +1576,63 @@ function App() {
               </pre>
             )}
             <div className="pagination">
-              Showing <strong>{visibleRows.length}</strong> rows
+              {filteredRows.length === 0 ? (
+                "No rows"
+              ) : (
+                <>
+                  Showing{" "}
+                  <strong>
+                    {resultPage * resultPageSize + 1}–
+                    {resultPage * resultPageSize + visibleRows.length}
+                  </strong>{" "}
+                  of <strong>{filteredRows.length}</strong> rows
+                </>
+              )}
               {filter && <span> matching “{filter}”</span>}
               <span className="footer-spacer" />
+              {resultPageCount > 1 && (
+                <div aria-label="Result pages">
+                  <button
+                    type="button"
+                    aria-label="Previous result page"
+                    onClick={() => {
+                      setResultPage((page) => Math.max(0, page - 1));
+                      setGridSelection(null);
+                    }}
+                    disabled={resultPage === 0}
+                  >
+                    ‹
+                  </button>
+                  {pageWindow(resultPage, resultPageCount).map((page) => (
+                    <button
+                      type="button"
+                      key={page}
+                      className={page === resultPage ? "active" : ""}
+                      aria-label={`Result page ${page + 1}`}
+                      aria-current={page === resultPage ? "page" : undefined}
+                      onClick={() => {
+                        setResultPage(page);
+                        setGridSelection(null);
+                      }}
+                    >
+                      {page + 1}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    aria-label="Next result page"
+                    onClick={() => {
+                      setResultPage((page) =>
+                        Math.min(resultPageCount - 1, page + 1),
+                      );
+                      setGridSelection(null);
+                    }}
+                    disabled={resultPage === resultPageCount - 1}
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
               Result data stays on this device
             </div>
           </section>

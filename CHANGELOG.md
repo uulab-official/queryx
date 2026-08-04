@@ -39,6 +39,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Browser-local query workspace recovery for up to 20 tabs, active-tab selection, dirty state, and SQL text after reload.
 - Honest Safe Mode impact messaging without fabricated affected-row estimates, plus a confirmed local-history clear action and truthful empty history state.
 - Functional Inspector close control, modal Escape handling, and accessible labels for primary navigation actions.
+- Client-side result pagination with 100-row pages, filter/sort page reset, page-aware clipboard copy, and full filtered-result CSV export.
 
 ## [0.1.0] — 2026-08-03
 
