@@ -1,6 +1,6 @@
 # Results and CSV Export
 
-QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. The current alpha loads returned rows in memory and displays them in local pages of up to 100 rows.
+QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. The current alpha loads returned rows in memory. Smaller results use local pages of up to 100 rows; larger loaded results use a virtualized table window so only the rows near the viewport are mounted.
 
 ## Table and JSON views
 
@@ -15,7 +15,7 @@ Filtering and sorting do not run another database query. They affect only the lo
 
 ## Copy and NULL display
 
-Click a cell and Shift-click another cell to select a rectangular range. Click row numbers to select complete visible rows, then use Cmd/Ctrl+C or **Copy**. With no selection, **Copy** includes headers and copies the current filtered/sorted page. The shared clipboard serializer emits spreadsheet-safe TSV and quotes cells containing tabs, quotes, or line breaks.
+Click a cell and Shift-click another cell to select a rectangular range. Click row numbers to select complete visible rows, then use Cmd/Ctrl+C or **Copy**. With no selection, **Copy** includes headers and copies the current filtered/sorted page; in virtualized mode it copies all loaded filtered/sorted rows. The shared clipboard serializer emits spreadsheet-safe TSV and quotes cells containing tabs, quotes, or line breaks.
 
 The **NULL** button toggles between a visible `NULL` literal and a blank display. Copy follows that choice; CSV export keeps SQL NULL as an empty field so exported files remain compatible with the existing CSV contract.
 
@@ -50,7 +50,9 @@ Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` s
 
 ## Large results
 
-The table browser can fetch another 100 rows with **Load next 100**. For keyed tables, each page uses a deterministic primary-key `ORDER BY` with `LIMIT/OFFSET`, and newly loaded rows stay in the local result. This is incremental fetch, not a virtualized grid: all loaded rows still occupy memory and arbitrary SQL results are not automatically paged. Add a narrower LIMIT clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, full server paging, progress, and cancellation remain roadmap items.
+The table browser can fetch another 100 rows with **Load next 100**. For keyed tables, each page uses a deterministic primary-key `ORDER BY` with `LIMIT/OFFSET`, and newly loaded rows stay in the local result. Once the loaded set grows beyond 200 rows, the grid switches to bounded row rendering with overscan and scroll spacers; the footer marks this mode as **virtualized**. Selection and copy continue to use logical row positions, while export still operates on all loaded, filtered, and sorted rows.
+
+Virtualization reduces DOM work but does not reduce memory use: arbitrary SQL results are not automatically paged, and all loaded rows remain available for filtering and export. Add a narrower `LIMIT` clause when querying large tables and avoid exporting more data than the machine can comfortably hold in memory. Streaming, full server paging, progress, and cancellation remain roadmap items.
 
 ## Recovery
 

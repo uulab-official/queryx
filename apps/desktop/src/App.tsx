@@ -49,6 +49,7 @@ import type {
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
 import { saveTextFile } from "./exportCsv";
+import { getVirtualRowWindow } from "./resultGrid";
 import {
   useQueryStore,
   type ConnectionProfileDraft,
@@ -443,6 +444,8 @@ function App() {
   const [gridSelection, setGridSelection] = useState<GridSelection | null>(
     null,
   );
+  const [gridScrollTop, setGridScrollTop] = useState(0);
+  const [gridViewportHeight, setGridViewportHeight] = useState(480);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [commandIndex, setCommandIndex] = useState(0);
@@ -824,6 +827,22 @@ function App() {
       ),
     [filteredRows, resultPage],
   );
+  const virtualRowWindow = useMemo(
+    () =>
+      getVirtualRowWindow(
+        filteredRows.length,
+        gridScrollTop,
+        gridViewportHeight,
+      ),
+    [filteredRows.length, gridScrollTop, gridViewportHeight],
+  );
+  const gridRows = virtualRowWindow.enabled ? filteredRows : visibleRows;
+  const gridRowOffset = virtualRowWindow.enabled
+    ? virtualRowWindow.start
+    : resultPage * resultPageSize;
+  const renderedRows = virtualRowWindow.enabled
+    ? filteredRows.slice(virtualRowWindow.start, virtualRowWindow.end)
+    : visibleRows;
   const primaryKeyColumns = useMemo(
     () => currentTable?.columns.filter((column) => column.primaryKey) ?? [],
     [currentTable],
@@ -1022,6 +1041,7 @@ function App() {
     if (executionStatus !== "idle") {
       setResultPage(0);
       setGridSelection(null);
+      setGridScrollTop(0);
     }
   }, [executionStatus]);
   useEffect(() => {
@@ -1048,6 +1068,7 @@ function App() {
   const updateFilter = (value: string) => {
     setGridSelection(null);
     setResultPage(0);
+    setGridScrollTop(0);
     setFilter(value);
   };
   const selectRelatedTable = (relation: RelationRef) => {
@@ -1149,6 +1170,7 @@ function App() {
   const sort = (key: string) => {
     setGridSelection(null);
     setResultPage(0);
+    setGridScrollTop(0);
     if (key === sortBy)
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     else {
@@ -1296,7 +1318,7 @@ function App() {
   ): string | null => {
     if (!result || result.columns.length === 0) return null;
     if (!selection) {
-      return serializeRowsToTsv(result.columns, visibleRows, {
+      return serializeRowsToTsv(result.columns, gridRows, {
         includeHeaders,
         nullValue: nullDisplay === "literal" ? "NULL" : "",
       });
@@ -1305,7 +1327,7 @@ function App() {
       const [startRow, endRow] = rangeBounds(selection.anchor, selection.focus);
       return serializeRowsToTsv(
         result.columns,
-        visibleRows.slice(startRow, endRow + 1),
+        gridRows.slice(startRow - gridRowOffset, endRow - gridRowOffset + 1),
         { nullValue: nullDisplay === "literal" ? "NULL" : "" },
       );
     }
@@ -1319,7 +1341,7 @@ function App() {
     );
     return serializeRowsToTsv(
       result.columns.slice(startColumn, endColumn + 1),
-      visibleRows.slice(startRow, endRow + 1),
+      gridRows.slice(startRow - gridRowOffset, endRow - gridRowOffset + 1),
       { nullValue: nullDisplay === "literal" ? "NULL" : "" },
     );
   };
@@ -1336,7 +1358,9 @@ function App() {
       notify(
         hasSelection
           ? "Copied selected result range"
-          : "Copied visible results",
+          : virtualRowWindow.enabled
+            ? "Copied loaded results"
+            : "Copied visible results",
       );
     } catch {
       notify("Could not copy result data");
@@ -2189,6 +2213,10 @@ function App() {
             {resultView === "table" ? (
               <div
                 className="grid-wrap"
+                onScroll={(event) => {
+                  setGridScrollTop(event.currentTarget.scrollTop);
+                  setGridViewportHeight(event.currentTarget.clientHeight);
+                }}
                 aria-label="Query result grid. Click cells or row numbers, then use Shift-click or Command/Ctrl+C to copy a range."
               >
                 <table onCopy={handleGridCopy}>
@@ -2240,7 +2268,16 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.map((row, rowIndex) => {
+                    {virtualRowWindow.enabled && (
+                      <tr className="virtual-spacer">
+                        <td
+                          colSpan={(result?.columns.length ?? 0) + 1}
+                          style={{ height: virtualRowWindow.topSpacerHeight }}
+                        />
+                      </tr>
+                    )}
+                    {renderedRows.map((row, renderedRowIndex) => {
+                      const rowIndex = gridRowOffset + renderedRowIndex;
                       const rowKey = resultRowKey(row);
                       return (
                         <tr key={rowKey}>
@@ -2318,6 +2355,16 @@ function App() {
                         </tr>
                       );
                     })}
+                    {virtualRowWindow.enabled && (
+                      <tr className="virtual-spacer">
+                        <td
+                          colSpan={(result?.columns.length ?? 0) + 1}
+                          style={{
+                            height: virtualRowWindow.bottomSpacerHeight,
+                          }}
+                        />
+                      </tr>
+                    )}
                   </tbody>
                 </table>
                 {result && result.columns.length === 0 && (
@@ -2339,15 +2386,19 @@ function App() {
                 <>
                   Showing{" "}
                   <strong>
-                    {resultPage * resultPageSize + 1}–
-                    {resultPage * resultPageSize + visibleRows.length}
+                    {virtualRowWindow.enabled
+                      ? `1–${filteredRows.length}`
+                      : `${resultPage * resultPageSize + 1}–${resultPage * resultPageSize + visibleRows.length}`}
                   </strong>{" "}
                   of <strong>{filteredRows.length}</strong> rows
                 </>
               )}
               {filter && <span> matching “{filter}”</span>}
+              {virtualRowWindow.enabled && (
+                <span className="virtualized-hint">virtualized</span>
+              )}
               <span className="footer-spacer" />
-              {resultPageCount > 1 && (
+              {!virtualRowWindow.enabled && resultPageCount > 1 && (
                 <div aria-label="Result pages">
                   <button
                     type="button"

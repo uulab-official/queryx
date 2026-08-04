@@ -27,7 +27,7 @@ The program is split into independent release tracks. Each track must be usable 
 4. **Database breadth (v0.5):** MySQL/MariaDB, Oracle, SQL Server, SSH tunnels, PostgreSQL certificates, capability matrix, and driver contract suites.
 5. **Operational IDE (v0.6+):** session/lock explorer, query plans, diagnostics, crash recovery, accessibility audit, plugin boundary, signed installers, and release support policy.
 
-The first track is the current implementation target. The remaining tracks are intentionally listed as separate deliverables so one green UI panel cannot be mistaken for product parity.
+The safe-operations track is implemented and verified. The large-data track is now active; the remaining tracks are intentionally listed as separate deliverables so one green UI panel cannot be mistaken for product parity.
 
 ---
 
@@ -198,6 +198,23 @@ Run: `pnpm format:check && pnpm verify`
 git add README.md ROADMAP.md docs/README.md docs/parity-matrix.md docs/decisions/ADR-0014-database-ide-parity-gates.md
 git commit -m "docs: add database ide parity gates"
 ```
+
+### Task 5: Ship the first large-data grid slice
+
+**Files:**
+- Create: `apps/desktop/src/resultGrid.ts`
+- Test: `apps/desktop/src/resultGrid.test.ts`
+- Modify: `apps/desktop/src/App.tsx`
+- Modify: `apps/desktop/src/styles.css`
+- Modify: `docs/results.md`
+- Modify: `ROADMAP.md`
+- Modify: `CHANGELOG.md`
+
+- [x] Add a bounded virtual row window with overscan and top/bottom scroll spacers.
+- [x] Preserve global logical row indices for selection and clipboard ranges while only mounting rows near the viewport.
+- [x] Keep arbitrary-query results honest: virtualization reduces DOM work, but loaded rows remain in memory and server paging remains planned.
+- [x] Add deterministic boundary tests for small sets, large-set windows, and end-of-list clamping.
+- [ ] Add streamed driver cursors, progress/cancellation telemetry, and arbitrary-query server paging in the next large-data slices.
 
 ## Final verification for this plan
 
