@@ -9,6 +9,7 @@ import {
   type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -120,11 +121,106 @@ function isCellInSelection(
   );
 }
 
-function Icon({ children }: { children: string }) {
+type UiIconName =
+  | "explorer"
+  | "search"
+  | "commands"
+  | "connections"
+  | "help"
+  | "refresh"
+  | "settings"
+  | "update";
+
+function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
+  const paths: Record<UiIconName, ReactNode> = {
+    explorer: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="4" />
+        <path d="M3 9h18M9 9v12M15 9v12" />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="10.5" cy="10.5" r="6.5" />
+        <path d="m16 16 5 5" />
+      </>
+    ),
+    commands: (
+      <>
+        <path d="m8 7 5 5-5 5M15 17h4" />
+        <path d="M4 4h16v16H4z" opacity="0.35" />
+      </>
+    ),
+    connections: (
+      <>
+        <path d="M8 3v6M16 3v6M5 9h14v3a7 7 0 0 1-14 0V9Z" />
+        <path d="M12 19v2M9 21h6" />
+      </>
+    ),
+    help: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.7 9a2.5 2.5 0 1 1 4 2c-1.2.8-1.7 1.3-1.7 2.5M12 17h.01" />
+      </>
+    ),
+    refresh: (
+      <>
+        <path d="M20 11a8 8 0 0 0-14.7-3L4 10" />
+        <path d="M4 5v5h5M4 13a8 8 0 0 0 14.7 3L20 14" />
+        <path d="M20 19v-5h-5" />
+      </>
+    ),
+    settings: (
+      <>
+        <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
+        <circle cx="16" cy="7" r="2" />
+        <circle cx="8" cy="17" r="2" />
+      </>
+    ),
+    update: (
+      <>
+        <path d="M12 4v12M7 9l5-5 5 5M5 20h14" />
+      </>
+    ),
+  };
   return (
-    <span className="icon" aria-hidden="true">
-      {children}
-    </span>
+    <svg
+      className="ui-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {paths[name]}
+    </svg>
+  );
+}
+
+function QueryXMark({ size = 26 }: { size?: number }) {
+  return (
+    <svg
+      className="brand-svg"
+      width={size}
+      height={size}
+      viewBox="0 0 32 32"
+      fill="none"
+      aria-hidden="true"
+    >
+      <rect width="32" height="32" rx="9" fill="#E2FF67" />
+      <circle cx="14" cy="14" r="7" stroke="#0B0D10" strokeWidth="3" />
+      <path
+        d="m19 19 6 6"
+        stroke="#6EA8FF"
+        strokeWidth="3"
+        strokeLinecap="round"
+      />
+      <circle cx="14" cy="14" r="1.5" fill="#0B0D10" />
+    </svg>
   );
 }
 
@@ -225,7 +321,7 @@ function UpdateButton({ onNotify }: { onNotify: (message: string) => void }) {
       }
       disabled={checking || installing}
     >
-      {installing ? "↻" : update ? "↑" : "↻"}
+      <UiIcon name={update ? "update" : "refresh"} size={15} />
     </button>
   );
 }
@@ -956,7 +1052,9 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark">Q</span>
+          <span className="brand-mark">
+            <QueryXMark />
+          </span>
           <strong>
             Query<span>X</span>
           </strong>
@@ -987,7 +1085,7 @@ function App() {
             title="Open settings"
             onClick={() => notify("Settings are stored locally")}
           >
-            ⚙
+            <UiIcon name="settings" size={16} />
           </button>
           <span className="avatar">JD</span>
         </div>
@@ -1000,7 +1098,7 @@ function App() {
             aria-label="Open Explorer"
             title="Explorer"
           >
-            <Icon>◈</Icon>
+            <UiIcon name="explorer" size={17} />
           </button>
           <button
             type="button"
@@ -1008,7 +1106,7 @@ function App() {
             aria-label="Open Quick Open"
             onClick={openQuickOpen}
           >
-            <Icon>⌕</Icon>
+            <UiIcon name="search" size={17} />
           </button>
           <button
             type="button"
@@ -1017,7 +1115,7 @@ function App() {
             title="Command palette"
             onClick={openCommandPalette}
           >
-            <Icon>⌘</Icon>
+            <UiIcon name="commands" size={17} />
           </button>
           <button
             type="button"
@@ -1026,7 +1124,7 @@ function App() {
             title="Connection manager"
             onClick={() => setConnectionOpen(true)}
           >
-            <Icon>⊞</Icon>
+            <UiIcon name="connections" size={17} />
           </button>
           <div className="activity-spacer" />
           <button
@@ -1036,7 +1134,7 @@ function App() {
             title="Help"
             onClick={() => notify("See the QueryX documentation for help")}
           >
-            <Icon>?</Icon>
+            <UiIcon name="help" size={17} />
           </button>
         </aside>
         <aside className="sidebar">

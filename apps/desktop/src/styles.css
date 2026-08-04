@@ -64,15 +64,19 @@ button:disabled {
   min-width: 235px;
 }
 .brand-mark {
-  width: 25px;
-  height: 25px;
+  width: 26px;
+  height: 26px;
   display: grid;
   place-items: center;
-  border-radius: 7px;
-  transform: rotate(-5deg);
-  background: var(--lime);
-  color: #0b0d10;
-  font-weight: 900;
+  flex: 0 0 auto;
+}
+.brand-svg {
+  display: block;
+  filter: drop-shadow(0 3px 8px rgba(226, 255, 103, 0.12));
+}
+.ui-icon {
+  display: block;
+  flex: 0 0 auto;
 }
 .brand strong {
   font-size: 15px;
@@ -135,6 +139,14 @@ button:disabled {
   cursor: wait;
   opacity: 0.75;
 }
+.update-button:disabled .ui-icon {
+  animation: icon-spin 1s linear infinite;
+}
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .avatar {
   width: 27px;
   height: 27px;
@@ -170,6 +182,8 @@ button:disabled {
   border-radius: 7px;
   background: transparent;
   color: #66707e;
+  display: grid;
+  place-items: center;
   font-size: 19px;
 }
 .activity-icon:hover {
