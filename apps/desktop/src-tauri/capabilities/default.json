@@ -6,6 +6,8 @@
   "permissions": [
     "core:default",
     "dialog:allow-save",
+    "fs:allow-read-text-file",
+    "fs:allow-mkdir",
     "fs:allow-write-text-file",
     "process:default",
     "updater:default"

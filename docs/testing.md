@@ -57,6 +57,7 @@ The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES
 Every driver must test:
 
 - connect success and actionable connection failure
+- connection-manager profile save, duplicate, delete, isolated test, and reconnect flow; assert password fields are absent from persisted profile data
 - execute success with normalized columns and rows
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior

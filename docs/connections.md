@@ -12,7 +12,7 @@ The native QueryX desktop app can connect directly to SQLite files and PostgreSQ
 
 ## Quick start
 
-For PostgreSQL, select the driver and enter a connection name, host, port, database, username, optional password, and SSL mode. Choose **Connect**. QueryX validates the connection, loads accessible schemas and tables, and then switches the editor to the new native connection.
+For PostgreSQL, select the driver and enter a connection name, host, port, database, username, optional password, and SSL mode. Choose **Test connection** to open a temporary driver, load metadata, and close it without replacing the active connection. Choose **Connect** after the test passes to switch the editor to the new native connection.
 
 For SQLite, select SQLite and enter `:memory:` for a temporary database or an absolute database file path.
 
@@ -22,13 +22,15 @@ For SQLite, select SQLite and enter `:memory:` for a temporary database or an ab
 - `Require` requires an encrypted PostgreSQL connection.
 - `Disable` is intended for trusted local development servers.
 - The prior connection stays active until the replacement connection and its metadata both load successfully.
+- **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
+- On native desktop, profiles are stored in the QueryX app-local data directory. The browser preview uses localStorage as a development fallback.
 - PostgreSQL and SQLite return the same result and metadata shapes to the UI.
 
 ## Safety and privacy
 
 Connections go directly from the local Tauri process to the selected database. QueryX has no relay server and does not send connection data to a QueryX service. Passwords are held only long enough to create the current in-memory SQLx pool; they are not written to localStorage, SQLite, workspace files, history, logs, or connection summaries.
 
-Saved profiles and OS keychain storage are not implemented yet. Re-enter credentials after restarting QueryX.
+Saved profiles never contain passwords. Re-enter the password when connecting after restarting QueryX; OS keychain integration is still a v0.2 security milestone.
 
 ## Troubleshooting
 
@@ -36,6 +38,7 @@ Saved profiles and OS keychain storage are not implemented yet. Re-enter credent
 - Authentication failures should be resolved by checking the username, password, database access rule, and server authentication configuration.
 - If TLS negotiation fails on a local test server, use `Disable`; keep `Require` for production networks where encryption is mandatory.
 - QueryX keeps the current connection when a replacement connection fails, so you can correct the fields and retry.
+- A successful connection test does not change the active connection. This makes it safe to validate credentials or a copied environment profile before switching workspaces.
 
 ## Related
 

@@ -203,6 +203,21 @@ export interface DriverConfig {
   sslMode?: "disable" | "prefer" | "require";
 }
 
+/**
+ * A reusable connection profile. Secrets are intentionally not part of this
+ * contract; passwords remain session-only until the OS keychain lands.
+ */
+export interface ConnectionProfile {
+  id: string;
+  name: string;
+  kind: DriverKind;
+  database: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  sslMode?: "disable" | "prefer" | "require";
+}
+
 export interface DatabaseDriver {
   readonly kind: DriverKind;
   connect(config: DriverConfig): Promise<void>;

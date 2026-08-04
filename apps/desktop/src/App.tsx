@@ -35,6 +35,7 @@ import type {
   SqlRowUpdate,
 } from "@queryx/core";
 import type {
+  ConnectionProfile,
   DatabaseObjectRef,
   DependencyKind,
   DriverConfig,
@@ -48,7 +49,11 @@ import type {
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
 import { saveTextFile } from "./exportCsv";
-import { useQueryStore, type RunMode } from "./store";
+import {
+  useQueryStore,
+  type ConnectionProfileDraft,
+  type RunMode,
+} from "./store";
 
 const MonacoSqlEditor = lazy(async () => {
   const module = await import("./SqlEditor");
@@ -388,6 +393,8 @@ function App() {
     toast,
     history,
     favorites,
+    connectionProfiles,
+    connectionProfilesLoaded,
     workspaceRestored,
     driver,
     driverKind,
@@ -405,6 +412,11 @@ function App() {
     runQuery,
     cancelQuery,
     loadMetadata,
+    loadConnectionProfiles,
+    saveConnectionProfile,
+    deleteConnectionProfile,
+    duplicateConnectionProfile,
+    testDatabaseConnection,
     connectDatabase,
     notify,
     clearHistory,
@@ -505,8 +517,9 @@ function App() {
     if (initialized.current) return;
     initialized.current = true;
     void loadMetadata();
+    void loadConnectionProfiles();
     if (!workspaceRestored) void runQuery();
-  }, [loadMetadata, runQuery, workspaceRestored]);
+  }, [loadConnectionProfiles, loadMetadata, runQuery, workspaceRestored]);
   const handleRun = (mode: RunMode = "normal", sqlOverride?: string) => {
     if (pendingEditCount > 0) {
       notify("Review or discard staged row edits before running another query");
@@ -2471,8 +2484,14 @@ function App() {
         <ConnectionDialog
           error={connectionError}
           isConnecting={connectionStatus === "connecting"}
+          profiles={connectionProfiles}
+          profilesLoaded={connectionProfilesLoaded}
           onClose={() => setConnectionOpen(false)}
           onConnect={connectDatabase}
+          onDeleteProfile={deleteConnectionProfile}
+          onDuplicateProfile={duplicateConnectionProfile}
+          onSaveProfile={saveConnectionProfile}
+          onTestConnection={testDatabaseConnection}
         />
       )}
       {commandPaletteOpen && (
@@ -3003,13 +3022,27 @@ function SafeModeDialog({
 function ConnectionDialog({
   error,
   isConnecting,
+  profiles,
+  profilesLoaded,
   onClose,
   onConnect,
+  onDeleteProfile,
+  onDuplicateProfile,
+  onSaveProfile,
+  onTestConnection,
 }: {
   error: string | null;
   isConnecting: boolean;
+  profiles: ConnectionProfile[];
+  profilesLoaded: boolean;
   onClose: () => void;
   onConnect: (config: DriverConfig) => Promise<boolean>;
+  onDeleteProfile: (id: string) => Promise<void>;
+  onDuplicateProfile: (id: string) => Promise<ConnectionProfile | null>;
+  onSaveProfile: (draft: ConnectionProfileDraft) => Promise<ConnectionProfile>;
+  onTestConnection: (
+    config: DriverConfig,
+  ) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [kind, setKind] = useState<DriverKind>("postgres");
   const [name, setName] = useState("Local PostgreSQL");
@@ -3021,23 +3054,104 @@ function ConnectionDialog({
   const [sslMode, setSslMode] = useState<"disable" | "prefer" | "require">(
     "prefer",
   );
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [testStatus, setTestStatus] = useState<
+    "idle" | "testing" | "success" | "error"
+  >("idle");
+  const [testError, setTestError] = useState<string | null>(null);
+
+  const applyProfile = (profile: ConnectionProfile) => {
+    setActiveProfileId(profile.id);
+    setKind(profile.kind);
+    setName(profile.name);
+    setHost(profile.host ?? "localhost");
+    setPort(String(profile.port ?? (profile.kind === "postgres" ? 5432 : "")));
+    setDatabase(profile.database);
+    setUsername(profile.username ?? "postgres");
+    setPassword("");
+    setSslMode(profile.sslMode ?? "prefer");
+    setTestStatus("idle");
+    setTestError(null);
+  };
+
+  const startNewProfile = () => {
+    setActiveProfileId(null);
+    setKind("postgres");
+    setName("New PostgreSQL");
+    setHost("localhost");
+    setPort("5432");
+    setDatabase("postgres");
+    setUsername("postgres");
+    setPassword("");
+    setSslMode("prefer");
+    setTestStatus("idle");
+    setTestError(null);
+  };
+
+  const buildConfig = (): DriverConfig =>
+    kind === "sqlite"
+      ? { kind, name, database: database || ":memory:" }
+      : {
+          kind,
+          name,
+          database,
+          host,
+          port: Number(port),
+          username,
+          password: password || undefined,
+          sslMode,
+        };
+
+  const profileDraft = (): ConnectionProfileDraft => {
+    const config = buildConfig();
+    return {
+      id: activeProfileId ?? undefined,
+      kind: config.kind,
+      name: config.name,
+      database: config.database,
+      ...(config.host ? { host: config.host } : {}),
+      ...(config.port ? { port: config.port } : {}),
+      ...(config.username ? { username: config.username } : {}),
+      ...(config.sslMode ? { sslMode: config.sslMode } : {}),
+    };
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      const saved = await onSaveProfile(profileDraft());
+      setActiveProfileId(saved.id);
+      setTestStatus("idle");
+      setTestError(null);
+    } catch (saveError) {
+      setTestStatus("error");
+      setTestError(
+        saveError instanceof Error ? saveError.message : String(saveError),
+      );
+    }
+  };
+
+  const handleDeleteProfile = async (profile: ConnectionProfile) => {
+    if (!window.confirm(`Delete saved profile “${profile.name}”?`)) return;
+    await onDeleteProfile(profile.id);
+    if (activeProfileId === profile.id) startNewProfile();
+  };
+
+  const handleDuplicateProfile = async (profile: ConnectionProfile) => {
+    const duplicate = await onDuplicateProfile(profile.id);
+    if (duplicate) applyProfile(duplicate);
+  };
+
+  const handleTestConnection = async () => {
+    setTestStatus("testing");
+    setTestError(null);
+    const result = await onTestConnection(buildConfig());
+    setTestStatus(result.ok ? "success" : "error");
+    setTestError(result.error ?? null);
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const config: DriverConfig =
-      kind === "sqlite"
-        ? { kind, name, database: database || ":memory:" }
-        : {
-            kind,
-            name,
-            database,
-            host,
-            port: Number(port),
-            username,
-            password: password || undefined,
-            sslMode,
-          };
-    if (await onConnect(config)) onClose();
+    if (await onConnect(buildConfig())) onClose();
   };
 
   return (
@@ -3063,101 +3177,175 @@ function ConnectionDialog({
           </button>
         </div>
         <form onSubmit={submit}>
-          <div className="connection-grid">
-            <label>
-              <span>Driver</span>
-              <select
-                value={kind}
-                onChange={(event) => {
-                  const nextKind = event.target.value as DriverKind;
-                  setKind(nextKind);
-                  setDatabase(nextKind === "sqlite" ? ":memory:" : "postgres");
-                  setName(
-                    nextKind === "sqlite" ? "Local SQLite" : "Local PostgreSQL",
-                  );
-                }}
-              >
-                <option value="postgres">PostgreSQL</option>
-                <option value="sqlite">SQLite</option>
-              </select>
-            </label>
-            <label>
-              <span>Connection name</span>
-              <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                required
-              />
-            </label>
-            {kind === "postgres" && (
-              <>
+          <div className="connection-manager">
+            <aside
+              className="profile-list"
+              aria-label="Saved connection profiles"
+            >
+              <div className="profile-list-heading">
+                <span>SAVED PROFILES</span>
+                <button
+                  type="button"
+                  className="mini-button"
+                  onClick={startNewProfile}
+                >
+                  ＋
+                </button>
+              </div>
+              {!profilesLoaded ? (
+                <p className="profile-empty">Loading profiles…</p>
+              ) : profiles.length === 0 ? (
+                <p className="profile-empty">No saved profiles yet.</p>
+              ) : (
+                profiles.map((profile) => (
+                  <div className="profile-row" key={profile.id}>
+                    <button
+                      type="button"
+                      className={`profile-select ${activeProfileId === profile.id ? "active" : ""}`}
+                      onClick={() => applyProfile(profile)}
+                    >
+                      <span className="profile-kind">
+                        {profile.kind === "sqlite" ? "SQ" : "PG"}
+                      </span>
+                      <span>
+                        <strong>{profile.name}</strong>
+                        <small>{profile.database}</small>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="profile-action"
+                      aria-label={`Duplicate ${profile.name}`}
+                      onClick={() => void handleDuplicateProfile(profile)}
+                    >
+                      ⧉
+                    </button>
+                    <button
+                      type="button"
+                      className="profile-action danger"
+                      aria-label={`Delete ${profile.name}`}
+                      onClick={() => void handleDeleteProfile(profile)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))
+              )}
+            </aside>
+            <div className="connection-fields">
+              <div className="connection-grid">
                 <label>
-                  <span>Host</span>
-                  <input
-                    value={host}
-                    onChange={(event) => setHost(event.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Port</span>
-                  <input
-                    value={port}
-                    onChange={(event) => setPort(event.target.value)}
-                    inputMode="numeric"
-                    required
-                  />
-                </label>
-              </>
-            )}
-            <label className={kind === "sqlite" ? "full-field" : ""}>
-              <span>{kind === "sqlite" ? "Database path" : "Database"}</span>
-              <input
-                value={database}
-                onChange={(event) => setDatabase(event.target.value)}
-                required
-                placeholder={
-                  kind === "sqlite" ? "/path/to/database.sqlite" : "postgres"
-                }
-              />
-            </label>
-            {kind === "postgres" && (
-              <>
-                <label>
-                  <span>Username</span>
-                  <input
-                    value={username}
-                    onChange={(event) => setUsername(event.target.value)}
-                    autoComplete="username"
-                    required
-                  />
-                </label>
-                <label>
-                  <span>Password</span>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    autoComplete="current-password"
-                  />
-                </label>
-                <label>
-                  <span>SSL mode</span>
+                  <span>Driver</span>
                   <select
-                    value={sslMode}
-                    onChange={(event) =>
-                      setSslMode(event.target.value as typeof sslMode)
-                    }
+                    value={kind}
+                    onChange={(event) => {
+                      const nextKind = event.target.value as DriverKind;
+                      setActiveProfileId(null);
+                      setKind(nextKind);
+                      setDatabase(
+                        nextKind === "sqlite" ? ":memory:" : "postgres",
+                      );
+                      setName(
+                        nextKind === "sqlite"
+                          ? "Local SQLite"
+                          : "Local PostgreSQL",
+                      );
+                    }}
                   >
-                    <option value="prefer">Prefer</option>
-                    <option value="require">Require</option>
-                    <option value="disable">Disable</option>
+                    <option value="postgres">PostgreSQL</option>
+                    <option value="sqlite">SQLite</option>
                   </select>
                 </label>
-              </>
-            )}
+                <label>
+                  <span>Connection name</span>
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                  />
+                </label>
+                {kind === "postgres" && (
+                  <>
+                    <label>
+                      <span>Host</span>
+                      <input
+                        value={host}
+                        onChange={(event) => setHost(event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Port</span>
+                      <input
+                        value={port}
+                        onChange={(event) => setPort(event.target.value)}
+                        inputMode="numeric"
+                        required
+                      />
+                    </label>
+                  </>
+                )}
+                <label className={kind === "sqlite" ? "full-field" : ""}>
+                  <span>
+                    {kind === "sqlite" ? "Database path" : "Database"}
+                  </span>
+                  <input
+                    value={database}
+                    onChange={(event) => setDatabase(event.target.value)}
+                    required
+                    placeholder={
+                      kind === "sqlite"
+                        ? "/path/to/database.sqlite"
+                        : "postgres"
+                    }
+                  />
+                </label>
+                {kind === "postgres" && (
+                  <>
+                    <label>
+                      <span>Username</span>
+                      <input
+                        value={username}
+                        onChange={(event) => setUsername(event.target.value)}
+                        autoComplete="username"
+                        required
+                      />
+                    </label>
+                    <label>
+                      <span>Password</span>
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        autoComplete="current-password"
+                        placeholder="Enter for this session"
+                      />
+                    </label>
+                    <label>
+                      <span>SSL mode</span>
+                      <select
+                        value={sslMode}
+                        onChange={(event) =>
+                          setSslMode(event.target.value as typeof sslMode)
+                        }
+                      >
+                        <option value="prefer">Prefer</option>
+                        <option value="require">Require</option>
+                        <option value="disable">Disable</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+              </div>
+              {error && <p className="connection-error">{error}</p>}
+              {testStatus === "success" && (
+                <p className="connection-success">
+                  Connection test passed. Metadata loaded successfully.
+                </p>
+              )}
+              {testError && <p className="connection-error">{testError}</p>}
+            </div>
           </div>
-          {error && <p className="connection-error">{error}</p>}
           <div className="credential-note">
             <span>⌑</span>
             <p>
@@ -3169,6 +3357,22 @@ function ConnectionDialog({
             </p>
           </div>
           <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-secondary"
+              onClick={() => void handleTestConnection()}
+              disabled={testStatus === "testing" || isConnecting}
+            >
+              {testStatus === "testing" ? "Testing…" : "Test connection"}
+            </button>
+            <button
+              type="button"
+              className="modal-secondary"
+              onClick={() => void handleSaveProfile()}
+              disabled={!profilesLoaded || isConnecting}
+            >
+              Save profile
+            </button>
             <button type="button" className="modal-secondary" onClick={onClose}>
               Cancel
             </button>

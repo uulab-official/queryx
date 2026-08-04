@@ -34,7 +34,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 - UI state: tabs, editor text, selected database object, result view, filters, running status, toasts.
 - Driver state: connection lifecycle, query execution, metadata, transactions, capabilities.
-- Local persistence: connections without secrets, tabs, history, favorites, settings, workspace indexes. The browser preview currently provides best-effort tab/history/favorite storage; native Tauri SQLite workspace migrations remain a v0.2 boundary.
+- Local persistence: the native desktop stores secret-free connection profiles in app-local data; the browser preview stores the same profile shape in localStorage. Tabs, history, favorites, settings, and workspace indexes remain best-effort browser-local data until the native SQLite workspace migration.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 
 ## Editor boundary
@@ -53,8 +53,8 @@ PostgreSQL passwords cross only the local Tauri IPC boundary and remain in proce
 
 The next integration steps are:
 
-1. Add a native file picker and saved SQLite connection profiles.
-2. Store saved profile secrets in the OS keychain.
+1. Move tabs, history, favorites, and settings into a versioned native SQLite workspace store.
+2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
 3. Add long-query progress channels and timeout policies.
 4. Add MySQL through the same factory and contract suite.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to schema-aware DDL diffing and migration history. The current safe editor handoff is documented in [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).

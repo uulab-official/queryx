@@ -236,4 +236,67 @@ describe("query tabs", () => {
     ]);
     expect(useQueryStore.getState().result?.executionTime).toBe(4);
   });
+
+  it("saves, duplicates, and deletes non-secret connection profiles", async () => {
+    const values = new Map<string, string>();
+    const fakeWindow = {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      useQueryStore.setState({ connectionProfiles: [] });
+      const saved = await useQueryStore.getState().saveConnectionProfile({
+        name: "Analytics",
+        kind: "postgres",
+        database: "analytics",
+        host: "localhost",
+        port: 5432,
+        username: "readonly",
+        sslMode: "require",
+      });
+      const duplicate = await useQueryStore
+        .getState()
+        .duplicateConnectionProfile(saved.id);
+
+      expect(duplicate?.name).toBe("Analytics copy");
+      expect(useQueryStore.getState().connectionProfiles).toHaveLength(2);
+      expect(values.get("queryx:connection-profiles")).not.toContain(
+        "password",
+      );
+
+      await useQueryStore.getState().deleteConnectionProfile(saved.id);
+      expect(useQueryStore.getState().connectionProfiles).toHaveLength(1);
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
+  it("tests a connection without replacing the active driver", async () => {
+    const previousDriver = useQueryStore.getState().driver;
+    const result = await useQueryStore.getState().testDatabaseConnection({
+      kind: "sqlite",
+      name: "test connection",
+      database: ":memory:",
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(useQueryStore.getState().driver).toBe(previousDriver);
+  });
 });

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type {
+  ConnectionProfile,
   DatabaseDriver,
   DatabaseMetadata,
   DriverConfig,
@@ -7,6 +8,10 @@ import type {
   QueryResult,
 } from "@queryx/shared";
 import { createRuntimeDriver } from "./nativeDriver";
+import {
+  loadConnectionProfiles,
+  persistConnectionProfiles,
+} from "./connectionProfiles";
 
 type ResultView = "table" | "json";
 export type RunMode = "normal" | "transaction" | "execute-anyway" | "explain";
@@ -31,6 +36,10 @@ export interface QueryFavorite {
   sql: string;
   createdAt: string;
 }
+
+export type ConnectionProfileDraft = Omit<ConnectionProfile, "id"> & {
+  id?: string;
+};
 
 export interface QueryTab {
   id: string;
@@ -68,6 +77,8 @@ interface QueryState {
   toast: string | null;
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
+  connectionProfiles: ConnectionProfile[];
+  connectionProfilesLoaded: boolean;
   workspaceRestored: boolean;
   driver: DatabaseDriver;
   driverKind: DriverKind;
@@ -92,6 +103,15 @@ interface QueryState {
   appendResult: (result: QueryResult) => void;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;
+  loadConnectionProfiles: () => Promise<void>;
+  saveConnectionProfile: (
+    draft: ConnectionProfileDraft,
+  ) => Promise<ConnectionProfile>;
+  deleteConnectionProfile: (id: string) => Promise<void>;
+  duplicateConnectionProfile: (id: string) => Promise<ConnectionProfile | null>;
+  testDatabaseConnection: (
+    config: DriverConfig,
+  ) => Promise<{ ok: boolean; error?: string }>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
@@ -358,6 +378,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
     toast: null,
     history: readHistory(),
     favorites: readFavorites(),
+    connectionProfiles: [],
+    connectionProfilesLoaded: false,
     driver,
     driverKind: driver.kind,
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
@@ -549,6 +571,56 @@ export const useQueryStore = create<QueryState>((set, get) => {
           connectionError: message,
           toast: message,
         });
+      }
+    },
+    loadConnectionProfiles: async () => {
+      const profiles = await loadConnectionProfiles();
+      set({ connectionProfiles: profiles, connectionProfilesLoaded: true });
+    },
+    saveConnectionProfile: async (draft) => {
+      const profile: ConnectionProfile = {
+        ...draft,
+        id: draft.id ?? crypto.randomUUID(),
+      };
+      const profiles = [
+        profile,
+        ...get().connectionProfiles.filter((item) => item.id !== profile.id),
+      ];
+      await persistConnectionProfiles(profiles);
+      set({ connectionProfiles: profiles });
+      return profile;
+    },
+    deleteConnectionProfile: async (id) => {
+      const profiles = get().connectionProfiles.filter(
+        (profile) => profile.id !== id,
+      );
+      await persistConnectionProfiles(profiles);
+      set({ connectionProfiles: profiles });
+    },
+    duplicateConnectionProfile: async (id) => {
+      const source = get().connectionProfiles.find(
+        (profile) => profile.id === id,
+      );
+      if (!source) return null;
+      return get().saveConnectionProfile({
+        ...source,
+        id: undefined,
+        name: `${source.name} copy`,
+      });
+    },
+    testDatabaseConnection: async (config) => {
+      const testDriver = createRuntimeDriver(config.kind);
+      try {
+        await testDriver.connect(config);
+        await testDriver.metadata();
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        await testDriver.disconnect().catch(() => undefined);
       }
     },
     connectDatabase: async (config) => {
