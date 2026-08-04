@@ -46,7 +46,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Cmd/Ctrl+K — open the searchable command palette, including favorite actions
 - Cmd/Ctrl+P — open Quick Open for favorites and recent queries
 - Ctrl+Space — show metadata completion
-- Escape — cancel an active query when the driver advertises cancellation
+- Escape — cancel an active query when the driver advertises cancellation; close Safe Mode or connection dialogs when one is open
 - Run in Transaction — execute the complete active document in one native transaction
 - Explain — show a non-executing plan for the active document
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available

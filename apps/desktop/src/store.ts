@@ -80,7 +80,7 @@ interface QueryState {
   closeQuery: (id: string) => void;
   setFilter: (filter: string) => void;
   setResultView: (view: ResultView) => void;
-  setSelectedObject: (object: SelectedDatabaseObject) => void;
+  setSelectedObject: (object: SelectedDatabaseObject | null) => void;
   runQuery: (mode?: RunMode, sqlOverride?: string) => Promise<void>;
   cancelQuery: () => void;
   loadMetadata: () => Promise<void>;

@@ -4,7 +4,7 @@ QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, col
 
 ## Browse relations
 
-Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, **Routines**, or **Triggers** group. PostgreSQL database-wide event triggers appear in a separate connection-level **Event Triggers** group. Selecting an object updates the Inspector without executing SQL.
+Expand **Schemas**, choose a schema, and open its **Tables**, **Views**, **Routines**, or **Triggers** group. PostgreSQL database-wide event triggers appear in a separate connection-level **Event Triggers** group. Selecting an object updates the Inspector without executing SQL. Use **Close inspector** to reclaim the panel width; the object remains available in the Explorer for reopening.
 
 The Inspector shows:
 

@@ -338,6 +338,16 @@ function App() {
         event.preventDefault();
         requestCloseQuery(activeTabId);
       }
+      if (event.key === "Escape" && pendingSafety) {
+        event.preventDefault();
+        setPendingSafety(null);
+        return;
+      }
+      if (event.key === "Escape" && connectionOpen) {
+        event.preventDefault();
+        setConnectionOpen(false);
+        return;
+      }
       if (event.key === "Escape" && isRunning && canCancel) {
         event.preventDefault();
         cancelQuery();
@@ -360,9 +370,7 @@ function App() {
             table.schema === selectedObject.schema &&
             table.name === selectedObject.name,
         )
-      : selectedObject
-        ? undefined
-        : tables[0];
+      : undefined;
   const currentView =
     selectedObject?.kind === "view"
       ? views.find(
@@ -834,6 +842,8 @@ function App() {
           <button
             type="button"
             className="icon-button"
+            aria-label="Open settings"
+            title="Open settings"
             onClick={() => notify("Settings are stored locally")}
           >
             ⚙
@@ -843,7 +853,12 @@ function App() {
       </header>
       <div className="workspace">
         <aside className="activitybar">
-          <button type="button" className="activity-icon active">
+          <button
+            type="button"
+            className="activity-icon active"
+            aria-label="Open Explorer"
+            title="Explorer"
+          >
             <Icon>◈</Icon>
           </button>
           <button
@@ -854,14 +869,32 @@ function App() {
           >
             <Icon>⌕</Icon>
           </button>
-          <button type="button" className="activity-icon">
+          <button
+            type="button"
+            className="activity-icon"
+            aria-label="Open command palette"
+            title="Command palette"
+            onClick={openCommandPalette}
+          >
             <Icon>⌘</Icon>
           </button>
-          <button type="button" className="activity-icon">
+          <button
+            type="button"
+            className="activity-icon"
+            aria-label="Open connection manager"
+            title="Connection manager"
+            onClick={() => setConnectionOpen(true)}
+          >
             <Icon>⊞</Icon>
           </button>
           <div className="activity-spacer" />
-          <button type="button" className="activity-icon">
+          <button
+            type="button"
+            className="activity-icon"
+            aria-label="Open help"
+            title="Help"
+            onClick={() => notify("See the QueryX documentation for help")}
+          >
             <Icon>?</Icon>
           </button>
         </aside>
@@ -1282,9 +1315,6 @@ function App() {
                 </button>
               </div>
               <div className="toolbar-right">
-                <button type="button" className="toolbar-button">
-                  ◫
-                </button>
                 <button
                   type="button"
                   className={`toolbar-button favorite-button ${activeFavorite ? "active" : ""}`}
@@ -1301,9 +1331,6 @@ function App() {
                   }
                 >
                   {activeFavorite ? "♥" : "♡"}
-                </button>
-                <button type="button" className="toolbar-button">
-                  •••
                 </button>
               </div>
             </div>
@@ -1558,6 +1585,7 @@ function App() {
           eventTrigger={currentEventTrigger}
           foreignKeys={currentForeignKeys}
           dependencies={currentDependencies}
+          onClose={() => setSelectedObject(null)}
           onSelectTable={selectRelatedTable}
           onSelectTriggerRelation={selectTriggerRelation}
           onSelectDependency={selectDependencyObject}
@@ -2178,6 +2206,7 @@ function Inspector({
   eventTrigger,
   foreignKeys,
   dependencies,
+  onClose,
   onSelectTable,
   onSelectTriggerRelation,
   onSelectDependency,
@@ -2191,6 +2220,7 @@ function Inspector({
   eventTrigger?: EventTriggerMetadata;
   foreignKeys?: ForeignKeyRelations;
   dependencies?: ObjectDependencies;
+  onClose: () => void;
   onSelectTable: (relation: RelationRef) => void;
   onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
   onSelectDependency: (object: DatabaseObjectRef) => void;
@@ -2210,9 +2240,7 @@ function Inspector({
     const definition = eventTrigger.definition;
     return (
       <aside className="inspector">
-        <div className="panel-heading">
-          INSPECTOR <span className="read-only-badge">READ ONLY</span>
-        </div>
+        <InspectorPanelHeading readOnly onClose={onClose} />
         <div className="inspector-title trigger-title">
           <span className="table-symbol trigger-symbol">✦</span>
           <span>
@@ -2301,9 +2329,7 @@ function Inspector({
     const definition = trigger.definition;
     return (
       <aside className="inspector">
-        <div className="panel-heading">
-          INSPECTOR <span className="read-only-badge">READ ONLY</span>
-        </div>
+        <InspectorPanelHeading readOnly onClose={onClose} />
         <div className="inspector-title trigger-title">
           <span className="table-symbol trigger-symbol">⚡</span>
           <span>
@@ -2406,9 +2432,7 @@ function Inspector({
     const definition = routine.definition;
     return (
       <aside className="inspector">
-        <div className="panel-heading">
-          INSPECTOR <span className="read-only-badge">READ ONLY</span>
-        </div>
+        <InspectorPanelHeading readOnly onClose={onClose} />
         <div className="inspector-title routine-title">
           <span className="table-symbol routine-symbol">ƒ</span>
           <span>
@@ -2497,12 +2521,7 @@ function Inspector({
 
   return (
     <aside className="inspector">
-      <div className="panel-heading">
-        INSPECTOR{" "}
-        <button type="button" className="mini-button">
-          ×
-        </button>
-      </div>
+      <InspectorPanelHeading onClose={onClose} />
       {relation && (
         <>
           <div className="inspector-title">
@@ -2513,9 +2532,6 @@ function Inspector({
                 {relation.schema} · {table ? "table" : "view"}
               </small>
             </span>
-            <button type="button" className="mini-button">
-              •••
-            </button>
           </div>
           <div className="inspector-tabs">
             <button
@@ -2712,6 +2728,30 @@ function Inspector({
         </>
       )}
     </aside>
+  );
+}
+
+function InspectorPanelHeading({
+  readOnly = false,
+  onClose,
+}: {
+  readOnly?: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <div className="panel-heading">
+      INSPECTOR
+      {readOnly && <span className="read-only-badge">READ ONLY</span>}
+      <button
+        type="button"
+        className="mini-button"
+        aria-label="Close inspector"
+        title="Close inspector"
+        onClick={onClose}
+      >
+        ×
+      </button>
+    </div>
   );
 }
 
