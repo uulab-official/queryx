@@ -66,7 +66,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - SQL formatting is conservative and dialect-neutral; parser-backed dialect formatting and diagnostics remain planned.
 - The command palette currently covers the core query/editor/result actions; extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
-- Tabs are session state and are not restored after restart yet; history and favorites are browser-local preview persistence until native workspace storage lands.
+- Tabs, active-tab selection, and dirty SQL are restored in browser-local preview storage; native workspace migration and cross-profile recovery remain planned.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
 - Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
 - Result-grid copy operates on the currently visible filtered/sorted rows. Binary viewers, virtualized streaming, and server paging remain planned.

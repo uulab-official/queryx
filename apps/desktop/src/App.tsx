@@ -131,6 +131,7 @@ function App() {
     toast,
     history,
     favorites,
+    workspaceRestored,
     driverKind,
     connectionName,
     connectionStatus,
@@ -219,8 +220,8 @@ function App() {
     if (initialized.current) return;
     initialized.current = true;
     void loadMetadata();
-    void runQuery();
-  }, [loadMetadata, runQuery]);
+    if (!workspaceRestored) void runQuery();
+  }, [loadMetadata, runQuery, workspaceRestored]);
   const handleRun = (mode: RunMode = "normal", sqlOverride?: string) => {
     const executableSql = sqlOverride?.trim() || sql;
     if (!executableSql.trim()) {

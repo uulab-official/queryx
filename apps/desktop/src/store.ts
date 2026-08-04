@@ -68,6 +68,7 @@ interface QueryState {
   toast: string | null;
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
+  workspaceRestored: boolean;
   driver: DatabaseDriver;
   driverKind: DriverKind;
   connectionName: string;
@@ -91,6 +92,13 @@ interface QueryState {
 
 const historyStorageKey = "queryx:query-history";
 const favoritesStorageKey = "queryx:query-favorites";
+const workspaceTabsStorageKey = "queryx:workspace-tabs";
+
+interface QueryWorkspaceSnapshot {
+  version: 1;
+  tabs: QueryTab[];
+  activeTabId: string;
+}
 
 function defaultObject(
   metadata: DatabaseMetadata,
@@ -193,6 +201,75 @@ function writeFavorites(favorites: QueryFavorite[]): void {
   }
 }
 
+function readWorkspaceTabs(fallbackTabs: QueryTab[]): {
+  tabs: QueryTab[];
+  activeTabId: string;
+  restored: boolean;
+} {
+  if (typeof window === "undefined") {
+    return {
+      tabs: fallbackTabs,
+      activeTabId: fallbackTabs[0].id,
+      restored: false,
+    };
+  }
+  try {
+    const stored = window.localStorage.getItem(workspaceTabsStorageKey);
+    if (!stored) {
+      return {
+        tabs: fallbackTabs,
+        activeTabId: fallbackTabs[0].id,
+        restored: false,
+      };
+    }
+    const parsed = JSON.parse(stored) as Partial<QueryWorkspaceSnapshot>;
+    const validTabs = Array.isArray(parsed.tabs)
+      ? parsed.tabs.filter(
+          (tab): tab is QueryTab =>
+            Boolean(tab) &&
+            typeof tab.id === "string" &&
+            typeof tab.title === "string" &&
+            typeof tab.sql === "string" &&
+            typeof tab.isDirty === "boolean",
+        )
+      : [];
+    const tabs = validTabs.slice(0, 20);
+    if (parsed.version !== 1 || tabs.length === 0) {
+      return {
+        tabs: fallbackTabs,
+        activeTabId: fallbackTabs[0].id,
+        restored: false,
+      };
+    }
+    const activeTabId = tabs.some((tab) => tab.id === parsed.activeTabId)
+      ? (parsed.activeTabId ?? tabs[0].id)
+      : tabs[0].id;
+    return { tabs, activeTabId, restored: true };
+  } catch {
+    return {
+      tabs: fallbackTabs,
+      activeTabId: fallbackTabs[0].id,
+      restored: false,
+    };
+  }
+}
+
+function writeWorkspaceTabs(tabs: QueryTab[], activeTabId: string): void {
+  try {
+    const snapshot: QueryWorkspaceSnapshot = {
+      version: 1,
+      tabs: tabs.slice(0, 20),
+      activeTabId,
+    };
+    window.localStorage.setItem(
+      workspaceTabsStorageKey,
+      JSON.stringify(snapshot),
+    );
+  } catch {
+    // Local persistence is best-effort until the Tauri SQLite store lands.
+  }
+}
+
 function queryLabel(sql: string): string {
   return (
     sql
@@ -230,22 +307,28 @@ export const useQueryStore = create<QueryState>((set, get) => {
   let activeQueryController: AbortController | null = null;
   const initialSql =
     driver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
+  const defaultTabs: QueryTab[] = [
+    {
+      id: "query-1",
+      title: "Daily revenue",
+      sql: initialSql,
+      isDirty: false,
+    },
+  ];
+  const workspaceTabs = readWorkspaceTabs(defaultTabs);
+  const activeWorkspaceTab =
+    workspaceTabs.tabs.find((tab) => tab.id === workspaceTabs.activeTabId) ??
+    workspaceTabs.tabs[0];
   let driverReady = driver.connect({
     kind: driver.kind,
     name: driver.kind === "sqlite" ? "local-demo" : "production-db",
     database: driver.kind === "sqlite" ? ":memory:" : "production",
   });
   return {
-    sql: initialSql,
-    tabs: [
-      {
-        id: "query-1",
-        title: "Daily revenue",
-        sql: initialSql,
-        isDirty: false,
-      },
-    ],
-    activeTabId: "query-1",
+    sql: activeWorkspaceTab.sql,
+    tabs: workspaceTabs.tabs,
+    activeTabId: workspaceTabs.activeTabId,
+    workspaceRestored: workspaceTabs.restored,
     result: null,
     metadata: null,
     selectedObject: null,
@@ -264,12 +347,13 @@ export const useQueryStore = create<QueryState>((set, get) => {
     connectionStatus: "connecting",
     connectionError: null,
     setSql: (sql) =>
-      set((state) => ({
-        sql,
-        tabs: state.tabs.map((tab) =>
+      set((state) => {
+        const tabs = state.tabs.map((tab) =>
           tab.id === state.activeTabId ? { ...tab, sql, isDirty: true } : tab,
-        ),
-      })),
+        );
+        writeWorkspaceTabs(tabs, state.activeTabId);
+        return { sql, tabs };
+      }),
     newQuery: () => {
       const id = crypto.randomUUID();
       const nextNumber = get().tabs.length + 1;
@@ -279,16 +363,19 @@ export const useQueryStore = create<QueryState>((set, get) => {
         sql: "",
         isDirty: false,
       };
-      set((state) => ({
-        tabs: [...state.tabs, tab],
-        activeTabId: id,
-        sql: tab.sql,
-      }));
+      set((state) => {
+        const tabs = [...state.tabs, tab];
+        writeWorkspaceTabs(tabs, id);
+        return { tabs, activeTabId: id, sql: tab.sql };
+      });
       return id;
     },
     selectQuery: (id) => {
       const tab = get().tabs.find((candidate) => candidate.id === id);
-      if (tab) set({ activeTabId: id, sql: tab.sql });
+      if (tab) {
+        writeWorkspaceTabs(get().tabs, id);
+        set({ activeTabId: id, sql: tab.sql });
+      }
     },
     closeQuery: (id) => {
       const state = get();
@@ -302,14 +389,17 @@ export const useQueryStore = create<QueryState>((set, get) => {
           sql: "",
           isDirty: false,
         };
+        writeWorkspaceTabs([replacement], replacement.id);
         set({ tabs: [replacement], activeTabId: replacement.id, sql: "" });
         return;
       }
       if (state.activeTabId !== id) {
+        writeWorkspaceTabs(remaining, state.activeTabId);
         set({ tabs: remaining });
         return;
       }
       const replacement = remaining[Math.min(index, remaining.length - 1)];
+      writeWorkspaceTabs(remaining, replacement.id);
       set({
         tabs: remaining,
         activeTabId: replacement.id,
@@ -424,10 +514,20 @@ export const useQueryStore = create<QueryState>((set, get) => {
         await get().driver.disconnect();
         const nextSql =
           nextDriver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
-        const activeTab = get().tabs.find(
-          (tab) => tab.id === get().activeTabId,
+        const currentTabs = get().tabs;
+        const currentActiveTabId = get().activeTabId;
+        const activeTab = currentTabs.find(
+          (tab) => tab.id === currentActiveTabId,
         );
         const shouldReplaceSql = activeTab ? !activeTab.isDirty : false;
+        const nextTabs = shouldReplaceSql
+          ? currentTabs.map((tab) =>
+              tab.id === currentActiveTabId
+                ? { ...tab, sql: nextSql, isDirty: false }
+                : tab,
+            )
+          : currentTabs;
+        writeWorkspaceTabs(nextTabs, currentActiveTabId);
         set({
           driver: nextDriver,
           driverKind: nextDriver.kind,
@@ -439,13 +539,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           metadata,
           selectedObject: defaultObject(metadata),
           sql: shouldReplaceSql ? nextSql : get().sql,
-          tabs: shouldReplaceSql
-            ? get().tabs.map((tab) =>
-                tab.id === get().activeTabId
-                  ? { ...tab, sql: nextSql, isDirty: false }
-                  : tab,
-              )
-            : get().tabs,
+          tabs: nextTabs,
           result: null,
           executionStatus: "idle",
           toast: `Connected to ${config.name}`,

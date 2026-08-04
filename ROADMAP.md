@@ -34,7 +34,7 @@ Available and tested:
 
 Known alpha limitations:
 
-- Query history and favorites use best-effort browser-local persistence in the preview; native workspace persistence is still pending.
+- Query tabs, history, and favorites use best-effort browser-local persistence in the preview; native workspace persistence is still pending.
 - Passwords are intentionally session-only until OS keychain support lands.
 - Result rows are loaded into memory; virtualized streaming and server paging are not implemented.
 - Safety analysis is lexical, not yet parser/plan backed.
@@ -46,6 +46,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 
 - [ ] SQLite workspace storage for profiles, tabs, history, favorites, and settings
 - [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
+- [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
 - [ ] OS keychain integration with migration and deletion tests
 - [ ] Connection test, duplicate, color, read-only mode, timeout, and keepalive controls
 - [ ] SSH tunnel and PostgreSQL SSL certificate configuration

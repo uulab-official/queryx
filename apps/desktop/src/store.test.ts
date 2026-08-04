@@ -52,6 +52,47 @@ describe("query tabs", () => {
     expect(secondTab.title).toBe("Query 2");
   });
 
+  it("writes tab text and active-tab changes to the local workspace snapshot", () => {
+    const values = new Map<string, string>();
+    const fakeWindow = {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      const newTabId = useQueryStore.getState().newQuery();
+      useQueryStore.getState().setSql("SELECT * FROM customers");
+      useQueryStore.getState().selectQuery(initialTab.id);
+      const snapshot = JSON.parse(
+        values.get("queryx:workspace-tabs") ?? "{}",
+      ) as { version?: number; activeTabId?: string; tabs?: QueryTab[] };
+
+      expect(snapshot.version).toBe(1);
+      expect(snapshot.activeTabId).toBe(initialTab.id);
+      expect(snapshot.tabs?.find((tab) => tab.id === newTabId)?.sql).toBe(
+        "SELECT * FROM customers",
+      );
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("returns the id of a new editable document", () => {
     const newTabId = useQueryStore.getState().newQuery();
     const state = useQueryStore.getState();

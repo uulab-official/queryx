@@ -26,6 +26,8 @@ The workspace smoke path saves the active query with the ♡ button, confirms th
 
 The Quick Open smoke path opens Cmd/Ctrl+P or the Explorer search icon, confirms that favorites and recent queries are listed, filters by a SQL fragment, opens the matching entry with Enter, and verifies that the SQL is loaded without a new result execution. Escape and backdrop click must close Quick Open without changing the active SQL.
 
+The workspace recovery smoke path creates a second tab, enters distinct SQL, reloads the preview, and confirms both tabs, active-tab selection, dirty state, and SQL text are restored without rerunning the previous query or repopulating the result grid.
+
 The result-grid smoke path clicks a cell, Shift-clicks another cell, presses Cmd/Ctrl+C, and pastes into a spreadsheet or plain-text editor to verify rectangular TSV output. It repeats the check with a row-number selection and the **NULL** display toggle, then confirms Copy uses only the visible filtered/sorted rows when no range is selected.
 
 ## Local commands
