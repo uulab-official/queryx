@@ -56,6 +56,20 @@ impl DriverRegistry {
             .await
     }
 
+    pub async fn execute_batch(
+        &self,
+        connection_id: &str,
+        query_id: &str,
+        statements: &[String],
+        expected_rows: u64,
+    ) -> Result<QueryResult, AppError> {
+        let query_id = parse_query_id(query_id)?;
+        self.connection(connection_id)
+            .await?
+            .execute_batch(query_id, statements, expected_rows)
+            .await
+    }
+
     pub async fn prepare(&self, connection_id: &str, query_id: &str) -> Result<(), AppError> {
         let query_id = parse_query_id(query_id)?;
         self.connection(connection_id)

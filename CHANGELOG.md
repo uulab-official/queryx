@@ -48,6 +48,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added result-grid column resizing with mouse drag handles and keyboard sizing controls for denser IDE-style data inspection.
 - Added keyed result-cell editing for SQLite/PostgreSQL with staged local diffs, generated UPDATE preview, explicit transaction apply, and post-write refresh.
 - Added incremental 100-row table browsing with deterministic primary-key ordering and local result-page append.
+- Added optimistic edit conflict detection using original-value predicates, per-row affected-row verification, and atomic native batch rollback before refreshing results.
 
 ## [0.1.0] — 2026-08-03
 

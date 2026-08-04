@@ -207,6 +207,11 @@ export interface DatabaseDriver {
   readonly kind: DriverKind;
   connect(config: DriverConfig): Promise<void>;
   execute(sql: string, signal?: AbortSignal): Promise<QueryResult>;
+  executeBatch(
+    statements: readonly string[],
+    expectedRows: number,
+    signal?: AbortSignal,
+  ): Promise<QueryResult>;
   metadata(): Promise<DatabaseMetadata>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;

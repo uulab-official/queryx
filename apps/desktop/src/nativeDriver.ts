@@ -105,6 +105,24 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     }
   }
 
+  async executeBatch(
+    statements: readonly string[],
+    expectedRows: number,
+    signal?: AbortSignal,
+  ): Promise<QueryResult> {
+    if (signal?.aborted)
+      throw new DOMException("Query cancelled", "AbortError");
+    const result = await invoke<QueryResult>("execute_edit_batch", {
+      connectionId: this.requireConnection(),
+      queryId: crypto.randomUUID(),
+      statements,
+      expectedRows,
+    });
+    if (signal?.aborted)
+      throw new DOMException("Query cancelled", "AbortError");
+    return result;
+  }
+
   async metadata(): Promise<DatabaseMetadata> {
     return invoke<DatabaseMetadata>("database_metadata", {
       connectionId: this.requireConnection(),

@@ -16,6 +16,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
+  buildRowsToSqlUpdateStatements,
   buildDependencyIndex,
   buildForeignKeyIndex,
   buildExplainQuery,
@@ -822,25 +823,33 @@ function App() {
   );
   const editPreview = useMemo(() => {
     if (!canEditResults || !currentTable || !result || pendingEditCount === 0) {
-      return { sql: "", error: null };
+      return { sql: "", statements: [], error: null };
     }
     try {
+      const options = {
+        tableName: `${currentTable.schema}.${currentTable.name}`,
+        keyColumns: primaryKeyColumns.map((column) => column.name),
+        dialect: driverKind,
+        includeTransaction: false as const,
+        includeOriginalValues: true,
+      };
       return {
         sql: serializeRowsToSqlUpdate(
           result.columns,
           Object.values(stagedEdits),
-          {
-            tableName: `${currentTable.schema}.${currentTable.name}`,
-            keyColumns: primaryKeyColumns.map((column) => column.name),
-            dialect: driverKind,
-            includeTransaction: false,
-          },
+          options,
+        ),
+        statements: buildRowsToSqlUpdateStatements(
+          result.columns,
+          Object.values(stagedEdits),
+          options,
         ),
         error: null,
       };
     } catch (error) {
       return {
         sql: "",
+        statements: [],
         error: error instanceof Error ? error.message : String(error),
       };
     }
@@ -905,13 +914,30 @@ function App() {
     }
   };
   const applyStagedEdits = async () => {
-    if (!editPreview.sql) {
+    if (!editPreview.sql || editPreview.statements.length === 0) {
       notify(editPreview.error ?? "Stage at least one editable cell first");
       return;
     }
+    const expectedRows = Object.values(stagedEdits).length;
+    const updated = await runQuery("transaction", editPreview.sql, {
+      preserveResult: true,
+      batch: {
+        statements: editPreview.statements,
+        expectedRows,
+      },
+    });
+    if (!updated) {
+      setEditPreviewOpen(true);
+      return;
+    }
+    if (updated.affectedRows !== expectedRows) {
+      setEditPreviewOpen(true);
+      notify(
+        `Edit conflict detected: expected ${expectedRows} row${expectedRows === 1 ? "" : "s"}, updated ${updated.affectedRows}`,
+      );
+      return;
+    }
     setEditPreviewOpen(false);
-    const updated = await runQuery("transaction", editPreview.sql);
-    if (!updated) return;
     setStagedEdits({});
     setEditingCell(null);
     setEditingEnabled(false);

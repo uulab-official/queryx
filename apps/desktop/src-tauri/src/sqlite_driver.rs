@@ -74,6 +74,15 @@ impl DatabaseDriver for SqliteDriver {
         execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
     }
 
+    async fn execute_batch(
+        &self,
+        _query_id: Uuid,
+        statements: &[String],
+        expected_rows: u64,
+    ) -> Result<QueryResult, AppError> {
+        execute_edit_batch_on_pool(&self.pool, statements, expected_rows).await
+    }
+
     async fn cancel(&self, _query_id: Uuid) -> Result<bool, AppError> {
         Err(AppError::CancellationUnsupported(self.kind().to_string()))
     }
@@ -381,6 +390,37 @@ async fn execute_on_pool(
     execute_with_executor(pool, sql, is_query, started).await
 }
 
+async fn execute_edit_batch_on_pool(
+    pool: &SqlitePool,
+    statements: &[String],
+    expected_rows: u64,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    let mut transaction = pool.begin().await?;
+    let mut affected_rows = 0;
+    for statement in statements {
+        affected_rows += sqlx::query(statement)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected();
+    }
+    if affected_rows != expected_rows {
+        return Err(AppError::EditConflict {
+            expected: expected_rows,
+            actual: affected_rows,
+        });
+    }
+    transaction.commit().await?;
+    Ok(QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows,
+        warnings: Vec::new(),
+        error: None,
+    })
+}
+
 async fn execute_with_executor<'e, E>(
     executor: E,
     sql: &str,
@@ -528,6 +568,48 @@ mod tests {
             .expect("execute transaction");
 
         assert_eq!(result.affected_rows, 1);
+    }
+
+    #[tokio::test]
+    async fn sums_affected_rows_for_staged_updates_in_one_transaction() {
+        let driver = SqliteDriver::connect(":memory:")
+            .await
+            .expect("connect sqlite memory database");
+        let result = driver
+            .execute(
+                Uuid::new_v4(),
+                "UPDATE orders SET status = 'review' WHERE id = 1; UPDATE orders SET status = 'review' WHERE id = 2;",
+                ExecutionMode::Transaction,
+            )
+            .await
+            .expect("execute staged updates");
+
+        assert_eq!(result.affected_rows, 2);
+    }
+
+    #[tokio::test]
+    async fn rolls_back_the_entire_edit_batch_on_a_conflict() {
+        let driver = SqliteDriver::connect(":memory:")
+            .await
+            .expect("connect sqlite memory database");
+        let error = driver
+            .execute_batch(
+                Uuid::new_v4(),
+                &[
+                    "UPDATE orders SET status = 'review' WHERE id = 1".into(),
+                    "UPDATE orders SET status = 'review' WHERE id = 999".into(),
+                ],
+                2,
+            )
+            .await
+            .expect_err("conflicting batch must roll back");
+
+        assert!(matches!(error, AppError::EditConflict { .. }));
+        let status: String = sqlx::query_scalar("SELECT status FROM orders WHERE id = 1")
+            .fetch_one(&driver.pool)
+            .await
+            .expect("read rolled-back order");
+        assert_eq!(status, "paid");
     }
 
     #[tokio::test]

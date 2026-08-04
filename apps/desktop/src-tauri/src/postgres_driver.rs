@@ -255,6 +255,16 @@ impl DatabaseDriver for PostgresDriver {
         result
     }
 
+    async fn execute_batch(
+        &self,
+        _query_id: Uuid,
+        statements: &[String],
+        expected_rows: u64,
+    ) -> Result<QueryResult, AppError> {
+        let mut connection = self.pool.acquire().await?;
+        execute_edit_batch_on_connection(&mut connection, statements, expected_rows).await
+    }
+
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError> {
         let Some(active) = self.active_queries.read().await.get(&query_id).cloned() else {
             return Ok(false);
@@ -322,6 +332,37 @@ async fn execute_on_connection(
     }
 
     execute_with_executor(connection, sql, is_query, started).await
+}
+
+async fn execute_edit_batch_on_connection(
+    connection: &mut PgConnection,
+    statements: &[String],
+    expected_rows: u64,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    let mut transaction = connection.begin().await?;
+    let mut affected_rows = 0;
+    for statement in statements {
+        affected_rows += sqlx::query(statement)
+            .execute(&mut *transaction)
+            .await?
+            .rows_affected();
+    }
+    if affected_rows != expected_rows {
+        return Err(AppError::EditConflict {
+            expected: expected_rows,
+            actual: affected_rows,
+        });
+    }
+    transaction.commit().await?;
+    Ok(QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows,
+        warnings: Vec::new(),
+        error: None,
+    })
 }
 
 async fn execute_with_executor<'e, E>(

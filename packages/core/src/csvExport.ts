@@ -19,6 +19,7 @@ export interface SqlUpdateExportOptions {
   dialect?: "mysql" | "postgres" | "sqlite";
   lineEnding?: "\n" | "\r\n";
   includeTransaction?: boolean;
+  includeOriginalValues?: boolean;
 }
 
 export interface SqlRowUpdate {
@@ -105,6 +106,24 @@ export function serializeRowsToSqlUpdate(
   updates: readonly SqlRowUpdate[],
   options: SqlUpdateExportOptions,
 ): string {
+  const statements = buildRowsToSqlUpdateStatements(columns, updates, options);
+  if (statements.length === 0) return "";
+  const lineEnding = options.lineEnding ?? "\n";
+  const body = statements.join(lineEnding);
+  const transaction =
+    options.includeTransaction === false ? "" : `BEGIN;${lineEnding}`;
+  const commit =
+    options.includeTransaction === false
+      ? ""
+      : `${lineEnding}COMMIT;${lineEnding}`;
+  return `${transaction}${body}${commit}`;
+}
+
+export function buildRowsToSqlUpdateStatements(
+  columns: readonly Pick<QueryColumn, "name">[],
+  updates: readonly SqlRowUpdate[],
+  options: SqlUpdateExportOptions,
+): string[] {
   const tableName = options.tableName.trim();
   if (!tableName) throw new Error("A target table name is required");
   if (columns.length === 0)
@@ -118,7 +137,6 @@ export function serializeRowsToSqlUpdate(
   if (missingKey)
     throw new Error(`Result does not include key column: ${missingKey}`);
   const dialect = options.dialect ?? "sqlite";
-  const lineEnding = options.lineEnding ?? "\n";
   const quotedTable = tableName
     .split(".")
     .map((part) => quoteIdentifier(part, dialect))
@@ -138,24 +156,32 @@ export function serializeRowsToSqlUpdate(
         }
         return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value)}`;
       });
+      const originalValueConditions =
+        options.includeOriginalValues === false
+          ? []
+          : columns
+              .filter(
+                (column) =>
+                  !options.keyColumns.includes(column.name) &&
+                  Object.hasOwn(originalRow, column.name),
+              )
+              .map((column) =>
+                serializeSqlPredicate(
+                  column.name,
+                  originalRow[column.name],
+                  dialect,
+                ),
+              );
       const assignments = changedColumns
         .map(
           (column) =>
             `${quoteIdentifier(column.name, dialect)} = ${serializeSqlValue(changes[column.name])}`,
         )
         .join(", ");
-      return `UPDATE ${quotedTable} SET ${assignments} WHERE ${keyValues.join(" AND ")};`;
+      return `UPDATE ${quotedTable} SET ${assignments} WHERE ${[...keyValues, ...originalValueConditions].join(" AND ")};`;
     })
     .filter(Boolean);
-  if (statements.length === 0) return "";
-  const body = statements.join(lineEnding);
-  const transaction =
-    options.includeTransaction === false ? "" : `BEGIN;${lineEnding}`;
-  const commit =
-    options.includeTransaction === false
-      ? ""
-      : `${lineEnding}COMMIT;${lineEnding}`;
-  return `${transaction}${body}${commit}`;
+  return statements;
 }
 
 function normalizeCell(value: unknown): string {
@@ -207,6 +233,16 @@ function serializeSqlValue(value: unknown): string {
     return quoteSqlString(JSON.stringify(normalizeJsonValue(value)));
   }
   return quoteSqlString(String(value));
+}
+
+function serializeSqlPredicate(
+  columnName: string,
+  value: unknown,
+  dialect: SqlInsertExportOptions["dialect"],
+): string {
+  const identifier = quoteIdentifier(columnName, dialect);
+  if (value === null || value === undefined) return `${identifier} IS NULL`;
+  return `${identifier} = ${serializeSqlValue(value)}`;
 }
 
 function quoteSqlString(value: string): string {

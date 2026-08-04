@@ -31,7 +31,7 @@ The table view supports spreadsheet-oriented copy without sending result data an
 
 Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. Results are displayed in local pages of up to 100 rows, while the current grid still loads the complete result in memory. Column dividers can be dragged or adjusted with the keyboard; virtualized streaming and server paging remain planned.
 
-For a table with a reported primary key, choose **Browse data** in the Inspector, then **Edit** in the result toolbar. Double-click a non-key cell to stage a value, press Enter to commit the draft, and use **Review & Apply** to inspect the generated UPDATE statements before execution. QueryX applies them through the native transaction path and never auto-writes a cell on blur.
+For a table with a reported primary key, choose **Browse data** in the Inspector, then **Edit** in the result toolbar. Double-click a non-key cell to stage a value, press Enter to commit the draft, and use **Review & Apply** to inspect the generated UPDATE statements before execution. QueryX includes original-value predicates and checks each affected row through the native edit-batch transaction; a mismatch is surfaced as an optimistic conflict and the full batch rolls back. QueryX never auto-writes a cell on blur.
 
 The table browser starts with 100 rows and exposes **Load next 100**. Primary-key ordering makes subsequent pages deterministic; manually written SQL remains a bounded, in-memory result until server-side paging is added.
 

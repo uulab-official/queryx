@@ -46,7 +46,7 @@ SQL INSERT export never executes the generated script. Review the target table, 
 
 Row editing is available for SQLite and PostgreSQL tables with reported primary keys. Primary-key cells are locked and act as the update target. Enter `NULL` to stage a null value; numeric, boolean, and JSON columns receive basic value normalization before SQL generation.
 
-Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` statements and runs them inside the native driver transaction boundary only after explicit confirmation, then refreshes the original result. If the result does not contain every primary-key column, editing remains disabled. Views, keyless tables, and arbitrary result projections remain read-only until stronger table identity detection lands.
+Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` statements with primary-key and original-value predicates, then runs them inside the native edit-batch transaction only after explicit confirmation. Every statement must affect exactly one row; a mismatch is reported as an optimistic conflict and the native transaction rolls back the full batch while the original result/staged edits stay available for review. If the result does not contain every primary-key column, editing remains disabled. Views, keyless tables, and arbitrary result projections remain read-only until stronger table identity detection and validation land.
 
 ## Large results
 

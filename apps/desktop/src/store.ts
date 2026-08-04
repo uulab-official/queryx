@@ -84,7 +84,10 @@ interface QueryState {
   runQuery: (
     mode?: RunMode,
     sqlOverride?: string,
-    options?: { preserveResult?: boolean },
+    options?: {
+      preserveResult?: boolean;
+      batch?: { statements: readonly string[]; expectedRows: number };
+    },
   ) => Promise<QueryResult | null>;
   appendResult: (result: QueryResult) => void;
   cancelQuery: () => void;
@@ -426,7 +429,10 @@ export const useQueryStore = create<QueryState>((set, get) => {
     runQuery: async (
       mode = "normal",
       sqlOverride?: string,
-      options?: { preserveResult?: boolean },
+      options?: {
+        preserveResult?: boolean;
+        batch?: { statements: readonly string[]; expectedRows: number };
+      },
     ) => {
       if (get().isRunning) return null;
       const controller = new AbortController();
@@ -436,11 +442,17 @@ export const useQueryStore = create<QueryState>((set, get) => {
         await driverReady;
         const executedSql = sqlOverride?.trim() || get().sql;
         const execute = () =>
-          get().driver.execute(executedSql, controller.signal);
+          options?.batch
+            ? get().driver.executeBatch(
+                options.batch.statements,
+                options.batch.expectedRows,
+                controller.signal,
+              )
+            : get().driver.execute(executedSql, controller.signal);
         const result =
-          mode === "transaction"
-            ? await get().driver.transaction(execute)
-            : await execute();
+          options?.batch || mode !== "transaction"
+            ? await execute()
+            : await get().driver.transaction(execute);
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
           label: mode === "explain" ? "Explain plan" : queryLabel(executedSql),

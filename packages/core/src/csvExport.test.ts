@@ -120,7 +120,7 @@ describe("serializeRowsToSqlUpdate", () => {
     );
 
     expect(sql).toBe(
-      'BEGIN;\nUPDATE "public"."orders" SET "status" = \'paid\', "note" = \'reviewer\'\'s note\' WHERE "id" = 7;\nCOMMIT;\n',
+      'BEGIN;\nUPDATE "public"."orders" SET "status" = \'paid\', "note" = \'reviewer\'\'s note\' WHERE "id" = 7 AND "status" = \'pending\' AND "note" IS NULL;\nCOMMIT;\n',
     );
   });
 
@@ -137,5 +137,21 @@ describe("serializeRowsToSqlUpdate", () => {
         { tableName: "orders", keyColumns: ["id"] },
       ),
     ).toThrow("NULL key value");
+  });
+
+  it("can disable original-value predicates for generated bulk SQL", () => {
+    const sql = serializeRowsToSqlUpdate(
+      [{ name: "id" }, { name: "status" }],
+      [
+        {
+          originalRow: { id: 7, status: "pending" },
+          changes: { status: "paid" },
+        },
+      ],
+      { tableName: "orders", keyColumns: ["id"], includeOriginalValues: false },
+    );
+
+    expect(sql).toContain('WHERE "id" = 7;');
+    expect(sql).not.toContain("\"status\" = 'pending'");
   });
 });

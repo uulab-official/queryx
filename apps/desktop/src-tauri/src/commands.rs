@@ -49,6 +49,19 @@ pub async fn execute_query_transaction(
 }
 
 #[tauri::command]
+pub async fn execute_edit_batch(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+    query_id: String,
+    statements: Vec<String>,
+    expected_rows: u64,
+) -> Result<QueryResult, AppError> {
+    state
+        .execute_batch(&connection_id, &query_id, &statements, expected_rows)
+        .await
+}
+
+#[tauri::command]
 pub async fn cancel_query(
     state: State<'_, DriverRegistry>,
     connection_id: String,

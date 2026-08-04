@@ -18,6 +18,8 @@ pub enum AppError {
     QueryCancelled,
     #[error("query id is already active: {0}")]
     DuplicateQueryId(String),
+    #[error("optimistic edit conflict: expected {expected} row updates, but matched {actual}")]
+    EditConflict { expected: u64, actual: u64 },
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

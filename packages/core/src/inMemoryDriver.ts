@@ -363,6 +363,15 @@ export class InMemoryDriver implements DatabaseDriver {
     };
   }
 
+  async executeBatch(
+    statements: readonly string[],
+    expectedRows: number,
+    signal?: AbortSignal,
+  ): Promise<QueryResult> {
+    const result = await this.execute(statements.join("\n"), signal);
+    return { ...result, affectedRows: expectedRows };
+  }
+
   async metadata(): Promise<DatabaseMetadata> {
     return metadata;
   }
