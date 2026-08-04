@@ -62,6 +62,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added driver-specific privilege preflight SQL and a local migration-preview ledger with forward, rollback, and preflight recall actions.
 - Added a CSV import wizard with target/type mapping, typed validation, first-row preview, and transactional edit batches.
 - Extended import to JSON arrays/NDJSON and driver-specific ignore-conflict policies.
+- Added a bounded ERD explorer with deterministic table/view layout, foreign-key and view-reference edges, relation filtering, zoom, keyboard navigation, and Inspector click-through.
 
 ## [0.1.0] — 2026-08-03
 

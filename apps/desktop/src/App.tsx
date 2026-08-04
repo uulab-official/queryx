@@ -18,6 +18,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
   buildCsvImportPlan,
+  buildErdDiagram,
   buildRowsToSqlUpdateStatements,
   buildDependencyIndex,
   buildForeignKeyIndex,
@@ -41,6 +42,7 @@ import {
 import type {
   CsvImportMapping,
   CsvImportPlan,
+  ErdNode,
   ForeignKeyRelations,
   ImportConflictPolicy,
   ImportValueType,
@@ -498,6 +500,7 @@ function App() {
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false);
   const [schemaTargetOpen, setSchemaTargetOpen] = useState(false);
   const [migrationHistoryOpen, setMigrationHistoryOpen] = useState(false);
+  const [erdOpen, setErdOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -556,6 +559,13 @@ function App() {
     });
   };
   const openMigrationHistory = () => setMigrationHistoryOpen(true);
+  const openErd = () => {
+    if (!metadata) {
+      notify("Connect to a database before opening the ERD");
+      return;
+    }
+    setErdOpen(true);
+  };
   const compareSavedConnection = async (
     config: DriverConfig,
     label: string,
@@ -1638,6 +1648,15 @@ function App() {
         : "table required",
       disabled: !currentTable || readOnlyConnection,
       execute: () => setImportOpen(true),
+    },
+    {
+      id: "open-erd",
+      label: "Open ERD",
+      hint: metadata
+        ? `${metadata.tables.length + metadata.views.length} relations`
+        : "metadata required",
+      disabled: !metadata,
+      execute: openErd,
     },
     {
       id: "connection",
@@ -2808,6 +2827,20 @@ function App() {
           onImport={importCsv}
         />
       )}
+      {erdOpen && metadata && (
+        <ErdDialog
+          metadata={metadata}
+          onClose={() => setErdOpen(false)}
+          onSelectRelation={(node) => {
+            setSelectedObject({
+              kind: node.kind,
+              schema: node.schema,
+              name: node.name,
+            });
+            setErdOpen(false);
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3291,6 +3324,202 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function ErdDialog({
+  metadata,
+  onClose,
+  onSelectRelation,
+}: {
+  metadata: DatabaseMetadata;
+  onClose: () => void;
+  onSelectRelation: (node: ErdNode) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [zoom, setZoom] = useState(1);
+  const diagram = useMemo(() => buildErdDiagram(metadata), [metadata]);
+  const filteredNodes = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return diagram.nodes;
+    return diagram.nodes.filter((node) =>
+      `${node.schema}.${node.name}`.toLowerCase().includes(normalized),
+    );
+  }, [diagram.nodes, query]);
+  const visibleIds = useMemo(
+    () => new Set(filteredNodes.map((node) => node.id)),
+    [filteredNodes],
+  );
+  const nodesById = useMemo(
+    () => new Map(filteredNodes.map((node) => [node.id, node])),
+    [filteredNodes],
+  );
+  const edges = diagram.edges.filter(
+    (edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target),
+  );
+  const edgePath = (source: ErdNode, target: ErdNode) => {
+    const sx = source.x + source.width / 2;
+    const sy = source.y + source.height / 2;
+    const tx = target.x + target.width / 2;
+    const ty = target.y + target.height / 2;
+    const bend = (sx + tx) / 2;
+    return `M ${sx} ${sy} C ${bend} ${sy}, ${bend} ${ty}, ${tx} ${ty}`;
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog open className="erd-modal" aria-labelledby="erd-title">
+        <div className="erd-heading">
+          <div>
+            <p className="modal-kicker">SCHEMA MAP · ERD</p>
+            <h2 id="erd-title">Entity relationship diagram</h2>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose}>
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Explore tables and views from the current metadata snapshot. Foreign
+          keys and view dependencies are shown as directional relationships.
+        </p>
+        <div className="erd-toolbar">
+          <input
+            className="erd-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Filter relations…"
+            aria-label="Filter ERD relations"
+          />
+          <label className="erd-zoom">
+            Zoom
+            <input
+              type="range"
+              min="0.75"
+              max="1.5"
+              step="0.05"
+              value={zoom}
+              onChange={(event) => setZoom(Number(event.target.value))}
+              aria-label="ERD zoom"
+            />
+            <button
+              type="button"
+              className="modal-secondary"
+              onClick={() => setZoom(1)}
+            >
+              {Math.round(zoom * 100)}%
+            </button>
+          </label>
+          <span className="erd-count">
+            {filteredNodes.length}/{diagram.nodes.length} relations ·{" "}
+            {edges.length} edges
+          </span>
+        </div>
+        <div className="erd-viewport">
+          {filteredNodes.length === 0 ? (
+            <div className="empty-state">No relations match this filter.</div>
+          ) : (
+            <svg
+              className="erd-canvas"
+              viewBox={`0 0 ${diagram.width} ${diagram.height}`}
+              style={{
+                width: diagram.width,
+                height: diagram.height,
+                transform: `scale(${zoom})`,
+              }}
+              role="img"
+              aria-label="Entity relationship diagram"
+            >
+              <defs>
+                <marker
+                  id="erd-arrow"
+                  markerWidth="7"
+                  markerHeight="7"
+                  refX="6"
+                  refY="3.5"
+                  orient="auto"
+                >
+                  <path d="M 0 0 L 7 3.5 L 0 7 z" fill="#6b8c92" />
+                </marker>
+              </defs>
+              {edges.map((edge) => {
+                const source = nodesById.get(edge.source);
+                const target = nodesById.get(edge.target);
+                if (!source || !target) return null;
+                return (
+                  <g key={edge.id}>
+                    <path
+                      className="erd-edge"
+                      d={edgePath(source, target)}
+                      markerEnd="url(#erd-arrow)"
+                    />
+                    <title>{edge.label}</title>
+                  </g>
+                );
+              })}
+              {filteredNodes.map((node) => (
+                <a
+                  key={node.id}
+                  href={`#erd-${node.kind}-${node.schema}-${node.name}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onSelectRelation(node);
+                  }}
+                  aria-label={`Open ${node.kind} ${node.schema}.${node.name}`}
+                >
+                  <g
+                    className={`erd-node ${node.kind}`}
+                    transform={`translate(${node.x} ${node.y})`}
+                  >
+                    <rect width={node.width} height={node.height} rx="7" />
+                    <text className="erd-node-title" x="12" y="19">
+                      {node.name}
+                    </text>
+                    <text className="erd-node-meta" x="12" y="35">
+                      {node.kind.toUpperCase()} · {node.schema}
+                    </text>
+                    {node.columns.map((column, index) => (
+                      <g
+                        key={column.name}
+                        transform={`translate(12 ${58 + index * 18})`}
+                      >
+                        <text className="erd-column-name" x="0" y="0">
+                          {column.primaryKey ? "◆" : "·"} {column.name}
+                        </text>
+                        <text
+                          className="erd-column-type"
+                          x={node.width - 24}
+                          y="0"
+                          textAnchor="end"
+                        >
+                          {column.type}
+                        </text>
+                      </g>
+                    ))}
+                    {node.totalColumns > node.columns.length && (
+                      <text
+                        className="erd-column-type"
+                        x="12"
+                        y={node.height - 8}
+                      >
+                        … more columns
+                      </text>
+                    )}
+                  </g>
+                </a>
+              ))}
+            </svg>
+          )}
+        </div>
+        <div className="modal-actions">
+          <span className="erd-help">
+            Select a node to open it in Inspector.
+          </span>
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Close
           </button>
         </div>
       </dialog>

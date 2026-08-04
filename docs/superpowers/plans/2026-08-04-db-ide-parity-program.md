@@ -264,6 +264,12 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add deterministic tests and document transforms/update-upsert/progress as remaining scope.
 - [x] Extend the same wizard to JSON arrays/NDJSON and driver-specific ignore-conflict SQL.
 
+### Task 9: Deliver the first ERD exploration slice
+
+- [x] Build a deterministic bounded graph from table/view metadata, foreign keys, and direct view dependencies.
+- [x] Add command-palette access, search, zoom, keyboard navigation, and click-through to the Inspector.
+- [x] Document the 120-relation bound and keep lazy loading, layout persistence, export, and editing as planned scope.
+
 ## Final verification for this plan
 
 Run all of the following before calling the first safety track complete:

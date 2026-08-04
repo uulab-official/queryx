@@ -42,6 +42,10 @@ Composite keys remain paired in database ordinal order. SQLite constraints can b
 
 Select **Dependencies** for a table or view. Routine and trigger Inspectors show dependency groups below their details. **Depends on** follows outgoing edges; **Used by** follows incoming edges. Select either endpoint to navigate without issuing another catalog query. See [Dependency Inspector](dependency-inspector.md) for edge semantics and driver coverage.
 
+## Open the ERD
+
+Use **Open ERD** in the command palette to visualize the current tables, views, foreign keys, and direct view dependencies. Search and zoom are local to the snapshot; selecting a node closes the map and opens that relation in the Inspector. See [Entity Relationship Diagram](erd.md) for the scale and editing boundaries.
+
 ## Driver behavior
 
 ### SQLite

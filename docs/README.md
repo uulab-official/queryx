@@ -12,6 +12,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [CSV Import](import.md) — header mapping, typed preview, validation, and transactional batch import
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, routines, triggers, and dependency navigation
+- [Entity Relationship Diagram](erd.md) — bounded schema graph, relationship edges, filtering, zoom, and Inspector navigation
 - [Routine Inspector](routine-inspector.md) — overload identity, functions/procedures/aggregates/window functions, read-only PostgreSQL DDL, safety, and recovery
 - [Trigger Inspector](trigger-inspector.md) — activation modes, events, owner navigation, and read-only DDL
 - [Event Trigger Inspector](event-trigger-inspector.md) — database-scoped PostgreSQL DDL events, tags, function navigation, and reconstructed DDL

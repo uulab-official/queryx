@@ -28,6 +28,15 @@ export type {
   IncomingForeignKey,
 } from "./foreignKeyIndex";
 export { InMemoryDriver } from "./inMemoryDriver";
+export { buildErdDiagram, erdObjectId } from "./erd";
+export type {
+  ErdColumn,
+  ErdDiagram,
+  ErdEdge,
+  ErdLayoutOptions,
+  ErdNode,
+  ErdRelationKind,
+} from "./erd";
 export {
   buildCsvImportPlan,
   defaultCsvImportMappings,

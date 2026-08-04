@@ -1510,6 +1510,140 @@ button:disabled {
   background: #15191a;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
 }
+.erd-modal {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  margin: 0;
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid #405c62;
+  border-radius: 9px;
+  background: #12191c;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.erd-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.erd-heading h2 {
+  margin: 0;
+  color: #dcebea;
+  font-size: 17px;
+  letter-spacing: -.3px;
+}
+.erd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+}
+.erd-search {
+  min-width: 180px;
+  flex: 1;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #33454b;
+  border-radius: 4px;
+  background: #0c1215;
+  color: #d9e8e7;
+  font: 10px var(--mono);
+}
+.erd-search:focus {
+  border-color: #8fb8a8;
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(143, 184, 168, 0.12);
+}
+.erd-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #819a9d;
+  font: 9px var(--mono);
+  white-space: nowrap;
+}
+.erd-zoom input {
+  width: 95px;
+  accent-color: #b8dc9c;
+}
+.erd-count {
+  color: #719096;
+  font: 9px var(--mono);
+  white-space: nowrap;
+}
+.erd-viewport {
+  min-height: 520px;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+  border: 1px solid #29393e;
+  border-radius: 5px;
+  background: linear-gradient(rgba(47, 68, 72, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47, 68, 72, 0.18) 1px, transparent 1px), #0c1215;
+  background-size: 22px 22px;
+}
+.erd-canvas {
+  display: block;
+  min-width: 100%;
+  transform-origin: top left;
+}
+.erd-edge {
+  fill: none;
+  stroke: #6b8c92;
+  stroke-width: 1.5;
+  opacity: 0.82;
+}
+.erd-node {
+  cursor: pointer;
+  outline: none;
+}
+.erd-node rect {
+  fill: #172126;
+  stroke: #49616a;
+  stroke-width: 1.25;
+}
+.erd-node.view rect {
+  fill: #202331;
+  stroke: #7b6c98;
+}
+.erd-node:hover rect,
+.erd-node:focus rect {
+  stroke: #d7edb7;
+  stroke-width: 2;
+}
+.erd-node text {
+  pointer-events: none;
+  font-family: var(--mono);
+}
+.erd-node-title {
+  fill: #d8e7e6;
+  font-size: 11px;
+  font-weight: 650;
+}
+.erd-node-meta {
+  fill: #7f9aa0;
+  font-size: 8px;
+}
+.erd-column-name {
+  fill: #b5c6c8;
+  font-size: 9px;
+}
+.erd-column-type {
+  fill: #71868d;
+  font-size: 8px;
+}
+.erd-help {
+  flex: 1;
+  align-self: center;
+  color: #71868d;
+  font: 9px var(--mono);
+}
+.erd-modal .empty-state {
+  min-height: 520px;
+  display: grid;
+  place-items: center;
+  color: #819a9d;
+  font: 10px var(--mono);
+}
 .edit-preview-heading {
   display: flex;
   align-items: flex-start;

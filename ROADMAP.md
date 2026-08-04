@@ -111,7 +111,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and tables/views/columns/index/foreign-key/routine/trigger metadata; event triggers, streaming, cancellation, and integration matrix remain planned
 - [ ] SQL Server driver
 - [ ] Oracle driver and Oracle-specific object metadata
-- [ ] ER diagram with selective loading for large schemas
+- [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
 - [ ] Data compare and controlled synchronization scripts
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, and ignore-conflict policy; transforms, update/upsert, and progress remain planned
 - [ ] Excel and Markdown export
