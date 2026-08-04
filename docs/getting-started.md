@@ -39,7 +39,7 @@ Use a dedicated, least-privilege account. QueryX holds the password in memory fo
 pnpm dev
 ```
 
-The browser preview uses deterministic in-memory data and supports browser CSV downloads. It does not create real SQLite/PostgreSQL connections.
+The browser preview uses deterministic in-memory data and supports browser CSV downloads. It does not create real SQLite, PostgreSQL, or MySQL/MariaDB connections.
 
 ## Verify the checkout
 

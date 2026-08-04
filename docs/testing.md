@@ -10,7 +10,7 @@ QueryX uses a small, explicit test pyramid:
 4. **Formatting and lint checks** keep the TypeScript/React source deterministic and catch unsafe patterns.
 5. **Production build checks** verify that the desktop frontend can be bundled from a clean install.
 6. **Native matrix checks** test and build Tauri on Linux, macOS, and Windows.
-7. **Live PostgreSQL contract checks** execute catalog, query, and cancellation behavior against a disposable PostgreSQL service.
+7. **Live database contract checks** execute PostgreSQL behavior against a disposable service and optionally exercise MySQL/MariaDB when the corresponding environment is available.
 8. **Manual smoke checks** cover the high-value UI path: connect state → run query → filter/sort/copy result → export CSV/JSON/SQL INSERT → inspect and navigate object dependencies.
 9. **Browser workflow checks** cover Monaco load, query-tab creation/switching/closing, document preservation, and keyboard execution.
 
@@ -50,7 +50,7 @@ pnpm --filter @queryx/desktop tauri build --no-bundle
 
 CSV/JSON/SQL export unit tests cover column order, control-character escaping, NULL handling, UTF-8 BOM output, BigInt/date normalization, identifier quoting, transaction wrapping, object serialization, and spreadsheet-formula protection. The manual export smoke test filters and sorts a result, exports each format, opens the files in a text editor, and confirms that the visible row order and count match without evaluating formula-like cells or executing generated SQL.
 
-The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The harness verifies result normalization, real server cancellation of `pg_sleep(10)` within three seconds, composite foreign-key metadata, overload-safe function/procedure DDL, aggregate kind and mode metadata, trigger status/timing/DDL metadata, and direct FK/view/trigger dependency edges. When the database variable is absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md).
+The PostgreSQL contract test is environment-selective. Set `QUERYX_TEST_POSTGRES_DATABASE` plus any required host, port, username, and password variables before `cargo test` to exercise a live disposable server. The MySQL/MariaDB contract is separately enabled with `QUERYX_TEST_MYSQL_DATABASE` and its optional host, port, username, and password variables; it verifies a read-only health query and native write rejection. When database variables are absent, no external connection is attempted and the offline suite remains deterministic. See [PostgreSQL Driver](postgres-driver.md) and [MySQL/MariaDB Driver](mysql-driver.md).
 
 ## Driver contract checklist
 
@@ -62,7 +62,7 @@ Every driver must test:
 - execution time, affected rows, warnings, and error shape
 - cancellation behavior
 - cancel-before-start, duplicate cancel, completion/cancel races, and unsupported-driver capability behavior
-- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, functions/procedures/aggregates/window functions, relation/event triggers, and typed direct dependencies
+- metadata for databases, schemas, tables, columns, indexes, views, composite foreign keys, functions/procedures/aggregates/window functions, relation/event triggers, and typed direct dependencies; unsupported MySQL/MariaDB catalogs must remain explicitly empty
 - dependency direction, incoming/outgoing indexing, overload identity, and explicit unsupported catalog behavior
 - PostgreSQL event-trigger event/tag/status normalization, catalog-reconstructed DDL, database scope, and function navigation
 - real SQLite and PostgreSQL trigger ownership, timing/events, activation status, conditions, and DDL

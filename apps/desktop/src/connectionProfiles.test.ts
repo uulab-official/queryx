@@ -54,4 +54,31 @@ describe("connection profile persistence boundary", () => {
     expect(connectionProfilesStorageKey).toBe("queryx:connection-profiles");
     expect(profiles[0]).not.toHaveProperty("port");
   });
+
+  it("preserves MySQL/MariaDB connection fields without secrets", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "mysql-1",
+        name: "Reporting MariaDB",
+        kind: "mysql",
+        database: "reporting",
+        host: "127.0.0.1",
+        port: 3307,
+        username: "report_reader",
+        readOnly: true,
+        sslMode: "require",
+        password: "session-only",
+      },
+    ]);
+
+    expect(profile).toMatchObject({
+      kind: "mysql",
+      database: "reporting",
+      port: 3307,
+      username: "report_reader",
+      readOnly: true,
+      sslMode: "require",
+    });
+    expect(profile).not.toHaveProperty("password");
+  });
 });

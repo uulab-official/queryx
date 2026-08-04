@@ -15,13 +15,15 @@ A serious alternative to DBeaver or SQL Developer must cover six workflows well:
 
 QueryX differentiates through a smaller local-first security boundary, modern editor behavior, explicit destructive-query safeguards, and an open driver/plugin contract.
 
+Parity claims are tracked in the [database IDE capability matrix](docs/parity-matrix.md); QueryX does not claim full DBeaver, pgAdmin, phpMyAdmin, or SQL Developer equivalence until the matrix release gates are evidenced.
+
 ## Current alpha — v0.1 foundation
 
 Available and tested:
 
 - [x] Tauri 2 desktop shell with React, TypeScript, Rust, and SQLx
 - [x] Driver-neutral contracts and capability discovery
-- [x] Native SQLite and PostgreSQL connection/query/transaction paths
+- [x] Native SQLite, PostgreSQL, and initial MySQL/MariaDB connection/query/transaction paths
 - [x] PostgreSQL TLS modes and server-side query cancellation
 - [x] Schema/table/column metadata Explorer
 - [x] View Explorer and table index inspection across SQLite/PostgreSQL
@@ -106,7 +108,7 @@ Release gates:
 
 Goal: cover the database families and power workflows expected from a general-purpose IDE.
 
-- [ ] MySQL and MariaDB drivers
+- [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and basic tables/views/columns/index metadata; foreign keys, routines, triggers, streaming, cancellation, and integration matrix remain planned
 - [ ] SQL Server driver
 - [ ] Oracle driver and Oracle-specific object metadata
 - [ ] ER diagram with selective loading for large schemas

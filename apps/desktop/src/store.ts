@@ -358,11 +358,27 @@ WHERE created_at >= date('now', '-30 days')
 GROUP BY 1
 ORDER BY day DESC;`;
 
+const mysqlInitialSql = `-- Revenue by day · last 30 days
+SELECT
+  DATE(created_at) AS day,
+  COUNT(*) AS orders,
+  SUM(total_amount) AS revenue
+FROM orders
+WHERE created_at >= CURRENT_DATE - INTERVAL 30 DAY
+  AND status = 'paid'
+GROUP BY DATE(created_at)
+ORDER BY day DESC;`;
+
+function initialSqlForDriver(kind: DriverKind): string {
+  if (kind === "sqlite") return sqliteInitialSql;
+  if (kind === "mysql") return mysqlInitialSql;
+  return postgresInitialSql;
+}
+
 export const useQueryStore = create<QueryState>((set, get) => {
   const driver = createRuntimeDriver();
   let activeQueryController: AbortController | null = null;
-  const initialSql =
-    driver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
+  const initialSql = initialSqlForDriver(driver.kind);
   const defaultTabs: QueryTab[] = [
     {
       id: "query-1",
@@ -681,8 +697,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         await driverReady;
         const metadata = await nextDriver.metadata();
         await get().driver.disconnect();
-        const nextSql =
-          nextDriver.kind === "sqlite" ? sqliteInitialSql : postgresInitialSql;
+        const nextSql = initialSqlForDriver(nextDriver.kind);
         const currentTabs = get().tabs;
         const currentActiveTabId = get().activeTabId;
         const activeTab = currentTabs.find(
@@ -770,4 +785,4 @@ export const useQueryStore = create<QueryState>((set, get) => {
   };
 });
 
-export { postgresInitialSql, sqliteInitialSql };
+export { mysqlInitialSql, postgresInitialSql, sqliteInitialSql };

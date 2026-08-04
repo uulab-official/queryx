@@ -7,6 +7,7 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode},
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, DriverKind, QueryResult},
+    mysql_driver::MysqlDriver,
     postgres_driver::PostgresDriver,
     sqlite_driver::SqliteDriver,
 };
@@ -31,7 +32,7 @@ impl DriverRegistry {
                 Arc::new(SqliteDriver::connect(&config.database, read_only).await?)
             }
             DriverKind::Postgres => Arc::new(PostgresDriver::connect(&config).await?),
-            DriverKind::Mysql => return Err(AppError::UnsupportedDriver(config.kind.to_string())),
+            DriverKind::Mysql => Arc::new(MysqlDriver::connect(&config).await?),
         };
         let id = Uuid::new_v4();
         let summary = ConnectionSummary {
@@ -225,26 +226,5 @@ mod tests {
             .await
             .expect("read-only SQLite still allows reads");
         assert_eq!(result.rows[0]["status"], Value::from("paid"));
-    }
-
-    #[tokio::test]
-    async fn unsupported_drivers_fail_at_the_factory_boundary() {
-        let registry = DriverRegistry::default();
-        let error = registry
-            .connect(ConnectionConfig {
-                kind: DriverKind::Mysql,
-                name: "not-ready".into(),
-                database: "mysql".into(),
-                host: None,
-                port: None,
-                username: None,
-                password: None,
-                ssl_mode: None,
-                read_only: false,
-            })
-            .await
-            .expect_err("mysql is not implemented yet");
-
-        assert!(matches!(error, AppError::UnsupportedDriver(_)));
     }
 }

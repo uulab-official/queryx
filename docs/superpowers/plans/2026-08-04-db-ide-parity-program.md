@@ -178,19 +178,19 @@ git commit -m "feat: ship read-only connection workflow"
 - Create: `docs/parity-matrix.md`
 - Create: `docs/decisions/ADR-0014-database-ide-parity-gates.md`
 
-- [ ] **Step 1: Write the capability matrix**
+- [x] **Step 1: Write the capability matrix**
 
 For each of DBeaver, pgAdmin, phpMyAdmin, and SQL Developer, map QueryX workflows to `available`, `partial`, or `planned`; include evidence links to tests or user docs. Do not use a marketing percentage.
 
-- [ ] **Step 2: Define release gates for the next three tracks**
+- [x] **Step 2: Define release gates for the next three tracks**
 
 Require a reproducible large-result benchmark, schema diff preview with rollback SQL, and a driver contract suite before marking those tracks complete.
 
-- [ ] **Step 3: Add the matrix to the docs index and roadmap**
+- [x] **Step 3: Add the matrix to the docs index and roadmap**
 
 Make the matrix the source of truth for parity claims and link it from README and ROADMAP.
 
-- [ ] **Step 4: Run link/format checks and commit the evidence docs**
+- [x] **Step 4: Run link/format checks and commit the evidence docs**
 
 Run: `pnpm format:check && pnpm verify`
 
@@ -215,6 +215,26 @@ git commit -m "docs: add database ide parity gates"
 - [x] Keep arbitrary-query results honest: virtualization reduces DOM work, but loaded rows remain in memory and server paging remains planned.
 - [x] Add deterministic boundary tests for small sets, large-set windows, and end-of-list clamping.
 - [ ] Add streamed driver cursors, progress/cancellation telemetry, and arbitrary-query server paging in the next large-data slices.
+
+### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix
+
+**Files:**
+- Create: `apps/desktop/src-tauri/src/mysql_driver.rs`
+- Create: `docs/mysql-driver.md`
+- Create: `docs/parity-matrix.md`
+- Create: `docs/decisions/ADR-0014-database-ide-parity-gates.md`
+- Modify: `apps/desktop/src-tauri/Cargo.toml`
+- Modify: `apps/desktop/src/App.tsx`
+- Modify: `apps/desktop/src/store.ts`
+- Modify: `ROADMAP.md`
+- Modify: `README.md`
+
+- [x] Implement native SQLx MySQL/MariaDB connect, query, transaction, disconnect, and basic information_schema metadata paths.
+- [x] Connect MySQL/MariaDB to the saved profile and connection dialog flow with native read-only enforcement and capability gating.
+- [x] Add deterministic Rust/TypeScript coverage and an opt-in live MySQL contract test that never embeds credentials.
+- [x] Document supported scope and limitations instead of claiming complete MySQL/MariaDB parity.
+- [x] Add the evidence-gated DBeaver/pgAdmin/phpMyAdmin/SQL Developer capability matrix and ADR.
+- [ ] Add MySQL/MariaDB foreign keys, routines, triggers, streaming, cancellation, SSH/certificate configuration, and hosted integration coverage.
 
 ## Final verification for this plan
 

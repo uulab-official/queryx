@@ -5,7 +5,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 ## Use QueryX
 
 - [Getting Started](getting-started.md) — prerequisites, native startup, first connection, first query
-- [Connections](connections.md) — SQLite/PostgreSQL fields, TLS, credential behavior
+- [Connections](connections.md) — SQLite/PostgreSQL/MySQL fields, TLS, credential behavior
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
 - [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
@@ -20,7 +20,8 @@ Use this index to find the shortest path for your task. Documentation describes 
 
 - [Architecture](architecture.md) — trust boundaries and package responsibilities
 - [Driver API](driver-api.md) — shared contracts and capabilities
-- [SQLite Driver](sqlite-driver.md) and [PostgreSQL Driver](postgres-driver.md)
+- [SQLite Driver](sqlite-driver.md), [PostgreSQL Driver](postgres-driver.md), and [MySQL/MariaDB Driver](mysql-driver.md)
+- [Database IDE Capability Matrix](parity-matrix.md) — evidence-gated comparison and release gates
 - [Architecture decisions](decisions/) — rationale for foundational choices
 
 ## Contribute and operate

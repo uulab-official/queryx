@@ -11,7 +11,7 @@ packages/shared/    driver-neutral types and result contracts
 packages/core/      driver implementations and database orchestration
 ```
 
-The desktop app uses Zustand for UI state. The `InMemoryDriver` is a deterministic PostgreSQL-shaped browser fallback. The Tauri runtime uses production SQLx drivers for SQLite and PostgreSQL behind the same native trait and command API.
+The desktop app uses Zustand for UI state. The `InMemoryDriver` is a deterministic PostgreSQL-shaped browser fallback. The Tauri runtime uses production SQLx drivers for SQLite, PostgreSQL, and MySQL/MariaDB behind the same native trait and command API.
 
 ## Runtime boundary
 
@@ -57,7 +57,7 @@ The next integration steps are:
 1. Migrate the versioned native workspace snapshot to SQLite after the schema has stabilized, adding settings and cross-profile workspaces.
 2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
 3. Add long-query progress channels and timeout policies.
-4. Add MySQL through the same factory and contract suite.
+4. Expand the initial MySQL/MariaDB driver with foreign keys, routines, triggers, streaming, cancellation, and hosted integration coverage.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to schema-aware DDL diffing and migration history. The current safe editor handoff is documented in [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
 6. Add structured plan trees and explicit `EXPLAIN ANALYZE` controls on top of the current non-executing Explain slice documented in [ADR-0012](decisions/ADR-0012-non-executing-explain-slice.md).
 7. Keep result-grid clipboard serialization in the shared core so browser preview, native results, and the desktop virtualized grid share TSV quoting and null semantics.

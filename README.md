@@ -12,7 +12,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 
 - **Local first:** the desktop process connects directly to your database. There is no QueryX relay service.
 - **Safe by default:** UPDATE and DELETE without a WHERE clause are intercepted before execution.
-- **Driver neutral:** SQLite and PostgreSQL share typed query, metadata, transaction, and capability contracts.
+- **Driver neutral:** SQLite, PostgreSQL, and the initial MySQL/MariaDB driver share typed query, metadata, transaction, and capability contracts.
 - **Editor centered:** Monaco provides SQL syntax highlighting, metadata completion, selections, tabs, and independent undo history.
 - **Open and testable:** TypeScript and Rust quality gates run on Linux, macOS, and Windows in GitHub Actions.
 
@@ -20,7 +20,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 
 | Area | Available now | Next production gate |
 | --- | --- | --- |
-| Connections | Native SQLite and PostgreSQL, TLS modes, saved secret-free profiles, connection testing | OS keychain, read-only mode, tunnels |
+| Connections | Native SQLite, PostgreSQL, and MySQL/MariaDB basics, TLS modes, saved secret-free profiles, read-only sessions, connection testing | OS keychain, SSH tunnels, certificate files, advanced vendor metadata |
 | SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
 | Results | Dynamic table/JSON view, local filter/sort, guarded CSV export | Virtualized streaming, copy modes, paging |
 | Safety | Destructive-query warning, native read-only sessions, transaction execution path | Parser-backed analysis, explicit transaction state, affected-row estimate |
@@ -28,6 +28,8 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 | Runtime | Tauri 2, React, Rust, SQLx, signed updater integration, GitHub Release workflow | Platform notarization/codesigning and production key operations |
 
 The detailed delivery order and acceptance gates are in the [product roadmap](ROADMAP.md).
+
+Use the [database IDE capability matrix](docs/parity-matrix.md) for the evidence-based comparison with DBeaver, pgAdmin, phpMyAdmin, and SQL Developer.
 
 ## Quick start
 
@@ -40,7 +42,7 @@ pnpm install
 pnpm --filter @queryx/desktop tauri:dev
 ```
 
-QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file or PostgreSQL server. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
+QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file, PostgreSQL server, or MySQL/MariaDB server. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
 
 See [Getting Started](docs/getting-started.md) for platform setup and the first-query walkthrough.
 

@@ -40,7 +40,7 @@ interface QueryResult {
 
 Rows must remain serializable across the Tauri bridge. Binary and database-specific values need an explicit serialization policy before they are added to the shared model.
 
-PostgreSQL normalization currently covers booleans, integer and floating-point values, precision-preserving numeric strings, text, JSON, UUID, date/time values, bytea as base64, and common scalar arrays. Unknown native types are represented by an explicit type marker and add a result warning instead of failing the entire result set.
+PostgreSQL normalization currently covers booleans, integer and floating-point values, precision-preserving numeric strings, text, JSON, UUID, date/time values, bytea as base64, and common scalar arrays. MySQL/MariaDB normalization covers common integer/floating/decimal, text, JSON, date/time, and binary values. Unknown native types are represented by an explicit type marker and add a result warning instead of failing the entire result set.
 
 ## Native Rust contract
 
@@ -62,7 +62,7 @@ pub trait DatabaseDriver: Send + Sync {
 
 `DriverRegistry` stores `Arc<dyn DatabaseDriver>` behind opaque connection IDs. Vendor selection exists only in the connection factory; prepare, execute, cancel, metadata, transaction, disconnect, and read-only policy remain driver-neutral. The prepare step closes the abort-before-execute race by registering the UUID before the frontend exposes cancellation.
 
-`DriverConfig.readOnly` is enforced by the native connection: SQLite enables `PRAGMA query_only` for pooled connections and PostgreSQL sets `default_transaction_read_only`. `DatabaseDriver.isReadOnly()` and the `editing` capability expose the resulting policy to the UI, but UI state is not the security boundary.
+`DriverConfig.readOnly` is enforced by the native connection: SQLite enables `PRAGMA query_only` for pooled connections, PostgreSQL sets `default_transaction_read_only`, and MySQL/MariaDB sets a read-only transaction session while applying a conservative native statement guard. `DatabaseDriver.isReadOnly()` and the `editing` capability expose the resulting policy to the UI, but UI state is not the security boundary.
 
 Generic Tauri commands:
 
@@ -80,7 +80,7 @@ DDL Inspector actions are intentionally layered on this contract: copying is ren
 
 Cancellation is capability-driven. PostgreSQL reports `cancel`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
 
-Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md).
+Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, documented in [mysql-driver.md](mysql-driver.md).
 
 ## Metadata contract
 

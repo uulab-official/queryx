@@ -8,6 +8,8 @@ pub enum AppError {
     InvalidPath(String),
     #[error("invalid PostgreSQL configuration: {0}")]
     InvalidPostgresConfig(String),
+    #[error("invalid MySQL configuration: {0}")]
+    InvalidMysqlConfig(String),
     #[error("driver is not implemented yet: {0}")]
     UnsupportedDriver(String),
     #[error("invalid query id: {0}")]
@@ -20,6 +22,8 @@ pub enum AppError {
     DuplicateQueryId(String),
     #[error("optimistic edit conflict: expected {expected} row updates, but matched {actual}")]
     EditConflict { expected: u64, actual: u64 },
+    #[error("read-only connection rejects this statement")]
+    ReadOnlyViolation,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

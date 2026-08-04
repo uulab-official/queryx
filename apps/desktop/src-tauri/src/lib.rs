@@ -3,6 +3,7 @@ mod driver;
 mod driver_registry;
 mod error;
 mod models;
+mod mysql_driver;
 mod postgres_driver;
 mod sqlite_driver;
 

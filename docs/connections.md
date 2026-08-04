@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native QueryX desktop app can connect directly to SQLite files and PostgreSQL servers. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
+The native QueryX desktop app can connect directly to SQLite files, PostgreSQL servers, and MySQL/MariaDB servers. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
 
 ## Before you start
 
@@ -14,18 +14,20 @@ The native QueryX desktop app can connect directly to SQLite files and PostgreSQ
 
 For PostgreSQL, select the driver and enter a connection name, host, port, database, username, optional password, and SSL mode. Choose **Test connection** to open a temporary driver, load metadata, and close it without replacing the active connection. Choose **Connect** after the test passes to switch the editor to the new native connection.
 
+For MySQL or MariaDB, select **MySQL / MariaDB** and enter the host, port (default `3306`), database, username (default `root`), optional password, and SSL mode. QueryX loads tables, views, columns, row-count estimates, and indexes through `information_schema`.
+
 For SQLite, select SQLite and enter `:memory:` for a temporary database or an absolute database file path.
 
 ## Options and behavior
 
 - `Prefer` tries TLS first and can fall back when the server does not support it.
-- `Require` requires an encrypted PostgreSQL connection.
+- `Require` requires an encrypted PostgreSQL or MySQL connection.
 - `Disable` is intended for trusted local development servers.
 - The prior connection stays active until the replacement connection and its metadata both load successfully.
 - **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
-- **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only` for every native pool connection, and PostgreSQL enables `default_transaction_read_only`; direct write attempts are rejected by the database/runtime.
+- **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only`, PostgreSQL enables `default_transaction_read_only`, and MySQL sets a read-only transaction session plus rejects non-read statements at the native driver boundary.
 - On native desktop, profiles are stored in the QueryX app-local data directory. The browser preview uses localStorage as a development fallback.
-- PostgreSQL and SQLite return the same result and metadata shapes to the UI.
+- All three drivers return the same result and metadata shapes to the UI; unsupported vendor-specific metadata is represented as an empty capability area until implemented.
 
 ## Safety and privacy
 
@@ -45,4 +47,5 @@ Saved profiles never contain passwords. Re-enter the password when connecting af
 
 - [PostgreSQL Driver](postgres-driver.md)
 - [SQLite Driver](sqlite-driver.md)
+- [MySQL/MariaDB Driver](mysql-driver.md)
 - [Driver API](driver-api.md)

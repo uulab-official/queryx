@@ -69,6 +69,18 @@ const maxColumnWidth = 520;
 const tableBrowsePageSize = 100;
 type ExportFormat = "csv" | "json" | "sql";
 
+function driverDisplayName(kind: DriverKind): string {
+  if (kind === "sqlite") return "SQLite";
+  if (kind === "mysql") return "MySQL / MariaDB";
+  return "PostgreSQL";
+}
+
+function driverShortName(kind: DriverKind): string {
+  if (kind === "sqlite") return "SQ";
+  if (kind === "mysql") return "MY";
+  return "PG";
+}
+
 function resultRowKey(row: Record<string, unknown>): string {
   const existing = resultRowKeys.get(row);
   if (existing) return existing;
@@ -1608,9 +1620,7 @@ function App() {
               className={`status-dot ${connectionStatus === "connected" ? "green" : "orange"}`}
             />{" "}
             <strong>{connectionName}</strong>
-            <span className="driver-tag">
-              {driverKind === "sqlite" ? "SQLite" : "PG"}
-            </span>
+            <span className="driver-tag">{driverDisplayName(driverKind)}</span>
             <span className="chevron">⌄</span>
           </button>
           <div className="tree">
@@ -2032,7 +2042,7 @@ function App() {
               </Suspense>
             </div>
             <div className="editor-footer">
-              <span>{driverKind === "sqlite" ? "SQLite" : "PostgreSQL"}</span>
+              <span>{driverDisplayName(driverKind)}</span>
               <span>UTF-8</span>
               <span>
                 Ln {cursor.line}, Col {cursor.column}
@@ -2474,11 +2484,7 @@ function App() {
                 <span className="read-only-badge">READ ONLY</span>
               )}
             </span>
-            <span>
-              {driverKind === "sqlite"
-                ? "SQLite · Rust native"
-                : "PostgreSQL · Rust native"}
-            </span>
+            <span>{driverDisplayName(driverKind)} · Rust native</span>
             <span className="footer-spacer" />
             <span>
               Safe mode <i className="toggle" />
@@ -3132,10 +3138,21 @@ function ConnectionDialog({
     setKind(profile.kind);
     setName(profile.name);
     setHost(profile.host ?? "localhost");
-    setPort(String(profile.port ?? (profile.kind === "postgres" ? 5432 : "")));
+    setPort(
+      String(
+        profile.port ??
+          (profile.kind === "postgres"
+            ? 5432
+            : profile.kind === "mysql"
+              ? 3306
+              : ""),
+      ),
+    );
     setDatabase(profile.database);
     setReadOnly(profile.readOnly);
-    setUsername(profile.username ?? "postgres");
+    setUsername(
+      profile.username ?? (profile.kind === "mysql" ? "root" : "postgres"),
+    );
     setPassword("");
     setSslMode(profile.sslMode ?? "prefer");
     setTestStatus("idle");
@@ -3276,7 +3293,7 @@ function ConnectionDialog({
                       onClick={() => applyProfile(profile)}
                     >
                       <span className="profile-kind">
-                        {profile.kind === "sqlite" ? "SQ" : "PG"}
+                        {driverShortName(profile.kind)}
                       </span>
                       <span>
                         <strong>{profile.name}</strong>
@@ -3315,16 +3332,31 @@ function ConnectionDialog({
                       setReadOnly(false);
                       setKind(nextKind);
                       setDatabase(
-                        nextKind === "sqlite" ? ":memory:" : "postgres",
+                        nextKind === "sqlite"
+                          ? ":memory:"
+                          : nextKind === "mysql"
+                            ? "mysql"
+                            : "postgres",
                       );
+                      setPort(
+                        nextKind === "sqlite"
+                          ? ""
+                          : nextKind === "mysql"
+                            ? "3306"
+                            : "5432",
+                      );
+                      setUsername(nextKind === "mysql" ? "root" : "postgres");
                       setName(
                         nextKind === "sqlite"
                           ? "Local SQLite"
-                          : "Local PostgreSQL",
+                          : nextKind === "mysql"
+                            ? "Local MySQL"
+                            : "Local PostgreSQL",
                       );
                     }}
                   >
                     <option value="postgres">PostgreSQL</option>
+                    <option value="mysql">MySQL / MariaDB</option>
                     <option value="sqlite">SQLite</option>
                   </select>
                 </label>
@@ -3336,7 +3368,7 @@ function ConnectionDialog({
                     required
                   />
                 </label>
-                {kind === "postgres" && (
+                {kind !== "sqlite" && (
                   <>
                     <label>
                       <span>Host</span>
@@ -3368,11 +3400,13 @@ function ConnectionDialog({
                     placeholder={
                       kind === "sqlite"
                         ? "/path/to/database.sqlite"
-                        : "postgres"
+                        : kind === "mysql"
+                          ? "mysql"
+                          : "postgres"
                     }
                   />
                 </label>
-                {kind === "postgres" && (
+                {kind !== "sqlite" && (
                   <>
                     <label>
                       <span>Username</span>

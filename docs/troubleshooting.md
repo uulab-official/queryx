@@ -6,7 +6,7 @@ Confirm Node.js 22, pnpm 11, and Rust stable are available, then install the [Ta
 
 ## The browser opens but database connections do not work
 
-`pnpm dev` is a frontend-only workflow with an in-memory driver. Start the Tauri app for native SQLite and PostgreSQL connections:
+`pnpm dev` is a frontend-only workflow with an in-memory driver. Start the Tauri app for native SQLite, PostgreSQL, or MySQL/MariaDB connections:
 
 ```bash
 pnpm --filter @queryx/desktop tauri:dev
