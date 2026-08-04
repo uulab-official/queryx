@@ -18,12 +18,14 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
 import {
   buildAddColumnPlan,
+  buildAlterViewPlan,
   buildCsvImportPlan,
   buildCreateTablePlan,
   buildCreateIndexPlan,
   buildCreateViewPlan,
   buildEditTableColumnsPlan,
   buildDropIndexPlan,
+  buildDropViewPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
   buildRowsToSqlUpdateStatements,
@@ -50,6 +52,7 @@ import {
 import type {
   AddColumnInput,
   AddColumnPlan,
+  AlterViewPlan,
   CsvImportMapping,
   CsvImportPlan,
   CreateTableColumnInput,
@@ -58,6 +61,7 @@ import type {
   CreateIndexPlan,
   CreateViewPlan,
   DropIndexPlan,
+  DropViewPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
   ErdNode,
@@ -506,6 +510,8 @@ function App() {
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
   const [dropIndexOpen, setDropIndexOpen] = useState(false);
   const [createViewOpen, setCreateViewOpen] = useState(false);
+  const [alterViewOpen, setAlterViewOpen] = useState(false);
+  const [dropViewOpen, setDropViewOpen] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [nullDisplay, setNullDisplay] = useState<"literal" | "empty">(
     "literal",
@@ -790,6 +796,72 @@ function App() {
     await loadMetadata();
     setCreateViewOpen(false);
     notify("View created and metadata refreshed");
+  };
+  const openAlterView = () => {
+    if (!currentView) {
+      notify("Select a view before editing its definition");
+      return;
+    }
+    setAlterViewOpen(true);
+  };
+  const alterView = async (plan: AlterViewPlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("View changes are disabled for a read-only connection");
+      return;
+    }
+    const warningText = plan.warnings.length
+      ? `\n\nWarnings:\n${plan.warnings.join("\n")}`
+      : "";
+    if (
+      !window.confirm(
+        `Apply this view definition in one transaction?${warningText}`,
+      )
+    ) {
+      return;
+    }
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("View changes failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setAlterViewOpen(false);
+    notify("View definition updated and metadata refreshed");
+  };
+  const openDropView = () => {
+    if (!currentView) {
+      notify("Select a view before dropping it");
+      return;
+    }
+    setDropViewOpen(true);
+  };
+  const dropView = async (plan: DropViewPlan) => {
+    if (!plan.sql || plan.errors.length > 0) return;
+    if (readOnlyConnection) {
+      notify("View deletion is disabled for a read-only connection");
+      return;
+    }
+    const warningText = plan.warnings.length
+      ? `\n\nWarnings:\n${plan.warnings.join("\n")}`
+      : "";
+    if (!window.confirm(`Drop this view in one transaction?${warningText}`)) {
+      return;
+    }
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("View deletion failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setDropViewOpen(false);
+    notify("View dropped and metadata refreshed");
   };
   const compareSavedConnection = async (
     config: DriverConfig,
@@ -1996,6 +2068,24 @@ function App() {
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
       disabled: !metadata || readOnlyConnection,
       execute: openCreateView,
+    },
+    {
+      id: "alter-view",
+      label: "Edit definition of selected view",
+      hint: currentView
+        ? `${currentView.schema}.${currentView.name}`
+        : "view required",
+      disabled: !currentView || readOnlyConnection,
+      execute: openAlterView,
+    },
+    {
+      id: "drop-view",
+      label: "Drop selected view",
+      hint: currentView
+        ? `${currentView.schema}.${currentView.name}`
+        : "view required",
+      disabled: !currentView || readOnlyConnection,
+      execute: openDropView,
     },
     {
       id: "connection",
@@ -3286,6 +3376,41 @@ function App() {
           }}
         />
       )}
+      {alterViewOpen && currentView && metadata && (
+        <AlterViewDialog
+          driverKind={driverKind}
+          view={currentView}
+          existingViews={metadata.views}
+          onClose={() => setAlterViewOpen(false)}
+          onApply={alterView}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setAlterViewOpen(false);
+            notify("Opened ALTER VIEW preview in a new SQL tab");
+          }}
+        />
+      )}
+      {dropViewOpen && currentView && metadata && (
+        <DropViewDialog
+          driverKind={driverKind}
+          view={currentView}
+          existingViews={metadata.views}
+          dependentObjects={
+            currentDependencies?.usedBy.map((dependency) =>
+              databaseObjectQualifiedName(dependency.dependent),
+            ) ?? []
+          }
+          onClose={() => setDropViewOpen(false)}
+          onDrop={dropView}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setDropViewOpen(false);
+            notify("Opened DROP VIEW preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3902,6 +4027,213 @@ function CreateViewDialog({
             disabled={plan.errors.length > 0}
           >
             Create view
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function AlterViewDialog({
+  driverKind,
+  view,
+  existingViews,
+  onClose,
+  onApply,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  view: ViewMetadata;
+  existingViews: ViewMetadata[];
+  onClose: () => void;
+  onApply: (plan: AlterViewPlan) => Promise<void>;
+  onOpenSql: (plan: AlterViewPlan) => void;
+}) {
+  const [definition, setDefinition] = useState(
+    view.definition ?? "SELECT\n  *\nFROM\n  source_table",
+  );
+  const plan = useMemo(
+    () =>
+      buildAlterViewPlan(
+        { schema: view.schema, name: view.name, definition },
+        existingViews,
+        driverKind,
+      ),
+    [definition, driverKind, existingViews, view.name, view.schema],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-view-modal"
+        aria-modal="true"
+        aria-labelledby="alter-view-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · VIEW</p>
+            <h2 id="alter-view-title">Edit view definition</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close edit view form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Update{" "}
+          <strong>
+            {view.schema}.{view.name}
+          </strong>{" "}
+          with one read-only SELECT/WITH definition. QueryX validates the
+          definition before generating the dialect-specific replacement.
+        </p>
+        <label className="create-view-definition" htmlFor="alter-view-sql">
+          SELECT definition
+          <textarea
+            id="alter-view-sql"
+            value={definition}
+            onChange={(event) => setDefinition(event.target.value)}
+            spellCheck={false}
+          />
+        </label>
+        {plan.errors.length > 0 ? (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {plan.warnings.map((warning) => (
+              <div className="create-index-warning" key={warning}>
+                ⚠ {warning}
+              </div>
+            ))}
+            <pre className="create-table-preview">{plan.sql}</pre>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onApply(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Apply view
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DropViewDialog({
+  driverKind,
+  view,
+  existingViews,
+  dependentObjects,
+  onClose,
+  onDrop,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  view: ViewMetadata;
+  existingViews: ViewMetadata[];
+  dependentObjects: string[];
+  onClose: () => void;
+  onDrop: (plan: DropViewPlan) => Promise<void>;
+  onOpenSql: (plan: DropViewPlan) => void;
+}) {
+  const plan = useMemo(
+    () =>
+      buildDropViewPlan(
+        view.schema,
+        view.name,
+        existingViews,
+        dependentObjects,
+        driverKind,
+      ),
+    [dependentObjects, driverKind, existingViews, view.name, view.schema],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="drop-index-modal"
+        aria-modal="true"
+        aria-labelledby="drop-view-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · VIEW</p>
+            <h2 id="drop-view-title">Drop view</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close drop view form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Drop{" "}
+          <strong>
+            {view.schema}.{view.name}
+          </strong>{" "}
+          after reviewing the dependency warning and generated SQL.
+        </p>
+        {plan.errors.length > 0 ? (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        ) : (
+          <>
+            {plan.warnings.map((warning) => (
+              <div className="create-index-warning" key={warning}>
+                ⚠ {warning}
+              </div>
+            ))}
+            <pre className="create-table-preview">{plan.sql}</pre>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-danger"
+            onClick={() => void onDrop(plan)}
+            disabled={plan.errors.length > 0}
+          >
+            Drop view
           </button>
         </div>
       </dialog>

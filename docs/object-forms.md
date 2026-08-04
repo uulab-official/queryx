@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, and **Create view from form**.
+QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
 
 The form supports:
 
@@ -21,6 +21,8 @@ The drop-index form supports regular indexes and protects primary indexes. Postg
 
 The create-view form accepts one read-only `SELECT` or `WITH` definition, checks schema/name collisions against the current metadata snapshot, rejects comments, delimiters, and mutating DML/DDL keywords, and applies the generated dialect-aware `CREATE VIEW` statement only after confirmation. The SQL preview can also be opened in a normal query tab for review or vendor-specific edits.
 
+The edit-view form validates the replacement definition against the current view snapshot. PostgreSQL and MySQL/MariaDB use `CREATE OR REPLACE VIEW`; SQLite uses a two-statement drop/create transaction and displays a dependent-object warning because SQLite has no replace form. The drop-view form always previews quoted SQL and warns when the dependency graph reports known objects using the view; the database remains authoritative and may reject the operation.
+
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Column renames, index alteration, view alter/drop, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Column renames, index alteration, constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

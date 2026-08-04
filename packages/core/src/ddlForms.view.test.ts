@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildCreateViewPlan } from "./ddlForms";
+import {
+  buildAlterViewPlan,
+  buildCreateViewPlan,
+  buildDropViewPlan,
+} from "./ddlForms";
 
 describe("buildCreateViewPlan", () => {
   it("generates a quoted read-only view definition", () => {
@@ -52,5 +56,52 @@ describe("buildCreateViewPlan", () => {
     expect(plan.sql).toBe(
       "CREATE VIEW `reporting`.`status_labels` AS SELECT 'update; -- keep this text' AS label;",
     );
+  });
+
+  it("replaces views without dropping them on PostgreSQL and MySQL", () => {
+    const plan = buildAlterViewPlan(
+      {
+        schema: "reporting",
+        name: "paid_orders",
+        definition: "SELECT id FROM public.orders WHERE status = 'settled'",
+      },
+      [{ schema: "reporting", name: "paid_orders" }],
+      "postgres",
+    );
+    expect(plan.errors).toEqual([]);
+    expect(plan.warnings).toEqual([]);
+    expect(plan.statements).toEqual([
+      'CREATE OR REPLACE VIEW "reporting"."paid_orders" AS SELECT id FROM public.orders WHERE status = \'settled\';',
+    ]);
+  });
+
+  it("marks SQLite view replacement as a drop/create review", () => {
+    const plan = buildAlterViewPlan(
+      {
+        schema: "main",
+        name: "paid_orders",
+        definition: "SELECT id FROM orders",
+      },
+      [{ schema: "main", name: "paid_orders" }],
+      "sqlite",
+    );
+    expect(plan.statements).toEqual([
+      'DROP VIEW "main"."paid_orders";',
+      'CREATE VIEW "main"."paid_orders" AS SELECT id FROM orders;',
+    ]);
+    expect(plan.warnings[0]).toContain("SQLite replaces a view");
+  });
+
+  it("warns before dropping a view with known dependents", () => {
+    const plan = buildDropViewPlan(
+      "public",
+      "paid_orders",
+      [{ schema: "public", name: "paid_orders" }],
+      ["public.monthly_revenue"],
+      "postgres",
+    );
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toBe('DROP VIEW "public"."paid_orders";');
+    expect(plan.warnings[0]).toContain("public.monthly_revenue");
   });
 });

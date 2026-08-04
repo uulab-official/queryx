@@ -73,6 +73,20 @@ export interface CreateViewPlan {
   errors: string[];
 }
 
+export interface AlterViewPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  warnings: string[];
+}
+
+export interface DropViewPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  warnings: string[];
+}
+
 function quoteIdentifier(value: string, driver: DriverKind): string {
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
@@ -475,5 +489,93 @@ export function buildCreateViewPlan(
   return {
     sql: `CREATE VIEW ${qualifiedName(schema, name, driver)} AS ${definition};`,
     errors: [],
+  };
+}
+
+export function buildAlterViewPlan(
+  input: CreateViewInput,
+  existingViews: Pick<ViewMetadata, "schema" | "name">[],
+  driver: DriverKind,
+): AlterViewPlan {
+  const schema = normalizeIdentifier(input.schema);
+  const name = normalizeIdentifier(input.name);
+  const existing = existingViews.some(
+    (view) =>
+      view.schema.toLocaleLowerCase() === schema.toLocaleLowerCase() &&
+      view.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+  );
+  const createPlan = buildCreateViewPlan(
+    input,
+    existingViews.filter(
+      (view) =>
+        view.schema.toLocaleLowerCase() !== schema.toLocaleLowerCase() ||
+        view.name.toLocaleLowerCase() !== name.toLocaleLowerCase(),
+    ),
+    driver,
+  );
+  const errors = existing
+    ? createPlan.errors
+    : [`View does not exist: ${schema}.${name}`, ...createPlan.errors];
+  if (errors.length > 0) {
+    return { sql: "", statements: [], errors, warnings: [] };
+  }
+
+  const qualified = qualifiedName(schema, name, driver);
+  const definition = input.definition.trim().replace(/;\s*$/, "");
+  const statements =
+    driver === "sqlite"
+      ? [
+          `DROP VIEW ${qualified};`,
+          `CREATE VIEW ${qualified} AS ${definition};`,
+        ]
+      : [`CREATE OR REPLACE VIEW ${qualified} AS ${definition};`];
+  return {
+    sql: statements.join("\n"),
+    statements,
+    errors: [],
+    warnings:
+      driver === "sqlite"
+        ? [
+            "SQLite replaces a view by dropping and recreating it; dependent objects may need review",
+          ]
+        : [],
+  };
+}
+
+export function buildDropViewPlan(
+  schemaInput: string,
+  nameInput: string,
+  existingViews: Pick<ViewMetadata, "schema" | "name">[],
+  dependentObjects: string[],
+  driver: DriverKind,
+): DropViewPlan {
+  const schema = normalizeIdentifier(schemaInput);
+  const name = normalizeIdentifier(nameInput);
+  const errors = [
+    identifierError("Schema", schema),
+    identifierError("View name", name),
+  ].filter((error): error is string => Boolean(error));
+  const existing = existingViews.some(
+    (view) =>
+      view.schema.toLocaleLowerCase() === schema.toLocaleLowerCase() &&
+      view.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+  );
+  if (!existing && schema && name) {
+    errors.push(`View does not exist: ${schema}.${name}`);
+  }
+  if (errors.length > 0) {
+    return { sql: "", statements: [], errors, warnings: [] };
+  }
+  const statement = `DROP VIEW ${qualifiedName(schema, name, driver)};`;
+  return {
+    sql: statement,
+    statements: [statement],
+    errors: [],
+    warnings:
+      dependentObjects.length > 0
+        ? [
+            `View is referenced by ${dependentObjects.join(", ")}; the database may reject this drop`,
+          ]
+        : [],
   };
 }
