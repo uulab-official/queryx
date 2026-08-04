@@ -236,6 +236,22 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add the evidence-gated DBeaver/pgAdmin/phpMyAdmin/SQL Developer capability matrix and ADR.
 - [x] Add MySQL/MariaDB foreign keys, routines, and relation triggers; event triggers, streaming, cancellation, SSH/certificate configuration, and hosted integration coverage remain pending.
 
+### Task 7: Ship the first schema-compare slice
+
+**Files:**
+- Create: `packages/core/src/schemaDiff.ts`
+- Test: `packages/core/src/schemaDiff.test.ts`
+- Create: `docs/schema-compare.md`
+- Modify: `apps/desktop/src/App.tsx`
+- Modify: `apps/desktop/src/styles.css`
+- Modify: `ROADMAP.md`
+
+- [x] Compare session-local metadata baselines for tables, columns, and indexes.
+- [x] Generate PostgreSQL/MySQL migration preview SQL and mark SQLite column alterations for manual review.
+- [x] Add Explorer and command-palette actions without automatic execution; open preview in a normal SQL tab.
+- [x] Add deterministic tests and document destructive/dependency-ordering limitations.
+- [ ] Add cross-connection compare, dependency-ordered migrations, view/FK diffing, privilege preflight, and migration history.
+
 ## Final verification for this plan
 
 Run all of the following before calling the first safety track complete:

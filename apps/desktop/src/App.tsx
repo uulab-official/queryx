@@ -20,6 +20,8 @@ import {
   buildDependencyIndex,
   buildForeignKeyIndex,
   buildExplainQuery,
+  buildSchemaMigrationSql,
+  compareSchemaSnapshots,
   formatSql,
   inspectQuerySafety,
   serializeRowsToCsv,
@@ -33,6 +35,7 @@ import type {
   ObjectDependencies,
   QuerySafetyReport,
   SqlRowUpdate,
+  SchemaDiff,
 } from "@queryx/core";
 import type {
   ConnectionProfile,
@@ -41,6 +44,7 @@ import type {
   DriverConfig,
   DriverKind,
   EventTriggerMetadata,
+  DatabaseMetadata,
   RelationRef,
   RoutineMetadata,
   TableMetadata,
@@ -468,6 +472,10 @@ function App() {
     report: QuerySafetyReport;
     sql: string;
   } | null>(null);
+  const [schemaBaseline, setSchemaBaseline] = useState<DatabaseMetadata | null>(
+    null,
+  );
+  const [schemaDiffOpen, setSchemaDiffOpen] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -480,6 +488,30 @@ function App() {
     (count, edit) => count + Object.keys(edit.changes).length,
     0,
   );
+  const schemaDiff = useMemo<SchemaDiff | null>(
+    () =>
+      schemaBaseline && metadata
+        ? compareSchemaSnapshots(schemaBaseline, metadata, driverKind)
+        : null,
+    [driverKind, metadata, schemaBaseline],
+  );
+  const connectionIdentity = `${connectionName}:${driverKind}`;
+  const captureSchemaBaseline = () => {
+    if (!metadata) {
+      notify("Connect to a database before capturing a schema baseline");
+      return;
+    }
+    setSchemaBaseline(metadata);
+    setSchemaDiffOpen(false);
+    notify("Schema baseline captured; refresh metadata to compare changes");
+  };
+  const openSchemaDiff = () => {
+    if (!schemaBaseline) {
+      captureSchemaBaseline();
+      return;
+    }
+    setSchemaDiffOpen(true);
+  };
   const handleToggleFavorite = () => {
     if (!sql.trim()) {
       notify("Enter SQL before saving a favorite");
@@ -1057,6 +1089,11 @@ function App() {
     }
   }, [executionStatus]);
   useEffect(() => {
+    if (!connectionIdentity) return;
+    setSchemaBaseline(null);
+    setSchemaDiffOpen(false);
+  }, [connectionIdentity]);
+  useEffect(() => {
     if (selectedObjectIdentity === "none") {
       setEditingEnabled(false);
       setEditingCell(null);
@@ -1481,6 +1518,22 @@ function App() {
       },
     },
     {
+      id: "capture-schema-baseline",
+      label: "Capture schema baseline",
+      hint: "compare after refresh",
+      disabled: !metadata,
+      execute: captureSchemaBaseline,
+    },
+    {
+      id: "compare-schema",
+      label: "Compare schema",
+      hint: schemaDiff
+        ? `${schemaDiff.changes.length} changes`
+        : "baseline required",
+      disabled: !schemaBaseline || !metadata,
+      execute: openSchemaDiff,
+    },
+    {
       id: "connection",
       label: "Open connection dialog",
       hint: connectionName,
@@ -1609,6 +1662,21 @@ function App() {
               }}
             >
               ↻
+            </button>
+            <button
+              type="button"
+              className={`mini-button ${schemaBaseline ? "active" : ""}`}
+              aria-label={
+                schemaBaseline ? "Compare schema" : "Capture schema baseline"
+              }
+              title={
+                schemaBaseline
+                  ? "Compare current metadata with baseline"
+                  : "Capture current metadata as schema baseline"
+              }
+              onClick={openSchemaDiff}
+            >
+              ⇄
             </button>
           </div>
           <button
@@ -2538,6 +2606,20 @@ function App() {
           onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
         />
       )}
+      {schemaDiffOpen && schemaDiff && (
+        <SchemaDiffDialog
+          diff={schemaDiff}
+          driverKind={driverKind}
+          onClose={() => setSchemaDiffOpen(false)}
+          onOpenSql={() => {
+            const migrationSql = buildSchemaMigrationSql(schemaDiff);
+            newQuery();
+            setSql(migrationSql);
+            setSchemaDiffOpen(false);
+            notify("Opened schema migration preview in a new SQL tab");
+          }}
+        />
+      )}
       {editPreviewOpen && (
         <EditPreviewDialog
           sql={editPreview.sql}
@@ -3021,6 +3103,104 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function SchemaDiffDialog({
+  diff,
+  driverKind,
+  onClose,
+  onOpenSql,
+}: {
+  diff: SchemaDiff;
+  driverKind: DriverKind;
+  onClose: () => void;
+  onOpenSql: () => void;
+}) {
+  const migrationSql = buildSchemaMigrationSql(diff);
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-diff-modal"
+        aria-modal="true"
+        aria-labelledby="schema-diff-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">
+              SCHEMA COMPARE · {driverDisplayName(driverKind)}
+            </p>
+            <h2 id="schema-diff-title">Migration preview</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close schema comparison"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          This compares the captured baseline with the latest metadata snapshot.
+          Nothing runs automatically; review the generated SQL before opening it
+          in a query tab.
+        </p>
+        <div className="schema-diff-summary" aria-label="Schema change summary">
+          <span>{diff.changes.length} changes</span>
+          <span className="schema-diff-added">{diff.added} additive</span>
+          <span className="schema-diff-removed">
+            {diff.removed} destructive
+          </span>
+          {diff.manual > 0 && <span>{diff.manual} manual</span>}
+        </div>
+        {diff.changes.length === 0 ? (
+          <div className="schema-diff-empty">
+            Baseline and current metadata match.
+          </div>
+        ) : (
+          <>
+            <div className="schema-diff-list" aria-label="Schema changes">
+              {diff.changes.map((change) => (
+                <div
+                  className="schema-diff-row"
+                  key={`${change.kind}:${change.label}`}
+                >
+                  <span
+                    className={`schema-diff-kind ${change.destructive ? "destructive" : "additive"}`}
+                  >
+                    {change.destructive ? "DROP" : "ADD"}
+                  </span>
+                  <span>
+                    <strong>{change.label}</strong>
+                    <small>
+                      {change.sql
+                        ? change.detail
+                        : `Manual review · ${change.detail}`}
+                    </small>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <pre className="edit-preview-sql">{migrationSql}</pre>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Close
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={onOpenSql}
+            disabled={diff.changes.length === 0}
+          >
+            Open SQL preview
           </button>
         </div>
       </dialog>

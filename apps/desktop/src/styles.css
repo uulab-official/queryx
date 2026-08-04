@@ -1535,6 +1535,101 @@ button:disabled {
   color: #ffaf85;
   font: 10px / 1.4 var(--mono);
 }
+.schema-diff-modal {
+  width: min(820px, calc(100vw - 40px));
+  max-height: min(760px, calc(100vh - 40px));
+  margin: 0;
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid #3d5961;
+  border-radius: 9px;
+  background: #141a1d;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+}
+.schema-diff-modal h2 {
+  margin: 0;
+  color: #e8f1ee;
+  font-size: 16px;
+}
+.schema-diff-summary {
+  display: flex;
+  gap: 7px;
+  margin: 0 0 12px;
+  color: #95a6ad;
+  font: 9px var(--mono);
+}
+.schema-diff-summary span {
+  border: 1px solid #34434a;
+  border-radius: 3px;
+  padding: 4px 6px;
+}
+.schema-diff-summary .schema-diff-added {
+  border-color: #345c4d;
+  color: #8cd0ad;
+}
+.schema-diff-summary .schema-diff-removed {
+  border-color: #6a4239;
+  color: #e3a184;
+}
+.schema-diff-list {
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 12px;
+  border: 1px solid #2a373d;
+  border-radius: 5px;
+}
+.schema-diff-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #202b30;
+}
+.schema-diff-row:last-child {
+  border-bottom: 0;
+}
+.schema-diff-row > span:last-child {
+  min-width: 0;
+}
+.schema-diff-row strong,
+.schema-diff-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.schema-diff-row strong {
+  color: #cdd9dc;
+  font: 10px var(--mono);
+}
+.schema-diff-row small {
+  margin-top: 3px;
+  color: #71848b;
+  font: 9px var(--mono);
+}
+.schema-diff-kind {
+  min-width: 32px;
+  border-radius: 3px;
+  padding: 3px 4px;
+  font: 8px var(--mono);
+  text-align: center;
+}
+.schema-diff-kind.additive {
+  background: #1b342c;
+  color: #8cd0ad;
+}
+.schema-diff-kind.destructive {
+  background: #3a2524;
+  color: #e3a184;
+}
+.schema-diff-empty {
+  margin: 10px 0 18px;
+  padding: 22px;
+  border: 1px dashed #35464c;
+  color: #8a9ba2;
+  font: 10px var(--mono);
+  text-align: center;
+}
 .command-backdrop {
   place-items: start center;
   padding-top: 15vh;

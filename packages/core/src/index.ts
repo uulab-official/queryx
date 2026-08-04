@@ -31,6 +31,15 @@ export { InMemoryDriver } from "./inMemoryDriver";
 export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
 export { formatSql } from "./sqlFormatter";
+export {
+  buildSchemaMigrationSql,
+  compareSchemaSnapshots,
+} from "./schemaDiff";
+export type {
+  SchemaDiff,
+  SchemaDiffChange,
+  SchemaDiffKind,
+} from "./schemaDiff";
 export { buildExplainQuery } from "./explain";
 export type {
   ExplainQuery,

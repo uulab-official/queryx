@@ -41,7 +41,7 @@ The native transaction path owns commit and rollback behavior. If execution fail
 
 ## Current limits and next gate
 
-This workflow is a safe editor handoff, not a schema migration system. The next roadmap gate is schema-aware diffing with dependency ordering, privilege checks, generated SQL preview, migration history, and vendor capability declarations. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
+This workflow is a safe editor handoff. [Schema Compare](schema-compare.md) now provides a session-local baseline diff and migration SQL preview for tables, columns, and indexes. Dependency ordering, privilege checks, object forms, migration history, and vendor capability declarations remain roadmap work. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
 
 ## Related
 

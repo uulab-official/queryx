@@ -55,6 +55,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added a bounded virtualized result grid for large loaded datasets, with overscan, scroll spacers, global selection/copy indices, and an explicit virtualized status hint.
 - Added the initial native MySQL/MariaDB driver with SQLx query/transaction execution, read-only enforcement, common value normalization, and information_schema tables/views/columns/index metadata.
 - Expanded MySQL/MariaDB metadata with foreign-key relationships, direct dependency edges, routines, and relation triggers.
+- Added session-local schema compare with baseline capture, table/column/index diffing, dialect-aware migration preview SQL, destructive markers, and SQLite manual-review safeguards.
 
 ## [0.1.0] — 2026-08-03
 
