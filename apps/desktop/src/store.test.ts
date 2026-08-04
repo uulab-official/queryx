@@ -93,6 +93,53 @@ describe("query tabs", () => {
     }
   });
 
+  it("clears recent query history from state and local storage", () => {
+    const values = new Map<string, string>([
+      ["queryx:query-history", JSON.stringify([{ id: "history-1" }])],
+    ]);
+    const fakeWindow = {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      useQueryStore.setState({
+        history: [
+          {
+            id: "history-1",
+            label: "Recent query",
+            sql: "SELECT 1",
+            executedAt: new Date().toISOString(),
+            status: "success",
+          },
+        ],
+      });
+      useQueryStore.getState().clearHistory();
+
+      expect(useQueryStore.getState().history).toEqual([]);
+      expect(values.has("queryx:query-history")).toBe(false);
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
+  });
+
   it("returns the id of a new editable document", () => {
     const newTabId = useQueryStore.getState().newQuery();
     const state = useQueryStore.getState();

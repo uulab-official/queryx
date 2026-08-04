@@ -22,16 +22,17 @@ Favorites are deduplicated by normalized SQL text and capped at 50 entries. Labe
 ## Options and behavior
 
 - Recent history keeps the latest 20 distinct SQL statements and records execution status.
+- Use the `•••` action beside **Recent queries** to clear the entire locally stored history after confirmation. Favorites and open query tabs are not affected.
 - Favorites keep the latest saved statements and their local creation time.
 - Cmd/Ctrl+K includes **Save favorite** or **Remove favorite** for the active document.
 - Cmd/Ctrl+P opens Quick Open; it merges favorites first and then distinct recent queries, de-duplicated by SQL text.
 - Query tabs and active-tab selection are restored locally, up to 20 tabs. A corrupted or older snapshot is ignored and the default Daily revenue tab is recreated. Restored SQL is never executed automatically; run it explicitly after review.
 - Recalling a favorite marks the active tab dirty so the user can review the change before running it.
-- The sidebar shows the first three favorites and recent entries; Quick Open searches the full stored lists.
+- The sidebar shows the first three favorites and recent entries; Quick Open searches the full stored lists. An empty history shows an explicit empty state rather than demo records.
 
 ## Safety and privacy
 
-Saving or recalling a favorite never connects to a database and never executes SQL. Query text stays in the local renderer storage. Passwords and connection secrets are not included in favorites, history, localStorage, workspace files, or logs.
+Saving, recalling, or clearing local history never connects to a database. Recalling a favorite never executes SQL. Query text stays in the local renderer storage. Passwords and connection secrets are not included in favorites, history, localStorage, workspace files, or logs.
 
 The browser-local persistence is best-effort and can be cleared by the host profile. Native Tauri SQLite workspace storage, migrations, cross-profile workspaces, and OS-keychain integration remain planned for v0.2.
 

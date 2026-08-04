@@ -46,6 +46,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 
 - [ ] SQLite workspace storage for profiles, tabs, history, favorites, and settings
 - [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
+- [x] Confirmed local-history clearing with truthful empty-state behavior; favorites and tabs remain intact
 - [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
 - [ ] OS keychain integration with migration and deletion tests
 - [ ] Connection test, duplicate, color, read-only mode, timeout, and keepalive controls

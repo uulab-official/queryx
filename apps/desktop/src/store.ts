@@ -87,6 +87,7 @@ interface QueryState {
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
+  clearHistory: () => void;
   toggleFavorite: (sql: string) => boolean;
 }
 
@@ -175,6 +176,14 @@ function writeHistory(history: QueryHistoryEntry[]): void {
       historyStorageKey,
       JSON.stringify(history.slice(0, 20)),
     );
+  } catch {
+    // Local persistence is best-effort until the Tauri SQLite store lands.
+  }
+}
+
+function clearStoredHistory(): void {
+  try {
+    window.localStorage.removeItem(historyStorageKey);
   } catch {
     // Local persistence is best-effort until the Tauri SQLite store lands.
   }
@@ -567,6 +576,10 @@ export const useQueryStore = create<QueryState>((set, get) => {
       ];
       writeHistory(history);
       set({ history });
+    },
+    clearHistory: () => {
+      clearStoredHistory();
+      set({ history: [] });
     },
     toggleFavorite: (sql) => {
       const normalizedSql = sql.trim();

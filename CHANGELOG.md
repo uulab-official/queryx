@@ -37,6 +37,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Local query favorites with save/remove toggle, sidebar recall, SQL deduplication, empty-query protection, and command-palette actions.
 - Quick Open query switcher with Cmd/Ctrl+P, Explorer search access, SQL/label filtering, favorite-first ordering, and non-executing recall.
 - Browser-local query workspace recovery for up to 20 tabs, active-tab selection, dirty state, and SQL text after reload.
+- Honest Safe Mode impact messaging without fabricated affected-row estimates, plus a confirmed local-history clear action and truthful empty history state.
 
 ## [0.1.0] — 2026-08-03
 

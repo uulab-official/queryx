@@ -148,6 +148,7 @@ function App() {
     loadMetadata,
     connectDatabase,
     notify,
+    clearHistory,
     toggleFavorite,
   } = useQueryStore();
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -185,6 +186,15 @@ function App() {
     notify(
       saved ? "Saved query to local favorites" : "Removed query from favorites",
     );
+  };
+  const handleClearHistory = () => {
+    if (history.length === 0) {
+      notify("No recent queries to clear");
+      return;
+    }
+    if (!window.confirm("Clear all locally stored recent queries?")) return;
+    clearHistory();
+    notify("Cleared local query history");
   };
   const quickOpenItems = useMemo<QuickOpenItem[]>(() => {
     const seen = new Set<string>();
@@ -1138,7 +1148,14 @@ function App() {
           </div>
           <div className="section-label">
             RECENT QUERIES{" "}
-            <button type="button" className="mini-button">
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Clear recent queries"
+              title="Clear locally stored recent queries"
+              onClick={handleClearHistory}
+              disabled={history.length === 0}
+            >
               •••
             </button>
           </div>
@@ -1156,15 +1173,7 @@ function App() {
                   />
                 ))
             ) : (
-              <>
-                <Recent name="Daily revenue" time="2 minutes ago" />
-                <Recent name="Active subscriptions" time="Yesterday" />
-                <Recent
-                  name="Migration check"
-                  time="Yesterday"
-                  status="error"
-                />
-              </>
+              <div className="sidebar-empty">Run a query to see it here</div>
             )}
           </div>
           <div className="storage-note">
@@ -1936,12 +1945,15 @@ function SafeModeDialog({
           <p className="modal-kicker">SAFE MODE</p>
           <h2 id="safe-mode-title">Dangerous query detected</h2>
           <p className="modal-copy">
-            {report.operation} has no WHERE clause. This could affect every
-            matching row in the table.
+            {report.operation} has no WHERE clause. {report.reason}. This could
+            affect every matching row in the table.
           </p>
-          <div className="affected-rows">
-            <span>Estimated affected rows</span>
-            <strong>1,248,521</strong>
+          <div className="safety-note">
+            <strong>Impact estimate unavailable</strong>
+            <span>
+              QueryX does not execute a row count before this warning. Review
+              the statement or run it inside a transaction.
+            </span>
           </div>
           <div className="modal-actions">
             <button
