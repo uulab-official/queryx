@@ -48,7 +48,7 @@ The Monaco implementation is loaded through a React lazy boundary. The base appl
 
 The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` with the selected driver kind. The native registry factory is the only vendor-selection boundary. Native connections live behind `Arc<dyn DatabaseDriver>`, so prepare, execute, cancel, metadata, transaction, and disconnect handlers remain vendor-neutral.
 
-Each execution receives an opaque UUID. The frontend maps `AbortSignal` to generic prepare, execute, and cancel commands. PostgreSQL keeps a per-connection active-query state machine and uses a separate one-connection control pool to call parameterized `pg_cancel_backend($1)`. The execution connection is retained until an in-flight cancellation request completes, preventing a late signal from targeting a later query that reused the same backend PID. SQLite does not advertise the `cancel` capability.
+Each execution receives an opaque UUID. The frontend maps `AbortSignal` to generic prepare, execute, stream, and cancel commands. PostgreSQL keeps a per-connection active-query state machine and uses a separate one-connection control pool to call parameterized `pg_cancel_backend($1)`. The execution connection is retained until an in-flight cancellation request completes, preventing a late signal from targeting a later query that reused the same backend PID. PostgreSQL stream results are read from SQLx's row stream and emitted over a query-scoped Tauri event in 256-row chunks; SQLite and MySQL/MariaDB use the buffered fallback and do not advertise `streaming`.
 
 PostgreSQL passwords cross only the local Tauri IPC boundary and remain in process memory for the current session. They are not placed in Zustand, localStorage, SQLite, logs, or connection summaries.
 
@@ -56,7 +56,7 @@ The next integration steps are:
 
 1. Migrate the versioned native workspace snapshot to SQLite after the schema has stabilized, adding settings and cross-profile workspaces.
 2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
-3. Add long-query progress channels and timeout policies.
+3. Add long-query progress telemetry, backpressure/spill policies, and timeout policies on top of the current PostgreSQL chunk stream.
 4. Expand the initial MySQL/MariaDB driver with foreign keys, routines, triggers, streaming, cancellation, and hosted integration coverage.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to object-specific DDL forms and applied migration state. The current generic schema-aware DDL diff, dependency ordering, rollback/preflight preview, and local preview ledger are documented in [Schema Compare](schema-compare.md) and [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).
 6. Add structured plan trees and explicit `EXPLAIN ANALYZE` controls on top of the current non-executing Explain slice documented in [ADR-0012](decisions/ADR-0012-non-executing-explain-slice.md).

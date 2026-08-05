@@ -1072,6 +1072,54 @@ function App() {
       }
     });
   };
+  const handleStream = (sqlOverride?: string) => {
+    if (pendingEditCount > 0) {
+      notify(
+        "Review or discard staged row edits before streaming another query",
+      );
+      return;
+    }
+    if (!driver.capabilities().has("streaming")) {
+      notify("Streaming is currently available for PostgreSQL connections");
+      return;
+    }
+    const executableSql = sqlOverride?.trim() || sql;
+    if (!executableSql) {
+      notify("Enter SQL before streaming the result");
+      return;
+    }
+    const pagePlan = buildQueryPagePlan(
+      executableSql,
+      driverKind,
+      resultPageSize,
+      0,
+    );
+    if (pagePlan.errors.length > 0) {
+      notify(
+        pagePlan.errors[0] ?? "Streaming requires one SELECT or WITH query",
+      );
+      return;
+    }
+    const safety = inspectQuerySafety(executableSql);
+    if (safety.isDangerous) {
+      setPendingSafety({ report: safety, sql: executableSql });
+      return;
+    }
+    setPendingSafety(null);
+    setGridSelection(null);
+    setEditingCell(null);
+    setStagedEdits({});
+    setTableBrowse(null);
+    setServerQueryPage(null);
+    setFilter("");
+    setSortBy(null);
+    setResultPage(0);
+    setResultView("table");
+    void runQuery("normal", executableSql, {
+      historySql: executableSql,
+      stream: true,
+    });
+  };
   const handleExplain = () => {
     if (pendingEditCount > 0) {
       notify(
@@ -2243,6 +2291,13 @@ function App() {
       execute: handleExplain,
     },
     {
+      id: "stream",
+      label: "Stream query results",
+      hint: "PostgreSQL · chunked",
+      disabled: isRunning || !driver.capabilities().has("streaming"),
+      execute: () => handleStream(),
+    },
+    {
       id: "transaction",
       label: "Run in transaction",
       hint: "rollback on error",
@@ -2927,6 +2982,21 @@ function App() {
                   <span>{isRunning ? (canCancel ? "■" : "◌") : "▶"}</span>{" "}
                   {isRunning ? (canCancel ? "Cancel" : "Running…") : "Run"}{" "}
                   <kbd>{isRunning && canCancel ? "Esc" : "⌘↵"}</kbd>
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button stream-button"
+                  onClick={() => handleStream()}
+                  disabled={
+                    isRunning || !driver.capabilities().has("streaming")
+                  }
+                  title={
+                    driver.capabilities().has("streaming")
+                      ? "Stream a single SELECT/WITH result in chunks"
+                      : "Chunked streaming is currently available for PostgreSQL connections"
+                  }
+                >
+                  Stream
                 </button>
                 <button
                   type="button"

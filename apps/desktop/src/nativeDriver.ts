@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { InMemoryDriver } from "@queryx/core";
 import type {
   DatabaseDriver,
@@ -6,6 +7,7 @@ import type {
   DriverCapability,
   DriverConfig,
   DriverKind,
+  QueryChunk,
   QueryResult,
 } from "@queryx/shared";
 
@@ -106,6 +108,77 @@ export class TauriDatabaseDriver implements DatabaseDriver {
       throw error;
     } finally {
       signal?.removeEventListener("abort", cancel);
+    }
+  }
+
+  async executeStream(
+    sql: string,
+    onChunk: (chunk: QueryChunk) => void,
+    signal?: AbortSignal,
+  ): Promise<QueryResult> {
+    if (!this.driverCapabilities.has("streaming")) {
+      const result = await this.execute(sql, signal);
+      onChunk({
+        rowOffset: 0,
+        columns: result.columns,
+        rows: result.rows,
+        warnings: result.warnings,
+      });
+      return { ...result, rows: [] };
+    }
+
+    if (signal?.aborted) {
+      throw new DOMException("Query cancelled", "AbortError");
+    }
+    const connectionId = this.requireConnection();
+    const queryId = crypto.randomUUID();
+    const eventName = `queryx:query-chunk:${queryId}`;
+    const stopListening = await listen<{
+      queryId: string;
+      rowOffset: number;
+      columns: QueryChunk["columns"];
+      rows: QueryChunk["rows"];
+      warnings: string[];
+    }>(eventName, (event) => {
+      onChunk({
+        rowOffset: event.payload.rowOffset,
+        columns: event.payload.columns,
+        rows: event.payload.rows,
+        warnings: event.payload.warnings,
+      });
+    });
+    const canCancel = this.driverCapabilities.has("cancel");
+    let cancellation: Promise<boolean> | null = null;
+    const cancel = () => {
+      cancellation ??= invoke<boolean>("cancel_query", {
+        connectionId,
+        queryId,
+      });
+    };
+    try {
+      if (canCancel) {
+        await invoke("prepare_query", { connectionId, queryId });
+      }
+      signal?.addEventListener("abort", cancel, { once: true });
+      const result = await invoke<QueryResult>("execute_query_stream", {
+        connectionId,
+        queryId,
+        sql,
+      });
+      if (canCancel && signal?.aborted) {
+        const cancelled = await cancellation;
+        if (cancelled) throw new DOMException("Query cancelled", "AbortError");
+      }
+      return result;
+    } catch (error) {
+      if (canCancel && signal?.aborted) {
+        const cancelled = (await cancellation) ?? false;
+        if (cancelled) throw new DOMException("Query cancelled", "AbortError");
+      }
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", cancel);
+      await stopListening();
     }
   }
 

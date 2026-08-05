@@ -77,6 +77,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added guarded selected-row deletion from the table browser with SQL preview, primary-key/original-value conflict predicates, exact affected-row verification, and atomic rollback.
 - Added a default-aware table-browser new-row form with typed Value/NULL/Default modes, dialect-specific INSERT generation, SQL preview, exact affected-row verification, and refresh.
 - Added conservative dialect-aware server paging for single SELECT/WITH results, 100-row incremental loading, original-SQL history preservation, and fallback for mutation, locking, or multi-statement queries.
+- Added PostgreSQL cursor-backed result streaming with 256-row Tauri event chunks, incremental grid accumulation, cancellation cleanup, and capability-gated UI actions; SQLite and MySQL/MariaDB retain the buffered fallback until native streaming support is implemented.
 
 ## [0.1.0] — 2026-08-03
 

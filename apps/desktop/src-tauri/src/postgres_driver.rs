@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions, PgRow, PgSslMode},
@@ -13,15 +14,15 @@ use tokio::sync::{Mutex, Notify, RwLock};
 use uuid::Uuid;
 
 use crate::{
-    driver::{DatabaseDriver, ExecutionMode},
+    driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
         AggregateKind, AggregateMetadata, ColumnMetadata, ConnectionConfig, DatabaseMetadata,
         DatabaseObjectKind, DatabaseObjectRef, DependencyKind, DependencyMetadata,
         DriverCapability, DriverKind, EventTriggerEvent, EventTriggerMetadata,
-        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryColumn, QueryResult,
-        RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata, TriggerEvent,
-        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk, QueryColumn,
+        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
+        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
         TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
@@ -212,6 +213,54 @@ impl PostgresDriver {
             result
         }
     }
+
+    async fn execute_stream_active(
+        &self,
+        active: &ActiveQuery,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        let mut connection = match self.pool.acquire().await {
+            Ok(connection) => connection,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        let process_id = match sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+            .fetch_one(&mut *connection)
+            .await
+        {
+            Ok(process_id) => process_id,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        if !active.activate(process_id).await {
+            active.finish_execution().await;
+            return Err(AppError::QueryCancelled);
+        }
+
+        let result = execute_stream_on_connection(
+            &mut connection,
+            query_id,
+            sql,
+            mode == ExecutionMode::Transaction,
+            on_chunk,
+        )
+        .await;
+        let was_cancelled = active.finish_execution().await;
+        drop(connection);
+
+        if was_cancelled {
+            Err(AppError::QueryCancelled)
+        } else {
+            result
+        }
+    }
 }
 
 #[async_trait]
@@ -233,6 +282,7 @@ impl DatabaseDriver for PostgresDriver {
             DriverCapability::Transactions,
             DriverCapability::Explain,
             DriverCapability::Cancel,
+            DriverCapability::Streaming,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -263,6 +313,27 @@ impl DatabaseDriver for PostgresDriver {
             .cloned()
             .ok_or_else(|| AppError::InvalidQueryId(query_id.to_string()))?;
         let result = self.execute_active(&active, sql, mode).await;
+        self.active_queries.write().await.remove(&query_id);
+        result
+    }
+
+    async fn execute_stream(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        let active = self
+            .active_queries
+            .read()
+            .await
+            .get(&query_id)
+            .cloned()
+            .ok_or_else(|| AppError::InvalidQueryId(query_id.to_string()))?;
+        let result = self
+            .execute_stream_active(&active, query_id, sql, mode, on_chunk)
+            .await;
         self.active_queries.write().await.remove(&query_id);
         result
     }
@@ -344,6 +415,93 @@ async fn execute_on_connection(
     }
 
     execute_with_executor(connection, sql, is_query, started).await
+}
+
+async fn execute_stream_on_connection(
+    connection: &mut PgConnection,
+    query_id: Uuid,
+    sql: &str,
+    in_transaction: bool,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    if !is_row_returning_query(sql) {
+        let result = execute_on_connection(connection, sql, in_transaction).await?;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: 0,
+            columns: result.columns.clone(),
+            rows: Vec::new(),
+            warnings: result.warnings.clone(),
+        });
+        return Ok(result);
+    }
+
+    if in_transaction {
+        let mut transaction = connection.begin().await?;
+        let result =
+            execute_stream_with_executor(&mut *transaction, query_id, sql, started, on_chunk)
+                .await?;
+        transaction.commit().await?;
+        return Ok(result);
+    }
+
+    execute_stream_with_executor(connection, query_id, sql, started, on_chunk).await
+}
+
+async fn execute_stream_with_executor<'e, E>(
+    executor: E,
+    query_id: Uuid,
+    sql: &str,
+    started: Instant,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError>
+where
+    E: sqlx::Executor<'e, Database = Postgres>,
+{
+    let mut rows = sqlx::query(sql).fetch(executor);
+    let mut columns = Vec::new();
+    let mut warnings = Vec::new();
+    let mut chunk_rows = Vec::with_capacity(256);
+    let mut row_offset = 0_u64;
+
+    while let Some(row) = rows.try_next().await? {
+        if columns.is_empty() {
+            columns = columns_from_row(&row);
+            warnings = unsupported_type_warnings(&columns);
+        }
+        chunk_rows.push(row_to_json(&row));
+        if chunk_rows.len() >= 256 {
+            let chunk_offset = row_offset;
+            row_offset += chunk_rows.len() as u64;
+            on_chunk(QueryChunk {
+                query_id: query_id.to_string(),
+                row_offset: chunk_offset,
+                columns: columns.clone(),
+                rows: std::mem::take(&mut chunk_rows),
+                warnings: warnings.clone(),
+            });
+        }
+    }
+    if !chunk_rows.is_empty() {
+        let chunk_offset = row_offset;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: chunk_offset,
+            columns: columns.clone(),
+            rows: chunk_rows,
+            warnings: warnings.clone(),
+        });
+    }
+
+    Ok(QueryResult {
+        columns,
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows: 0,
+        warnings,
+        error: None,
+    })
 }
 
 async fn execute_edit_batch_on_connection(

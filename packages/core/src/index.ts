@@ -110,6 +110,7 @@ export type {
   TableRowInsertPlan,
   TableRowInsertValue,
 } from "./tableRowInsert";
+export { appendQueryChunk } from "./queryStream";
 export { buildExplainQuery } from "./explain";
 export type {
   ExplainQuery,

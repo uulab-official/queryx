@@ -62,10 +62,11 @@ pub enum DriverCapability {
     Transactions,
     Explain,
     Cancel,
+    Streaming,
     Editing,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QueryColumn {
     pub name: String,
@@ -82,6 +83,16 @@ pub struct QueryResult {
     pub affected_rows: u64,
     pub warnings: Vec<String>,
     pub error: Option<QueryError>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueryChunk {
+    pub query_id: String,
+    pub row_offset: u64,
+    pub columns: Vec<QueryColumn>,
+    pub rows: Vec<HashMap<String, Value>>,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]

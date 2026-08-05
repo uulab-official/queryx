@@ -1,9 +1,11 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{DatabaseMetadata, DriverCapability, DriverKind, QueryResult},
+    models::{DatabaseMetadata, DriverCapability, DriverKind, QueryChunk, QueryResult},
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -11,6 +13,8 @@ pub enum ExecutionMode {
     Direct,
     Transaction,
 }
+
+pub type QueryChunkHandler = Arc<dyn Fn(QueryChunk) + Send + Sync>;
 
 #[async_trait]
 pub trait DatabaseDriver: Send + Sync {
@@ -29,6 +33,38 @@ pub trait DatabaseDriver: Send + Sync {
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError>;
+    async fn execute_stream(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        let result = self.execute(query_id, sql, mode).await?;
+        let QueryResult {
+            columns,
+            rows,
+            execution_time,
+            affected_rows,
+            warnings,
+            error,
+        } = result;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: 0,
+            columns: columns.clone(),
+            rows: rows.clone(),
+            warnings: warnings.clone(),
+        });
+        Ok(QueryResult {
+            columns,
+            rows: Vec::new(),
+            execution_time,
+            affected_rows,
+            warnings,
+            error,
+        })
+    }
     async fn execute_batch(
         &self,
         _query_id: Uuid,

@@ -22,6 +22,7 @@ pub fn run() {
             commands::prepare_query,
             commands::execute_query,
             commands::execute_query_transaction,
+            commands::execute_query_stream,
             commands::execute_edit_batch,
             commands::cancel_query,
             commands::database_metadata,

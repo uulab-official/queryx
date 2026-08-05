@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
-    driver::{DatabaseDriver, ExecutionMode},
+    driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, DriverKind, QueryResult},
     mysql_driver::MysqlDriver,
@@ -72,6 +72,20 @@ impl DriverRegistry {
         self.connection(connection_id)
             .await?
             .execute_batch(query_id, statements, expected_rows)
+            .await
+    }
+
+    pub async fn execute_stream(
+        &self,
+        connection_id: &str,
+        query_id: &str,
+        sql: &str,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        let query_id = parse_query_id(query_id)?;
+        self.connection(connection_id)
+            .await?
+            .execute_stream(query_id, sql, ExecutionMode::Direct, on_chunk)
             .await
     }
 

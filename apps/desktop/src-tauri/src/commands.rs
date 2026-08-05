@@ -1,7 +1,9 @@
-use tauri::State;
+use std::sync::Arc;
+
+use tauri::{AppHandle, Emitter, State};
 
 use crate::{
-    driver::ExecutionMode,
+    driver::{ExecutionMode, QueryChunkHandler},
     driver_registry::DriverRegistry,
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, QueryResult},
@@ -45,6 +47,23 @@ pub async fn execute_query_transaction(
 ) -> Result<QueryResult, AppError> {
     state
         .execute(&connection_id, &query_id, &sql, ExecutionMode::Transaction)
+        .await
+}
+
+#[tauri::command]
+pub async fn execute_query_stream(
+    state: State<'_, DriverRegistry>,
+    app: AppHandle,
+    connection_id: String,
+    query_id: String,
+    sql: String,
+) -> Result<QueryResult, AppError> {
+    let event_name = format!("queryx:query-chunk:{query_id}");
+    let handler: QueryChunkHandler = Arc::new(move |chunk| {
+        let _ = app.emit(&event_name, chunk);
+    });
+    state
+        .execute_stream(&connection_id, &query_id, &sql, handler)
         .await
 }
 

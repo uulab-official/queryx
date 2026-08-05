@@ -7,6 +7,7 @@ interface DatabaseDriver {
   readonly kind: DriverKind;
   connect(config: DriverConfig): Promise<void>;
   execute(sql: string, signal?: AbortSignal): Promise<QueryResult>;
+  executeStream(sql: string, onChunk: (chunk: QueryChunk) => void, signal?: AbortSignal): Promise<QueryResult>;
   metadata(): Promise<DatabaseMetadata>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
@@ -18,6 +19,7 @@ interface DatabaseDriver {
 
 - `connect()` must be safe to call once during initialization and must fail with an actionable error.
 - `execute()` always returns the shared `QueryResult` shape for successful queries.
+- `executeStream()` is the large-result path: it delivers ordered `QueryChunk` values while the query runs and returns a completion summary whose `rows` array may be empty. Drivers without native streaming use the buffered fallback and must not advertise `streaming`.
 - Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
 - `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, indexes, foreign keys, routines, relation triggers, event triggers, and direct dependencies.
 - `transaction()` must not silently commit a failed workflow.
@@ -35,6 +37,13 @@ interface QueryResult {
   affectedRows: number;
   warnings: string[];
   error?: { code: string; message: string };
+}
+
+interface QueryChunk {
+  rowOffset: number;
+  columns: QueryColumn[];
+  rows: Array<Record<string, unknown>>;
+  warnings: string[];
 }
 ```
 
@@ -54,6 +63,7 @@ pub trait DatabaseDriver: Send + Sync {
     fn capabilities(&self) -> Vec<DriverCapability>;
     async fn prepare(&self, query_id: Uuid) -> Result<(), AppError>;
     async fn execute(&self, query_id: Uuid, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
+    async fn execute_stream(&self, query_id: Uuid, sql: &str, mode: ExecutionMode, on_chunk: QueryChunkHandler) -> Result<QueryResult, AppError>;
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
@@ -70,6 +80,7 @@ Generic Tauri commands:
 - `prepare_query`
 - `execute_query`
 - `execute_query_transaction`
+- `execute_query_stream`
 - `cancel_query`
 - `database_metadata`
 - `disconnect_database`
@@ -78,7 +89,7 @@ Every native driver must pass the registry contract suite before it can be expos
 
 DDL Inspector actions are intentionally layered on this contract: copying is renderer-local, **Edit in SQL** creates a normal query document, and **Run in Transaction** calls `execute_query_transaction`. No object-specific mutation command exists yet. The transaction path must roll back on execution failure and return an actionable error while preserving the edited SQL in the tab.
 
-Cancellation is capability-driven. PostgreSQL reports `cancel`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
+Cancellation is capability-driven. PostgreSQL reports `cancel` and `streaming`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. PostgreSQL stream chunks are emitted in bounded 256-row batches and use the same active-query cancellation state machine. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
 
 Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, documented in [mysql-driver.md](mysql-driver.md).
 

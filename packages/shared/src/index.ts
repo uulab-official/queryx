@@ -22,6 +22,13 @@ export interface QueryResult {
   error?: { code: string; message: string };
 }
 
+export interface QueryChunk {
+  rowOffset: number;
+  columns: QueryColumn[];
+  rows: Array<Record<string, unknown>>;
+  warnings: string[];
+}
+
 export interface ColumnMetadata {
   name: string;
   type: string;
@@ -224,6 +231,11 @@ export interface DatabaseDriver {
   readonly kind: DriverKind;
   connect(config: DriverConfig): Promise<void>;
   execute(sql: string, signal?: AbortSignal): Promise<QueryResult>;
+  executeStream(
+    sql: string,
+    onChunk: (chunk: QueryChunk) => void,
+    signal?: AbortSignal,
+  ): Promise<QueryResult>;
   executeBatch(
     statements: readonly string[],
     expectedRows: number,

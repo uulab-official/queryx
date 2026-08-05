@@ -8,6 +8,7 @@ import type {
   QueryResult,
 } from "@queryx/shared";
 import { createRuntimeDriver } from "./nativeDriver";
+import { appendQueryChunk } from "@queryx/core";
 import {
   loadConnectionProfiles,
   persistConnectionProfiles,
@@ -122,6 +123,7 @@ interface QueryState {
     options?: {
       preserveResult?: boolean;
       historySql?: string;
+      stream?: boolean;
       batch?: { statements: readonly string[]; expectedRows: number };
     },
   ) => Promise<QueryResult | null>;
@@ -560,6 +562,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
       options?: {
         preserveResult?: boolean;
         historySql?: string;
+        stream?: boolean;
         batch?: { statements: readonly string[]; expectedRows: number };
       },
     ) => {
@@ -571,6 +574,19 @@ export const useQueryStore = create<QueryState>((set, get) => {
         await driverReady;
         const executedSql = sqlOverride?.trim() || get().sql;
         const historySql = options?.historySql?.trim() || executedSql;
+        if (options?.stream && !options.preserveResult) set({ result: null });
+        const appendChunk = (chunk: Parameters<typeof appendQueryChunk>[1]) => {
+          set((state) => {
+            const current = state.result ?? {
+              columns: [],
+              rows: [],
+              executionTime: 0,
+              affectedRows: 0,
+              warnings: [],
+            };
+            return { result: appendQueryChunk(current, chunk) };
+          });
+        };
         const execute = () =>
           options?.batch
             ? get().driver.executeBatch(
@@ -578,11 +594,35 @@ export const useQueryStore = create<QueryState>((set, get) => {
                 options.batch.expectedRows,
                 controller.signal,
               )
-            : get().driver.execute(executedSql, controller.signal);
+            : options?.stream
+              ? get().driver.executeStream(
+                  executedSql,
+                  appendChunk,
+                  controller.signal,
+                )
+              : get().driver.execute(executedSql, controller.signal);
         const result =
           options?.batch || mode !== "transaction"
             ? await execute()
             : await get().driver.transaction(execute);
+        const completedResult = options?.stream
+          ? {
+              ...(get().result ?? result),
+              columns:
+                result.columns.length > 0
+                  ? result.columns
+                  : (get().result?.columns ?? []),
+              executionTime: result.executionTime,
+              affectedRows: result.affectedRows,
+              warnings: [
+                ...new Set([
+                  ...(get().result?.warnings ?? []),
+                  ...result.warnings,
+                ]),
+              ],
+              error: result.error,
+            }
+          : result;
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
           label: mode === "explain" ? "Explain plan" : queryLabel(historySql),
@@ -592,7 +632,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         };
         get().addHistory(historyEntry);
         set({
-          ...(options?.preserveResult ? {} : { result }),
+          ...(options?.preserveResult ? {} : { result: completedResult }),
           executionStatus: "success",
           connectionStatus: "connected",
           toast:
@@ -600,8 +640,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
               ? "Explain plan completed; the statement was not executed"
               : "Query completed successfully",
         });
-        window.setTimeout(() => set({ toast: null }), 2200);
-        return result;
+        globalThis.setTimeout(() => set({ toast: null }), 2200);
+        return completedResult;
       } catch (error) {
         const wasCancelled =
           error instanceof DOMException && error.name === "AbortError";

@@ -64,6 +64,24 @@ describe("query tabs", () => {
     );
   });
 
+  it("merges streamed chunks into the active result before the stream summary returns", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    useQueryStore.setState({ driver, sql: "SELECT * FROM orders" });
+
+    await useQueryStore
+      .getState()
+      .runQuery("normal", "SELECT * FROM orders", { stream: true });
+
+    expect(useQueryStore.getState().result?.rows.length).toBeGreaterThan(1);
+    expect(useQueryStore.getState().result?.columns[0]?.name).toBe("day");
+    expect(useQueryStore.getState().executionStatus).toBe("success");
+  });
+
   it("preserves each document while switching tabs", () => {
     useQueryStore.getState().setSql("SELECT * FROM orders");
     useQueryStore.getState().newQuery();

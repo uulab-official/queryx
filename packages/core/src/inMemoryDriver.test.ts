@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { QueryChunk } from "@queryx/shared";
 import { InMemoryDriver } from "./inMemoryDriver";
 
 describe("InMemoryDriver read-only contract", () => {
@@ -31,5 +32,24 @@ describe("InMemoryDriver read-only contract", () => {
     await expect(
       driver.executeBatch(["UPDATE orders SET status = 'blocked'"], 1),
     ).rejects.toThrow("read-only connection rejected");
+  });
+
+  it("fulfills the stream contract with a buffered fallback chunk", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "preview",
+      database: "preview",
+    });
+
+    const chunks: QueryChunk[] = [];
+    const summary = await driver.executeStream("SELECT 1", (chunk) => {
+      chunks.push(chunk);
+    });
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]?.rowOffset).toBe(0);
+    expect(chunks[0]?.rows.length).toBeGreaterThan(0);
+    expect(summary.rows).toEqual([]);
   });
 });

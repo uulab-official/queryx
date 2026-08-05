@@ -3,6 +3,7 @@ import type {
   DatabaseMetadata,
   DriverCapability,
   DriverConfig,
+  QueryChunk,
   QueryResult,
 } from "@queryx/shared";
 import { inspectQuerySafety } from "./querySafety";
@@ -377,6 +378,21 @@ export class InMemoryDriver implements DatabaseDriver {
       affectedRows: safety.isDangerous ? 1_248_521 : 0,
       warnings: safety.isDangerous ? [safety.reason] : [],
     };
+  }
+
+  async executeStream(
+    sql: string,
+    onChunk: (chunk: QueryChunk) => void,
+    signal?: AbortSignal,
+  ): Promise<QueryResult> {
+    const result = await this.execute(sql, signal);
+    onChunk({
+      rowOffset: 0,
+      columns: result.columns,
+      rows: result.rows,
+      warnings: result.warnings,
+    });
+    return { ...result, rows: [] };
   }
 
   async executeBatch(
