@@ -678,7 +678,7 @@ function App() {
   const loadSessionsPanel = async () => {
     if (!canInspectSessions) {
       notify(
-        "Session inspection is available in native PostgreSQL/MySQL connections",
+        "Session inspection is available in native PostgreSQL/MySQL/SQL Server connections",
       );
       return;
     }
@@ -699,7 +699,7 @@ function App() {
   const openSessions = () => {
     if (!canInspectSessions) {
       notify(
-        "Session inspection is available in native PostgreSQL/MySQL connections",
+        "Session inspection is available in native PostgreSQL/MySQL/SQL Server connections",
       );
       return;
     }
@@ -726,7 +726,7 @@ function App() {
   const loadLocksPanel = async () => {
     if (!canInspectLocks) {
       notify(
-        "Lock graph inspection is available in native PostgreSQL/MySQL connections",
+        "Lock graph inspection is available in native PostgreSQL/MySQL/SQL Server connections",
       );
       return;
     }
@@ -745,7 +745,7 @@ function App() {
   const openLocks = () => {
     if (!canInspectLocks) {
       notify(
-        "Lock graph inspection is available in native PostgreSQL/MySQL connections",
+        "Lock graph inspection is available in native PostgreSQL/MySQL/SQL Server connections",
       );
       return;
     }
@@ -755,7 +755,7 @@ function App() {
   const openDiagnostics = () => {
     if (!canInspectSessions) {
       notify(
-        "Long-running query diagnostics are available in native PostgreSQL/MySQL connections",
+        "Long-running query diagnostics are available in native PostgreSQL/MySQL/SQL Server connections",
       );
       return;
     }

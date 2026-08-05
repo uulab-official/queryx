@@ -6,9 +6,11 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 
 ### Added
 
+- Added SQL Server session and lock inspection using `sys.dm_exec_sessions`, `sys.dm_exec_requests`, `sys.dm_exec_sql_text`, and `sys.dm_os_waiting_tasks`; query-only cancellation remains intentionally unavailable because `KILL` terminates the session.
+- Expanded SQL Server catalog metadata with primary-key columns, ordered indexes, composite foreign keys, referential actions, and FK dependency edges.
 - Added the initial native Oracle driver using `oracle-rs`: service-name SQL authentication, TLS with CA/client certificate paths, Oracle paging, 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, SSH-tunnel compatibility, and users/tables/views/columns/database metadata. SID/connect descriptors, wallets, cancellation, sessions, locks, routines, triggers, indexes, foreign keys, and MERGE import modes remain explicitly planned.
 - Added the initial native SQL Server driver using Tiberius: SQL authentication, encrypted TDS/TLS, SQL Server paging, 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, SSH-tunnel compatibility, and database/schema/table/view/column metadata.
-- Added SQL Server-aware bracket identifier quoting, OFFSET/FETCH paging, browse casting, DDL generation, SQL export bit literals, and capability-matrix documentation. SQL Server session cancellation, lock graph, routines, triggers, and richer index/FK metadata remain explicitly planned.
+- Added SQL Server-aware bracket identifier quoting, OFFSET/FETCH paging, browse casting, DDL generation, SQL export bit literals, and capability-matrix documentation. SQL Server query cancellation, routines, triggers, and richer view/trigger dependencies remain explicitly planned.
 
 - CI verification harness for version alignment, documentation links, type checks, tests, and production builds.
 - Driver safety inspection for UPDATE/DELETE statements without a WHERE clause.

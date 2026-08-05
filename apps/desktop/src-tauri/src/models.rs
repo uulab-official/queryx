@@ -376,7 +376,7 @@ pub struct ColumnMetadata {
     pub primary_key: bool,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexMetadata {
     pub name: String,
@@ -396,7 +396,7 @@ pub struct ViewMetadata {
     pub definition: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelationRef {
     pub schema: String,
@@ -411,7 +411,7 @@ pub struct ForeignKeyColumnPair {
     pub referenced_column: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ForeignKeyMetadata {
     pub id: String,

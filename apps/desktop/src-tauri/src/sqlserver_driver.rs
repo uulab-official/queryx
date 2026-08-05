@@ -15,8 +15,10 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, ForeignKeyMetadata,
-        QueryChunk, QueryColumn, QueryResult, TableMetadata, ViewMetadata,
+        ColumnMetadata, DatabaseLock, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
+        DatabaseSession, DatabaseSessionState, DependencyKind, DependencyMetadata,
+        DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata,
+        QueryChunk, QueryColumn, QueryResult, RelationRef, TableMetadata, ViewMetadata,
     },
 };
 
@@ -193,6 +195,8 @@ impl DatabaseDriver for SqlServerDriver {
             DriverCapability::Transactions,
             DriverCapability::Explain,
             DriverCapability::Streaming,
+            DriverCapability::Sessions,
+            DriverCapability::Locks,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -295,6 +299,126 @@ impl DatabaseDriver for SqlServerDriver {
         Err(AppError::CancellationUnsupported("SQL Server".into()))
     }
 
+    async fn sessions(&self) -> Result<Vec<DatabaseSession>, AppError> {
+        let rows = self
+            .metadata_query(
+                r#"
+                SELECT
+                    CAST(s.session_id AS nvarchar(20)) AS id,
+                    s.login_name AS user_name,
+                    DB_NAME(CASE WHEN r.database_id IS NULL THEN s.database_id ELSE r.database_id END) AS database_name,
+                    s.host_name AS client_address,
+                    s.program_name AS application_name,
+                    CASE
+                        WHEN r.session_id IS NULL THEN s.status
+                        WHEN r.wait_type IS NOT NULL THEN 'waiting'
+                        ELSE r.status
+                    END AS state,
+                    query_text.text AS query_text,
+                    CONVERT(nvarchar(33), r.start_time, 126) AS started_at,
+                    CASE WHEN r.start_time IS NULL THEN NULL
+                         ELSE DATEDIFF_BIG(millisecond, r.start_time, SYSDATETIME())
+                    END AS duration_ms,
+                    COALESCE(r.wait_type, r.wait_resource) AS wait_event
+                FROM sys.dm_exec_sessions AS s
+                LEFT JOIN sys.dm_exec_requests AS r
+                  ON r.session_id = s.session_id
+                OUTER APPLY sys.dm_exec_sql_text(r.sql_handle) AS query_text
+                WHERE s.is_user_process = 1
+                ORDER BY r.start_time DESC, s.session_id
+                "#,
+            )
+            .await?
+            .rows;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let id = string_value(&row, "id")?;
+                Some(DatabaseSession {
+                    id,
+                    user: string_value(&row, "user_name"),
+                    database: string_value(&row, "database_name"),
+                    client_address: string_value(&row, "client_address"),
+                    application_name: string_value(&row, "application_name"),
+                    state: map_sql_server_session_state(string_value(&row, "state").as_deref()),
+                    query: string_value(&row, "query_text"),
+                    started_at: string_value(&row, "started_at"),
+                    duration_ms: row.get("duration_ms").and_then(Value::as_i64),
+                    wait_event: string_value(&row, "wait_event"),
+                    can_cancel: false,
+                })
+            })
+            .collect())
+    }
+
+    async fn locks(&self) -> Result<Vec<DatabaseLock>, AppError> {
+        let rows = self
+            .metadata_query(
+                r#"
+                SELECT
+                    CAST(waiting.session_id AS nvarchar(20)) AS blocked_session_id,
+                    CAST(waiting.blocking_session_id AS nvarchar(20)) AS blocking_session_id,
+                    COALESCE(waiting.resource_description, 'unknown resource') AS resource,
+                    waiting.wait_type AS lock_type,
+                    CAST(NULL AS nvarchar(60)) AS blocked_mode,
+                    CAST(NULL AS nvarchar(60)) AS blocking_mode,
+                    waiting.wait_duration_ms AS blocked_duration_ms,
+                    blocked_text.text AS blocked_query,
+                    blocking_text.text AS blocking_query
+                FROM sys.dm_os_waiting_tasks AS waiting
+                OUTER APPLY (
+                    SELECT TOP (1) request.sql_handle
+                    FROM sys.dm_exec_requests AS request
+                    WHERE request.session_id = waiting.session_id
+                ) AS blocked_request
+                OUTER APPLY sys.dm_exec_sql_text(blocked_request.sql_handle) AS blocked_text
+                OUTER APPLY (
+                    SELECT TOP (1) request.sql_handle
+                    FROM sys.dm_exec_requests AS request
+                    WHERE request.session_id = waiting.blocking_session_id
+                ) AS blocking_request
+                OUTER APPLY sys.dm_exec_sql_text(blocking_request.sql_handle) AS blocking_text
+                WHERE waiting.blocking_session_id > 0
+                ORDER BY waiting.wait_duration_ms DESC,
+                         waiting.session_id, waiting.blocking_session_id
+                "#,
+            )
+            .await?
+            .rows;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let blocked_session_id = string_value(&row, "blocked_session_id")?;
+                let blocking_session_id = string_value(&row, "blocking_session_id")?;
+                let resource =
+                    string_value(&row, "resource").unwrap_or_else(|| "unknown resource".into());
+                let lock_type = string_value(&row, "lock_type").unwrap_or_else(|| "wait".into());
+                let blocked_mode = string_value(&row, "blocked_mode");
+                let blocking_mode = string_value(&row, "blocking_mode");
+                Some(DatabaseLock {
+                    id: sql_server_lock_identity(
+                        &blocked_session_id,
+                        &blocking_session_id,
+                        &lock_type,
+                        &resource,
+                        blocked_mode.as_deref(),
+                        blocking_mode.as_deref(),
+                    ),
+                    blocked_session_id,
+                    blocking_session_id,
+                    resource,
+                    lock_type,
+                    blocked_mode,
+                    blocking_mode,
+                    blocked_duration_ms: row.get("blocked_duration_ms").and_then(Value::as_i64),
+                    blocked_query: string_value(&row, "blocked_query"),
+                    blocking_query: string_value(&row, "blocking_query"),
+                    blocking_can_cancel: false,
+                })
+            })
+            .collect())
+    }
+
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
         let databases = self
             .metadata_query("SELECT name FROM sys.databases ORDER BY name")
@@ -322,13 +446,18 @@ impl DatabaseDriver for SqlServerDriver {
             .rows;
         let column_rows = self
             .metadata_query(
-                "SELECT c.TABLE_SCHEMA AS schema_name, c.TABLE_NAME AS relation_name,
-                        c.COLUMN_NAME AS column_name, c.DATA_TYPE AS data_type,
-                        c.IS_NULLABLE AS is_nullable
-                 FROM INFORMATION_SCHEMA.COLUMNS c
-                 JOIN INFORMATION_SCHEMA.TABLES t ON t.TABLE_SCHEMA = c.TABLE_SCHEMA
-                    AND t.TABLE_NAME = c.TABLE_NAME AND t.TABLE_TYPE = 'BASE TABLE'
-                 ORDER BY c.ORDINAL_POSITION",
+                "SELECT s.name AS schema_name, t.name AS relation_name,
+                        c.name AS column_name, ty.name AS data_type,
+                        c.is_nullable, CASE WHEN pkc.column_id IS NULL THEN 0 ELSE 1 END AS is_primary_key,
+                        c.column_id
+                 FROM sys.tables t
+                 JOIN sys.schemas s ON s.schema_id = t.schema_id
+                 JOIN sys.columns c ON c.object_id = t.object_id
+                 JOIN sys.types ty ON ty.user_type_id = c.user_type_id
+                 LEFT JOIN sys.indexes pk ON pk.object_id = t.object_id AND pk.is_primary_key = 1
+                 LEFT JOIN sys.index_columns pkc ON pkc.object_id = t.object_id
+                    AND pkc.index_id = pk.index_id AND pkc.column_id = c.column_id
+                 ORDER BY s.name, t.name, c.column_id",
             )
             .await?
             .rows;
@@ -346,11 +475,124 @@ impl DatabaseDriver for SqlServerDriver {
                 .push(ColumnMetadata {
                     name: string_value(&row, "column_name").unwrap_or_default(),
                     r#type: string_value(&row, "data_type").unwrap_or_else(|| "unknown".into()),
-                    nullable: string_value(&row, "is_nullable").is_some_and(|value| value == "YES"),
-                    primary_key: false,
+                    nullable: bool_value(&row, "is_nullable").unwrap_or_default(),
+                    primary_key: bool_value(&row, "is_primary_key").unwrap_or_default(),
                 });
         }
-        let tables = table_rows
+        let index_rows = self
+            .metadata_query(
+                "SELECT s.name AS schema_name, t.name AS table_name, i.name AS index_name,
+                        i.is_unique, i.is_primary_key, i.type_desc, ic.key_ordinal,
+                        c.name AS column_name
+                 FROM sys.indexes i
+                 JOIN sys.tables t ON t.object_id = i.object_id
+                 JOIN sys.schemas s ON s.schema_id = t.schema_id
+                 JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+                 JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+                 WHERE i.name IS NOT NULL AND ic.key_ordinal > 0
+                 ORDER BY s.name, t.name, i.index_id, ic.key_ordinal",
+            )
+            .await?
+            .rows;
+        let mut indexes: BTreeMap<(String, String, String), IndexMetadata> = BTreeMap::new();
+        for row in index_rows {
+            let (Some(schema), Some(table), Some(name)) = (
+                string_value(&row, "schema_name"),
+                string_value(&row, "table_name"),
+                string_value(&row, "index_name"),
+            ) else {
+                continue;
+            };
+            let entry = indexes
+                .entry((schema, table, name.clone()))
+                .or_insert_with(|| IndexMetadata {
+                    name,
+                    columns: Vec::new(),
+                    unique: bool_value(&row, "is_unique").unwrap_or_default(),
+                    primary: bool_value(&row, "is_primary_key").unwrap_or_default(),
+                    r#type: string_value(&row, "type_desc").unwrap_or_else(|| "UNKNOWN".into()),
+                    definition: None,
+                });
+            if let Some(column) = string_value(&row, "column_name") {
+                entry.columns.push(column);
+            }
+        }
+        let foreign_key_rows = self
+            .metadata_query(
+                "SELECT fk.object_id AS foreign_key_id, fk.name AS foreign_key_name,
+                        source_schema.name AS schema_name, source_table.name AS table_name,
+                        source_column.name AS source_column, reference_schema.name AS referenced_schema,
+                        reference_table.name AS referenced_table, reference_column.name AS referenced_column,
+                        fkc.constraint_column_id AS ordinal,
+                        fk.update_referential_action_desc AS on_update,
+                        fk.delete_referential_action_desc AS on_delete
+                 FROM sys.foreign_keys fk
+                 JOIN sys.foreign_key_columns fkc ON fkc.constraint_object_id = fk.object_id
+                 JOIN sys.tables source_table ON source_table.object_id = fk.parent_object_id
+                 JOIN sys.schemas source_schema ON source_schema.schema_id = source_table.schema_id
+                 JOIN sys.columns source_column ON source_column.object_id = fkc.parent_object_id
+                    AND source_column.column_id = fkc.parent_column_id
+                 JOIN sys.tables reference_table ON reference_table.object_id = fk.referenced_object_id
+                 JOIN sys.schemas reference_schema ON reference_schema.schema_id = reference_table.schema_id
+                 JOIN sys.columns reference_column ON reference_column.object_id = fkc.referenced_object_id
+                    AND reference_column.column_id = fkc.referenced_column_id
+                 ORDER BY source_schema.name, source_table.name, fk.object_id, fkc.constraint_column_id",
+            )
+            .await?
+            .rows;
+        let mut foreign_keys: BTreeMap<(String, String, String), ForeignKeyMetadata> =
+            BTreeMap::new();
+        for row in foreign_key_rows {
+            let (
+                Some(schema),
+                Some(table),
+                Some(foreign_key_id),
+                Some(referenced_schema),
+                Some(referenced_table),
+            ) = (
+                string_value(&row, "schema_name"),
+                string_value(&row, "table_name"),
+                string_value(&row, "foreign_key_id"),
+                string_value(&row, "referenced_schema"),
+                string_value(&row, "referenced_table"),
+            )
+            else {
+                continue;
+            };
+            let entry = foreign_keys
+                .entry((schema, table, foreign_key_id.clone()))
+                .or_insert_with(|| ForeignKeyMetadata {
+                    id: format!("sqlserver:foreign-key:{foreign_key_id}"),
+                    name: string_value(&row, "foreign_key_name"),
+                    columns: Vec::new(),
+                    referenced_relation: RelationRef {
+                        schema: referenced_schema,
+                        name: referenced_table,
+                    },
+                    on_update: string_value(&row, "on_update")
+                        .unwrap_or_else(|| "NO_ACTION".into()),
+                    on_delete: string_value(&row, "on_delete")
+                        .unwrap_or_else(|| "NO_ACTION".into()),
+                    r#match: None,
+                    deferrable: Some(false),
+                    initially_deferred: Some(false),
+                });
+            if let (Some(source_column), Some(referenced_column)) = (
+                string_value(&row, "source_column"),
+                string_value(&row, "referenced_column"),
+            ) {
+                entry.columns.push(ForeignKeyColumnPair {
+                    ordinal: row
+                        .get("ordinal")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(entry.columns.len() as u64 + 1)
+                        as u32,
+                    source_column,
+                    referenced_column: Some(referenced_column),
+                });
+            }
+        }
+        let tables: Vec<TableMetadata> = table_rows
             .into_iter()
             .filter_map(|row| {
                 let schema = string_value(&row, "schema_name")?;
@@ -362,13 +604,27 @@ impl DatabaseDriver for SqlServerDriver {
                 let table_columns = columns
                     .remove(&(schema.clone(), name.clone()))
                     .unwrap_or_default();
+                let table_indexes = indexes
+                    .iter()
+                    .filter(|((index_schema, index_table, _), _)| {
+                        index_schema == &schema && index_table == &name
+                    })
+                    .map(|(_, index)| index.clone())
+                    .collect();
+                let table_foreign_keys = foreign_keys
+                    .iter()
+                    .filter(|((fk_schema, fk_table, _), _)| {
+                        fk_schema == &schema && fk_table == &name
+                    })
+                    .map(|(_, foreign_key)| foreign_key.clone())
+                    .collect();
                 Some(TableMetadata {
                     schema,
                     name,
                     row_count,
                     columns: table_columns,
-                    indexes: Vec::new(),
-                    foreign_keys: Vec::<ForeignKeyMetadata>::new(),
+                    indexes: table_indexes,
+                    foreign_keys: table_foreign_keys,
                 })
             })
             .collect();
@@ -408,6 +664,26 @@ impl DatabaseDriver for SqlServerDriver {
                 });
             }
         }
+        let mut dependencies = Vec::new();
+        for table in &tables {
+            for foreign_key in &table.foreign_keys {
+                dependencies.push(DependencyMetadata {
+                    id: format!("sqlserver:dependency:foreign-key:{}", foreign_key.id),
+                    kind: DependencyKind::ForeignKey,
+                    dependent: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &table.schema,
+                        &table.name,
+                    ),
+                    referenced: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &foreign_key.referenced_relation.schema,
+                        &foreign_key.referenced_relation.name,
+                    ),
+                });
+            }
+        }
+        dependencies.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(DatabaseMetadata {
             databases,
             schemas,
@@ -416,7 +692,7 @@ impl DatabaseDriver for SqlServerDriver {
             routines: Vec::new(),
             triggers: Vec::new(),
             event_triggers: Vec::new(),
-            dependencies: Vec::new(),
+            dependencies,
         })
     }
 
@@ -488,6 +764,53 @@ fn string_value(row: &HashMap<String, Value>, key: &str) -> Option<String> {
     })
 }
 
+fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
+    DatabaseObjectRef {
+        kind,
+        id: None,
+        schema: Some(schema.to_string()),
+        name: name.to_string(),
+        identity_arguments: None,
+    }
+}
+
+fn bool_value(row: &HashMap<String, Value>, key: &str) -> Option<bool> {
+    row.get(key).and_then(|value| match value {
+        Value::Bool(value) => Some(*value),
+        Value::String(value) => match value.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" => Some(true),
+            "0" | "false" | "no" => Some(false),
+            _ => None,
+        },
+        Value::Number(value) => value.as_i64().map(|number| number != 0),
+        _ => None,
+    })
+}
+
+fn map_sql_server_session_state(state: Option<&str>) -> DatabaseSessionState {
+    match state.unwrap_or_default().to_ascii_lowercase().as_str() {
+        "running" | "runnable" => DatabaseSessionState::Active,
+        "waiting" | "suspended" => DatabaseSessionState::Waiting,
+        "sleeping" | "dormant" => DatabaseSessionState::Idle,
+        _ => DatabaseSessionState::Unknown,
+    }
+}
+
+fn sql_server_lock_identity(
+    blocked_session_id: &str,
+    blocking_session_id: &str,
+    lock_type: &str,
+    resource: &str,
+    blocked_mode: Option<&str>,
+    blocking_mode: Option<&str>,
+) -> String {
+    format!(
+        "{blocked_session_id}:{blocking_session_id}:{lock_type}:{resource}:{}:{}",
+        blocked_mode.unwrap_or_default(),
+        blocking_mode.unwrap_or_default()
+    )
+}
+
 fn returns_rows(sql: &str) -> bool {
     let keyword = sql
         .split_whitespace()
@@ -519,7 +842,13 @@ fn is_read_only_statement(sql: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_read_only_statement, returns_rows};
+    use super::{
+        bool_value, is_read_only_statement, map_sql_server_session_state, returns_rows,
+        sql_server_lock_identity,
+    };
+    use crate::models::DatabaseSessionState;
+    use serde_json::json;
+    use std::collections::HashMap;
 
     #[test]
     fn classifies_sql_server_result_statements() {
@@ -537,5 +866,45 @@ mod tests {
             "WITH changed AS (SELECT id FROM dbo.users) UPDATE dbo.users SET active = 0"
         ));
         assert!(!is_read_only_statement("CREATE TABLE dbo.audit (id int)"));
+    }
+
+    #[test]
+    fn maps_sql_server_activity_states() {
+        assert_eq!(
+            map_sql_server_session_state(Some("running")),
+            DatabaseSessionState::Active
+        );
+        assert_eq!(
+            map_sql_server_session_state(Some("suspended")),
+            DatabaseSessionState::Waiting
+        );
+        assert_eq!(
+            map_sql_server_session_state(Some("sleeping")),
+            DatabaseSessionState::Idle
+        );
+        assert_eq!(
+            map_sql_server_session_state(Some("new-state")),
+            DatabaseSessionState::Unknown
+        );
+    }
+
+    #[test]
+    fn creates_stable_sql_server_lock_identity() {
+        assert_eq!(
+            sql_server_lock_identity("51", "52", "LCK_M_X", "key:7", None, Some("X")),
+            "51:52:LCK_M_X:key:7::X"
+        );
+    }
+
+    #[test]
+    fn normalizes_sql_server_catalog_booleans() {
+        let row = HashMap::from([
+            ("native_true".into(), json!(true)),
+            ("numeric_false".into(), json!(0)),
+            ("text_true".into(), json!("YES")),
+        ]);
+        assert_eq!(bool_value(&row, "native_true"), Some(true));
+        assert_eq!(bool_value(&row, "numeric_false"), Some(false));
+        assert_eq!(bool_value(&row, "text_true"), Some(true));
     }
 }
