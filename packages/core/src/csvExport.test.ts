@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   serializeRowsToCsv,
   serializeRowsToJson,
+  serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
 } from "./csvExport";
@@ -153,5 +154,42 @@ describe("serializeRowsToSqlUpdate", () => {
 
     expect(sql).toContain('WHERE "id" = 7;');
     expect(sql).not.toContain("\"status\" = 'pending'");
+  });
+});
+
+describe("serializeRowsToSqlDelete", () => {
+  it("generates a keyed delete with original-value conflict predicates", () => {
+    const sql = serializeRowsToSqlDelete(
+      [{ name: "id" }, { name: "status" }, { name: "note" }],
+      [{ originalRow: { id: 7, status: "pending", note: null } }],
+      { tableName: "public.orders", keyColumns: ["id"], dialect: "postgres" },
+    );
+
+    expect(sql).toBe(
+      'BEGIN;\nDELETE FROM "public"."orders" WHERE "id" = 7 AND "status" = \'pending\' AND "note" IS NULL;\nCOMMIT;\n',
+    );
+  });
+
+  it("rejects null keys and can omit original-value predicates", () => {
+    expect(() =>
+      serializeRowsToSqlDelete(
+        [{ name: "id" }, { name: "status" }],
+        [{ originalRow: { id: null, status: "pending" } }],
+        { tableName: "orders", keyColumns: ["id"] },
+      ),
+    ).toThrow("NULL key value");
+
+    const sql = serializeRowsToSqlDelete(
+      [{ name: "id" }, { name: "status" }],
+      [{ originalRow: { id: 7, status: "pending" } }],
+      {
+        tableName: "orders",
+        keyColumns: ["id"],
+        includeOriginalValues: false,
+        includeTransaction: false,
+      },
+    );
+    expect(sql).toBe('DELETE FROM "orders" WHERE "id" = 7;');
+    expect(sql).not.toContain("pending");
   });
 });

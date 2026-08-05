@@ -7,7 +7,7 @@ QueryX normalizes driver output into ordered columns, rows, execution time, affe
 - **Table** preserves the driver's column order and displays NULL separately from text values.
 - **JSON** shows the currently visible rows as formatted JSON.
 - Drag the divider at the right edge of a column header to resize it. Arrow keys adjust the focused divider; Shift+Arrow changes it faster, and Home/End set the minimum/maximum width.
-- Select a table in Explorer and choose **Browse data** to open its first 100 rows in a new query tab. When the result includes the table's primary-key columns, choose **Edit**, double-click a non-key cell, and stage a local change.
+- Select a table in Explorer and choose **Browse data** to open its first 100 rows in a new query tab. When the result includes the table's primary-key columns, choose **Edit**, double-click a non-key cell, and stage a local change. Select one or more row numbers and choose **Delete** to review a guarded row deletion.
 - The filter matches a case-insensitive string representation across each row.
 - Selecting a column header toggles ascending/descending sorting for the loaded rows.
 
@@ -47,6 +47,8 @@ SQL INSERT export never executes the generated script. Review the target table, 
 Row editing is available for SQLite, PostgreSQL, and MySQL/MariaDB tables with reported primary keys. Primary-key cells are locked and act as the update target. Enter `NULL` to stage a null value; numeric, boolean, and JSON columns receive basic value normalization before SQL generation. MySQL/MariaDB primary-key metadata is supported through `information_schema`; foreign-key-aware editor validation remains planned.
 
 Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` statements with primary-key and original-value predicates, then runs them inside the native edit-batch transaction only after explicit confirmation. Every statement must affect exactly one row; a mismatch is reported as an optimistic conflict and the native transaction rolls back the full batch while the original result/staged edits stay available for review. If the result does not contain every primary-key column, editing remains disabled. Views, keyless tables, and arbitrary result projections remain read-only until stronger table identity detection and validation land.
+
+Selected-row deletion follows the same guarded path: QueryX generates one `DELETE` per selected row using the primary key plus every loaded original value as conflict predicates, shows the SQL before execution, and requires every statement to affect exactly one row. A concurrent edit, missing row, read-only connection, or database error rolls back the entire deletion batch. Deletion is intentionally limited to rows opened through the selected table browser; arbitrary query results remain protected from destructive row actions.
 
 ## Large results
 

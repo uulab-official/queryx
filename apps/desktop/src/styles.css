@@ -772,6 +772,15 @@ button:disabled {
   background: #2e3d2b;
   color: var(--lime);
 }
+.result-actions .delete-rows-button {
+  border: 1px solid #633e3a;
+  color: #e8a497;
+}
+.result-actions .delete-rows-button:hover:not(:disabled) {
+  border-color: #c66a58;
+  background: #3a2827;
+  color: #ffc2b5;
+}
 .result-actions .apply-edits-button {
   border: 1px solid #5d6b35;
   background: #293520;

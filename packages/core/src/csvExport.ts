@@ -27,6 +27,19 @@ export interface SqlRowUpdate {
   changes: Readonly<Record<string, unknown>>;
 }
 
+export interface SqlRowDelete {
+  originalRow: Record<string, unknown>;
+}
+
+export interface SqlDeleteExportOptions {
+  tableName: string;
+  keyColumns: readonly string[];
+  dialect?: "mysql" | "postgres" | "sqlite";
+  lineEnding?: "\n" | "\r\n";
+  includeTransaction?: boolean;
+  includeOriginalValues?: boolean;
+}
+
 const FORMULA_PREFIX = /^[=+\-@\t\r]/;
 
 export function serializeRowsToCsv(
@@ -182,6 +195,76 @@ export function buildRowsToSqlUpdateStatements(
     })
     .filter(Boolean);
   return statements;
+}
+
+export function serializeRowsToSqlDelete(
+  columns: readonly Pick<QueryColumn, "name">[],
+  deletes: readonly SqlRowDelete[],
+  options: SqlDeleteExportOptions,
+): string {
+  const statements = buildRowsToSqlDeleteStatements(columns, deletes, options);
+  if (statements.length === 0) return "";
+  const lineEnding = options.lineEnding ?? "\n";
+  const body = statements.join(lineEnding);
+  const transaction =
+    options.includeTransaction === false ? "" : `BEGIN;${lineEnding}`;
+  const commit =
+    options.includeTransaction === false
+      ? ""
+      : `${lineEnding}COMMIT;${lineEnding}`;
+  return `${transaction}${body}${commit}`;
+}
+
+export function buildRowsToSqlDeleteStatements(
+  columns: readonly Pick<QueryColumn, "name">[],
+  deletes: readonly SqlRowDelete[],
+  options: SqlDeleteExportOptions,
+): string[] {
+  const tableName = options.tableName.trim();
+  if (!tableName) throw new Error("A target table name is required");
+  if (columns.length === 0)
+    throw new Error("At least one result column is required");
+  if (options.keyColumns.length === 0)
+    throw new Error("At least one key column is required");
+  const columnNames = new Set(columns.map((column) => column.name));
+  const missingKey = options.keyColumns.find(
+    (columnName) => !columnNames.has(columnName),
+  );
+  if (missingKey)
+    throw new Error(`Result does not include key column: ${missingKey}`);
+  const dialect = options.dialect ?? "sqlite";
+  const quotedTable = tableName
+    .split(".")
+    .map((part) => quoteIdentifier(part, dialect))
+    .join(".");
+  return deletes.map(({ originalRow }, index) => {
+    const keyValues = options.keyColumns.map((columnName) => {
+      const value = originalRow[columnName];
+      if (value === null || value === undefined) {
+        throw new Error(
+          `Row ${index + 1} has a NULL key value for ${columnName}`,
+        );
+      }
+      return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value)}`;
+    });
+    const originalValueConditions =
+      options.includeOriginalValues === false
+        ? []
+        : columns
+            .filter(
+              (column) =>
+                !options.keyColumns.includes(column.name) &&
+                Object.hasOwn(originalRow, column.name),
+            )
+            .map((column) =>
+              serializeSqlPredicate(
+                column.name,
+                originalRow[column.name],
+                dialect,
+              ),
+            );
+    return `DELETE FROM ${quotedTable} WHERE ${[...keyValues, ...originalValueConditions].join(" AND ")};`;
+  });
 }
 
 function normalizeCell(value: unknown): string {

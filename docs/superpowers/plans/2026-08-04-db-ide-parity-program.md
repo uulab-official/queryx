@@ -216,6 +216,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add deterministic boundary tests for small sets, large-set windows, and end-of-list clamping.
 - [x] Add conservative dialect-aware server paging for single SELECT/WITH queries, original-SQL history preservation, and incremental result-grid loading.
 - [x] Add metadata-safe table-browser server filtering/sorting with deterministic primary-key tie-breakers and literal wildcard escaping.
+- [x] Add guarded table-browser row deletion with original-value conflict predicates, SQL preview, exact affected-row verification, and rollback tests.
 - [ ] Add streamed driver cursors, progress/cancellation telemetry, and server-side filtering for arbitrary queries in the next large-data slices.
 
 ### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix

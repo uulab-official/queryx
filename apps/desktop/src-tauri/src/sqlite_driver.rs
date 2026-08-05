@@ -605,6 +605,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deletes_selected_rows_and_reports_the_affected_count() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        let result = driver
+            .execute_batch(
+                Uuid::new_v4(),
+                &["DELETE FROM orders WHERE id = 1 AND status = 'paid'".into()],
+                1,
+            )
+            .await
+            .expect("delete selected row");
+
+        assert_eq!(result.affected_rows, 1);
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE id = 1")
+            .fetch_one(&driver.pool)
+            .await
+            .expect("count deleted order");
+        assert_eq!(remaining, 0);
+    }
+
+    #[tokio::test]
+    async fn rolls_back_selected_row_deletes_when_one_original_value_conflicts() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        let error = driver
+            .execute_batch(
+                Uuid::new_v4(),
+                &[
+                    "DELETE FROM orders WHERE id = 1 AND status = 'paid'".into(),
+                    "DELETE FROM orders WHERE id = 999 AND status = 'paid'".into(),
+                ],
+                2,
+            )
+            .await
+            .expect_err("conflicting delete batch must roll back");
+
+        assert!(matches!(error, AppError::EditConflict { .. }));
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM orders WHERE id = 1")
+            .fetch_one(&driver.pool)
+            .await
+            .expect("count rolled-back order");
+        assert_eq!(remaining, 1);
+    }
+
+    #[tokio::test]
     async fn rolls_back_the_entire_edit_batch_on_a_conflict() {
         let driver = SqliteDriver::connect(":memory:", false)
             .await

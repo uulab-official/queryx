@@ -30,6 +30,7 @@ import {
   buildDropViewPlan,
   buildErdDiagram,
   buildSchemaMigrationStatements,
+  buildRowsToSqlDeleteStatements,
   buildRowsToSqlUpdateStatements,
   buildDependencyIndex,
   buildForeignKeyIndex,
@@ -48,6 +49,7 @@ import {
   parseJsonRows,
   serializeRowsToCsv,
   serializeRowsToJson,
+  serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
   serializeRowsToTsv,
@@ -76,6 +78,7 @@ import type {
   ImportValueType,
   ObjectDependencies,
   QuerySafetyReport,
+  SqlRowDelete,
   SqlRowUpdate,
   SchemaDiff,
   TableBrowseSortDirection,
@@ -511,6 +514,7 @@ function App() {
     {},
   );
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
+  const [deletePreviewOpen, setDeletePreviewOpen] = useState(false);
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
   const [serverQueryPage, setServerQueryPage] =
     useState<ServerQueryPageState | null>(null);
@@ -1358,6 +1362,16 @@ function App() {
   const renderedRows = virtualRowWindow.enabled
     ? filteredRows.slice(virtualRowWindow.start, virtualRowWindow.end)
     : visibleRows;
+  const selectedDeleteRows = useMemo<SqlRowDelete[]>(() => {
+    if (!gridSelection || gridSelection.kind !== "rows") return [];
+    const [startRow, endRow] = rangeBounds(
+      gridSelection.anchor,
+      gridSelection.focus,
+    );
+    return filteredRows
+      .slice(startRow, endRow + 1)
+      .map((originalRow) => ({ originalRow }));
+  }, [filteredRows, gridSelection]);
   const primaryKeyColumns = useMemo(
     () => currentTable?.columns.filter((column) => column.primaryKey) ?? [],
     [currentTable],
@@ -1371,6 +1385,16 @@ function App() {
       primaryKeyColumns.every((key) =>
         result.columns.some((column) => column.name === key.name),
       ),
+  );
+  const canDeleteRows = Boolean(
+    canEditResults &&
+      tableBrowse &&
+      currentTable &&
+      tableBrowse.schema === currentTable.schema &&
+      tableBrowse.name === currentTable.name &&
+      gridSelection?.kind === "rows" &&
+      selectedDeleteRows.length > 0 &&
+      pendingEditCount === 0,
   );
   const editPreview = useMemo(() => {
     if (!canEditResults || !currentTable || !result || pendingEditCount === 0) {
@@ -1412,6 +1436,46 @@ function App() {
     primaryKeyColumns,
     result,
     stagedEdits,
+  ]);
+  const deletePreview = useMemo(() => {
+    if (!canDeleteRows || !currentTable || !result) {
+      return { sql: "", statements: [], error: null };
+    }
+    try {
+      const options = {
+        tableName: `${currentTable.schema}.${currentTable.name}`,
+        keyColumns: primaryKeyColumns.map((column) => column.name),
+        dialect: driverKind,
+        includeTransaction: false as const,
+        includeOriginalValues: true,
+      };
+      return {
+        sql: serializeRowsToSqlDelete(
+          result.columns,
+          selectedDeleteRows,
+          options,
+        ),
+        statements: buildRowsToSqlDeleteStatements(
+          result.columns,
+          selectedDeleteRows,
+          options,
+        ),
+        error: null,
+      };
+    } catch (error) {
+      return {
+        sql: "",
+        statements: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [
+    canDeleteRows,
+    currentTable,
+    driverKind,
+    primaryKeyColumns,
+    result,
+    selectedDeleteRows,
   ]);
   const beginCellEdit = (
     row: Record<string, unknown>,
@@ -1495,6 +1559,49 @@ function App() {
     await runQuery("normal", sql);
     notify(
       `Applied ${pendingEditCount} staged cell edit${pendingEditCount === 1 ? "" : "s"}`,
+    );
+  };
+  const applySelectedDeletes = async () => {
+    if (!deletePreview.sql || deletePreview.statements.length === 0) {
+      notify(deletePreview.error ?? "Select at least one table row first");
+      return;
+    }
+    const expectedRows = selectedDeleteRows.length;
+    const deleted = await runQuery("transaction", deletePreview.sql, {
+      preserveResult: true,
+      batch: {
+        statements: deletePreview.statements,
+        expectedRows,
+      },
+    });
+    if (!deleted) {
+      setDeletePreviewOpen(true);
+      return;
+    }
+    if (deleted.affectedRows !== expectedRows) {
+      setDeletePreviewOpen(true);
+      notify(
+        `Delete conflict detected: expected ${expectedRows} row${expectedRows === 1 ? "" : "s"}, deleted ${deleted.affectedRows}`,
+      );
+      return;
+    }
+    setDeletePreviewOpen(false);
+    setGridSelection(null);
+    setResultPage(0);
+    const refreshed = await runQuery("normal", sql);
+    if (refreshed && tableBrowse) {
+      setTableBrowse((current) =>
+        current
+          ? {
+              ...current,
+              offset: 0,
+              hasMore: refreshed.rows.length === tableBrowsePageSize,
+            }
+          : current,
+      );
+    }
+    notify(
+      `Deleted ${expectedRows.toLocaleString()} row${expectedRows === 1 ? "" : "s"}`,
     );
   };
   const getColumnWidth = (column: { name: string; type: string }) =>
@@ -2936,6 +3043,35 @@ function App() {
                   ✎ {editingEnabled ? "Editing" : "Edit"}
                   {pendingEditCount > 0 && ` · ${pendingEditCount}`}
                 </button>
+                <button
+                  type="button"
+                  className="delete-rows-button"
+                  onClick={() => {
+                    if (readOnlyConnection) {
+                      notify("Read-only connection: data deletion is disabled");
+                      return;
+                    }
+                    if (!canDeleteRows) {
+                      notify(
+                        "Browse a table and select rows by their row numbers before deleting",
+                      );
+                      return;
+                    }
+                    setDeletePreviewOpen(true);
+                  }}
+                  disabled={readOnlyConnection || isRunning || !canDeleteRows}
+                  title={
+                    canDeleteRows
+                      ? "Review and delete the selected table rows"
+                      : readOnlyConnection
+                        ? "Read-only connection: writes are disabled by the database"
+                        : "Requires Table browser rows selected by row number"
+                  }
+                >
+                  ⌫ Delete
+                  {selectedDeleteRows.length > 0 &&
+                    ` · ${selectedDeleteRows.length}`}
+                </button>
                 {pendingEditCount > 0 && (
                   <button
                     type="button"
@@ -3661,6 +3797,15 @@ function App() {
           onApply={() => void applyStagedEdits()}
         />
       )}
+      {deletePreviewOpen && (
+        <DeletePreviewDialog
+          sql={deletePreview.sql}
+          error={deletePreview.error}
+          rowCount={selectedDeleteRows.length}
+          onCancel={() => setDeletePreviewOpen(false)}
+          onApply={() => void applySelectedDeletes()}
+        />
+      )}
       {connectionOpen && (
         <ConnectionDialog
           error={connectionError}
@@ -4111,6 +4256,74 @@ function EditPreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Apply changes
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DeletePreviewDialog({
+  sql,
+  error,
+  rowCount,
+  onCancel,
+  onApply,
+}: {
+  sql: string;
+  error: string | null;
+  rowCount: number;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="edit-preview-modal delete-preview-modal"
+        aria-modal="true"
+        aria-labelledby="delete-preview-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">DESTRUCTIVE DATA EDIT</p>
+            <h2 id="delete-preview-title">
+              Review {rowCount} row deletion{rowCount === 1 ? "" : "s"}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close delete preview"
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </div>
+        {error ? (
+          <div className="edit-preview-error">{error}</div>
+        ) : (
+          <>
+            <p className="modal-copy">
+              QueryX will run these DELETE statements in one native transaction.
+              Each statement includes the primary key and original values, so a
+              concurrent change rolls back the entire operation. Nothing runs
+              until you choose Delete rows.
+            </p>
+            <pre className="edit-preview-sql">{sql}</pre>
+          </>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onCancel}>
+            Keep rows
+          </button>
+          <button
+            type="button"
+            className="modal-danger"
+            onClick={onApply}
+            disabled={Boolean(error) || !sql}
+          >
+            Delete rows
           </button>
         </div>
       </dialog>
