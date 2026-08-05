@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     driver_registry::DriverRegistry,
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, QueryResult},
-    secret_store,
+    secret_store, workspace_store,
 };
 
 #[tauri::command]
@@ -105,6 +106,26 @@ pub fn save_connection_password(profile_id: String, password: String) -> Result<
 #[tauri::command]
 pub fn delete_connection_password(profile_id: String) -> Result<(), AppError> {
     secret_store::delete_password(&profile_id)
+}
+
+#[tauri::command]
+pub async fn load_workspace_snapshot(app: AppHandle) -> Result<Option<Value>, AppError> {
+    workspace_store::load_workspace_snapshot(&app).await
+}
+
+#[tauri::command]
+pub async fn save_workspace_snapshot(app: AppHandle, snapshot: Value) -> Result<(), AppError> {
+    workspace_store::save_workspace_snapshot(&app, snapshot).await
+}
+
+#[tauri::command]
+pub async fn load_connection_profiles(app: AppHandle) -> Result<Option<Value>, AppError> {
+    workspace_store::load_connection_profiles(&app).await
+}
+
+#[tauri::command]
+pub async fn save_connection_profiles(app: AppHandle, profiles: Value) -> Result<(), AppError> {
+    workspace_store::save_connection_profiles(&app, profiles).await
 }
 
 #[tauri::command]

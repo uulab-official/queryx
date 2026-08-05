@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for the current alpha; SQLite migration remains planned.
+Superseded by [ADR-0015](ADR-0015-native-workspace-sqlite.md). The versioned snapshot contract remains the compatibility shape inside the native SQLite store.
 
 ## Context
 
@@ -24,7 +24,7 @@ Passwords and connection secrets are excluded by type and are not migrated. Conn
 
 ## Consequences
 
-Native restart/recovery now has one durable boundary without prematurely committing to a database schema. The snapshot is easy to inspect and migrate during the alpha, but it does not yet provide transactional writes, settings namespaces, multiple workspaces, or crash-safe journaling. Those requirements are the entry criteria for the planned SQLite migration.
+This decision established the JSON snapshot contract and the one-time migration rules that the SQLite store now consumes. It remains useful as the historical explanation for the v1 document shape; native persistence, transactional writes, and the migration ledger are defined by ADR-0015.
 
 ## Verification
 

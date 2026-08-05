@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type {
   MigrationHistoryEntry,
   QueryFavorite,
@@ -260,6 +260,16 @@ export async function loadWorkspaceSnapshot(
   }
 
   try {
+    const stored = await invoke<unknown | null>("load_workspace_snapshot");
+    const snapshot = normalizeSnapshot(stored, fallback);
+    if (snapshot) {
+      return { snapshot, restored: true, migratedFromBrowser: false };
+    }
+  } catch {
+    // Fall through to the legacy JSON and browser migration paths.
+  }
+
+  try {
     const { BaseDirectory, readTextFile } = await import(
       "@tauri-apps/plugin-fs"
     );
@@ -268,13 +278,21 @@ export async function loadWorkspaceSnapshot(
     });
     const snapshot = normalizeSnapshot(JSON.parse(stored), fallback);
     if (snapshot) {
+      await invoke("save_workspace_snapshot", { snapshot });
       return { snapshot, restored: true, migratedFromBrowser: false };
     }
   } catch {
-    // A missing or corrupt native snapshot falls through to browser migration.
+    // A missing or corrupt legacy snapshot falls through to browser migration.
   }
 
   const browser = readBrowserSnapshot(fallback);
+  if (browser) {
+    try {
+      await invoke("save_workspace_snapshot", { snapshot: browser });
+    } catch {
+      // The UI remains usable if the native store is unavailable.
+    }
+  }
   return {
     snapshot: browser ?? fallback,
     restored: Boolean(browser),
@@ -336,16 +354,5 @@ export async function persistWorkspaceSnapshot(
     return;
   }
 
-  const { BaseDirectory, mkdir, writeTextFile } = await import(
-    "@tauri-apps/plugin-fs"
-  );
-  await mkdir("queryx", {
-    baseDir: BaseDirectory.AppLocalData,
-    recursive: true,
-  });
-  await writeTextFile(
-    nativeWorkspacePath,
-    JSON.stringify(normalized, null, 2),
-    { baseDir: BaseDirectory.AppLocalData },
-  );
+  await invoke("save_workspace_snapshot", { snapshot: normalized });
 }

@@ -1,4 +1,4 @@
-import { isTauri } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { ConnectionProfile, DriverKind } from "@queryx/shared";
 
 export const connectionProfilesStorageKey = "queryx:connection-profiles";
@@ -136,13 +136,21 @@ function writeBrowserProfiles(profiles: ConnectionProfile[]): void {
 export async function loadConnectionProfiles(): Promise<ConnectionProfile[]> {
   if (!isTauri()) return readBrowserProfiles();
   try {
+    const stored = await invoke<unknown | null>("load_connection_profiles");
+    if (stored !== null) return normalizeConnectionProfiles(stored);
+  } catch {
+    // Fall through to the legacy JSON migration path.
+  }
+  try {
     const { BaseDirectory, readTextFile } = await import(
       "@tauri-apps/plugin-fs"
     );
     const stored = await readTextFile(nativeProfilesPath, {
       baseDir: BaseDirectory.AppLocalData,
     });
-    return normalizeConnectionProfiles(JSON.parse(stored));
+    const profiles = normalizeConnectionProfiles(JSON.parse(stored));
+    await invoke("save_connection_profiles", { profiles });
+    return profiles;
   } catch {
     return [];
   }
@@ -156,16 +164,5 @@ export async function persistConnectionProfiles(
     writeBrowserProfiles(nextProfiles);
     return;
   }
-  const { BaseDirectory, mkdir, writeTextFile } = await import(
-    "@tauri-apps/plugin-fs"
-  );
-  await mkdir("queryx", {
-    baseDir: BaseDirectory.AppLocalData,
-    recursive: true,
-  });
-  await writeTextFile(
-    nativeProfilesPath,
-    JSON.stringify(nextProfiles, null, 2),
-    { baseDir: BaseDirectory.AppLocalData },
-  );
+  await invoke("save_connection_profiles", { profiles: nextProfiles });
 }

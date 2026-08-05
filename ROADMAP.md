@@ -46,12 +46,12 @@ Known alpha limitations:
 
 Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 
-- [ ] SQLite workspace storage for profiles, tabs, history, favorites, and settings
-- [x] Versioned native workspace snapshot with browser migration, tab/history/favorite recovery, and no-secret persistence; SQLite migration remains planned
-- [x] Secret-free connection profile lifecycle with native app-local persistence, duplicate/delete actions, and explicit connection testing; SQLite workspace migration remains planned
-- [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
+- [x] SQLite workspace storage for secret-free profiles, tabs, history, favorites, migration history, and redacted session audit observations; settings namespaces and named workspaces remain planned
+- [x] Versioned native SQLite workspace snapshot with browser/legacy JSON migration, tab/history/favorite recovery, WAL-backed atomic writes, and no-secret persistence
+- [x] Secret-free connection profile lifecycle with native SQLite persistence, duplicate/delete actions, and explicit connection testing; settings and cross-profile workspace migration remain planned
+- [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite storage is the desktop path
 - [x] Confirmed local-history clearing with truthful empty-state behavior; favorites and tabs remain intact
-- [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
+- [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite recovery is the desktop path
 - [x] OS keychain integration for macOS Keychain, Windows Credential Manager, and Linux Secret Service with profile marker, delete, duplicate, and browser-boundary tests
 - [x] Connection test and duplicate/delete profile actions with active-connection preservation
 - [ ] Profile color, timeout, and keepalive controls

@@ -6,9 +6,9 @@ QueryX keeps the everyday query workflow close to the user: query history and fa
 
 ## Before you start
 
-The native desktop stores query tabs, active-tab selection, history, and favorites in a versioned workspace snapshot under the QueryX app-local data directory. The browser preview uses the same schema in localStorage. Both paths restore SQL without executing it; the native path is the durable desktop boundary, while the browser path remains a development fallback.
+The native desktop stores query tabs, active-tab selection, history, favorites, migration history, and redacted session-audit observations in a versioned `workspace.sqlite` database under the QueryX app-local data directory. Connection profiles live in a separate table in the same database. The browser preview uses the same logical snapshot in localStorage. Both paths restore SQL without executing it; the native SQLite path is the durable desktop boundary, while the browser path remains a development fallback.
 
-Connection profiles follow a separate secret-free boundary: the native desktop stores up to 50 reusable profiles in its app-local data directory, while the browser preview uses localStorage. Profile files contain driver, endpoint, database, username, and TLS mode only. Passwords are entered per session and are never migrated into the profile file.
+Connection profiles follow a separate secret-free table boundary: the native desktop stores up to 50 reusable profiles in `workspace.sqlite`, while the browser preview uses localStorage. Stored profile values contain driver, endpoint, database, username, and TLS mode only. Passwords are entered per session or loaded from the OS keychain and are never written into SQLite.
 
 ## Quick start
 
@@ -36,7 +36,11 @@ Favorites are deduplicated by normalized SQL text and capped at 50 entries. Labe
 
 Saving, recalling, or clearing local history never connects to a database. Recalling a favorite never executes SQL. Query text is edited in the local renderer and persisted only through the documented workspace boundary. Passwords and connection secrets are not included in favorites, history, localStorage, workspace files, or logs.
 
-The browser-local query persistence is best-effort and can be cleared by the host profile. Native SQLite storage for settings, migrations, and cross-profile workspaces remains planned for v0.2. OS-keychain storage is separate from the workspace snapshot and is available for native connection passwords. The current native snapshot is JSON by design so the storage schema can stabilize before the SQLite migration.
+The browser-local query persistence is best-effort and can be cleared by the host profile. Native SQLite storage is currently limited to the versioned workspace snapshot and secret-free connection profiles; settings namespaces, multiple named workspaces, and crash-recovery journals remain planned. OS-keychain storage is separate from SQLite and is available for native connection passwords.
+
+## Native storage and migration
+
+The native database is created on first read/write with WAL mode and a schema-migration table. The current migration creates the workspace snapshot and connection-profile tables. Existing `queryx/workspace.json` and `queryx/connection-profiles.json` files are read once and copied into SQLite; browser localStorage is also copied when no native snapshot exists. The legacy JSON files are never used for subsequent writes.
 
 ## Troubleshooting
 

@@ -10,6 +10,7 @@ mod secret_store;
 mod sqlite_driver;
 mod sqlserver_driver;
 mod ssh_tunnel;
+mod workspace_store;
 
 use driver_registry::DriverRegistry;
 
@@ -33,6 +34,10 @@ pub fn run() {
             commands::load_connection_password,
             commands::save_connection_password,
             commands::delete_connection_password,
+            commands::load_workspace_snapshot,
+            commands::save_workspace_snapshot,
+            commands::load_connection_profiles,
+            commands::save_connection_profiles,
             commands::execute_edit_batch,
             commands::cancel_query,
             commands::database_metadata,

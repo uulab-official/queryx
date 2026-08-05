@@ -55,7 +55,7 @@ Database passwords cross only the local Tauri IPC boundary and remain in process
 
 The next integration steps are:
 
-1. Migrate the versioned native workspace snapshot to SQLite after the schema has stabilized, adding settings and cross-profile workspaces.
+1. Extend the native SQLite workspace schema with settings namespaces, multiple named workspaces, and crash-recovery journals.
 2. Add keychain migration UX for legacy session-only profiles and platform-specific diagnostics.
 3. Add long-query progress telemetry, backpressure/spill policies, and timeout policies on top of the current PostgreSQL chunk stream.
 4. Expand the initial MySQL/MariaDB driver with event triggers, managed jump-host chains, and hosted integration coverage; SSL modes, CA/client certificate configuration, and native OpenSSH local forwarding are implemented through the shared native connection contract.
@@ -75,3 +75,4 @@ The next integration steps are:
 - [ADR-0011: Use a safe editor handoff for DDL changes](decisions/ADR-0011-safe-ddl-editor-handoff.md)
 - [ADR-0012: Reuse the execution path for non-executing EXPLAIN plans](decisions/ADR-0012-non-executing-explain-slice.md)
 - [ADR-0013: Use a versioned workspace snapshot before the SQLite migration](decisions/ADR-0013-versioned-workspace-snapshot.md)
+- [ADR-0015: Use SQLite for the native workspace store](decisions/ADR-0015-native-workspace-sqlite.md)

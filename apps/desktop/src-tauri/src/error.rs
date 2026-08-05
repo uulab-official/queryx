@@ -38,6 +38,8 @@ pub enum AppError {
     SshTunnel(String),
     #[error("session operation failed: {0}")]
     SessionOperation(String),
+    #[error("workspace storage failed: {0}")]
+    Workspace(String),
     #[error("SQL Server driver error: {0}")]
     SqlServer(String),
     #[error("Oracle driver error: {0}")]
