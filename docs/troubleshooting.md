@@ -22,7 +22,7 @@ pnpm --filter @queryx/desktop tauri:dev
 
 ## A query will not cancel
 
-PostgreSQL and MySQL/MariaDB advertise native cancellation. SQLite currently does not, so its Run control remains non-cancellable once execution begins. For PostgreSQL, Escape or the Cancel button requests `pg_cancel_backend`; for MySQL/MariaDB it requests `KILL QUERY` through a separate local control connection. Network/server permissions and timing can delay acknowledgement or return a cancellation error.
+PostgreSQL and MySQL/MariaDB advertise native cancellation; SQLite advertises streaming but not cancellation. For PostgreSQL, Escape or the Cancel button requests `pg_cancel_backend`; for MySQL/MariaDB it requests `KILL QUERY` through a separate local control connection. SQLite Stream continues until completion. Network/server permissions and timing can delay acknowledgement or return a cancellation error.
 
 ## Results are slow or memory usage grows
 

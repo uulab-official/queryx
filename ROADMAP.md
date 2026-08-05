@@ -38,7 +38,7 @@ Known alpha limitations:
 
 - Native desktop now restores tabs, history, favorites, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
 - Passwords are intentionally session-only until OS keychain support lands.
-- Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages single SELECT/WITH queries, and PostgreSQL/MySQL can stream 256-row chunks. SQLite streaming, disk spill/backpressure, and arbitrary-query server-side filtering remain pending.
+- Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages single SELECT/WITH queries, and all native drivers can stream 256-row chunks. Disk spill/backpressure and arbitrary-query server-side filtering remain pending.
 - Safety analysis is lexical, not yet parser/plan backed.
 - GitHub Release packaging and signed OTA verification are wired; the first production release still requires repository updater secrets and platform signing/notarization credentials.
 
@@ -60,11 +60,11 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
 - [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls
-- [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, conservative 100-row server paging for single SELECT/WITH queries, metadata-safe server filter/sort for table browsing, and PostgreSQL/MySQL cursor-backed 256-row result streaming; SQLite streaming, progress telemetry, disk spill/backpressure, and arbitrary-query server-side filtering remain planned
+- [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, conservative 100-row server paging for single SELECT/WITH queries, metadata-safe server filter/sort for table browsing, and all native drivers' cursor-backed 256-row result streaming; progress telemetry, disk spill/backpressure, and arbitrary-query server-side filtering remain planned
 - [x] Result-grid column resizing with mouse and keyboard controls; incremental fetch, server paging, reorder, and freeze remain planned
 - [x] Keyed table browser incremental fetch in 100-row pages with deterministic primary-key ordering, dialect-aware server filtering/sorting, literal wildcard escaping, and unapplied-order protection; arbitrary-query server paging remains planned
 - [x] Cell/row/range copy, NULL display controls, and spreadsheet-safe TSV clipboard output
-- [x] Client-side result pages up to 100 rows with local page navigation for loaded results; larger loaded results use the virtualized grid, PostgreSQL/MySQL can append cursor chunks, while SQLite streaming and arbitrary-query server-side filtering remain planned
+- [x] Client-side result pages up to 100 rows with local page navigation for loaded results; larger loaded results use the virtualized grid and all native drivers can append cursor chunks, while arbitrary-query server-side filtering remains planned
 - [x] JSON and SQL INSERT export with portable values, dialect-aware identifier quoting, transaction wrapper, and explicit target-table prompt; progress/cancel and advanced encoding controls remain planned
 - [x] Metadata for views, indexes, and primary keys
 - [x] Composite foreign keys with outgoing/incoming relationship navigation

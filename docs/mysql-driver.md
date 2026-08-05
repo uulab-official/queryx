@@ -15,7 +15,7 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 
 ## Deliberate limitations
 
-The initial driver does not yet expose MySQL/MariaDB event triggers, SSH tunnels, or certificate-file configuration. SQLite remains the only built-in driver without native streaming/cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
+The initial driver does not yet expose MySQL/MariaDB event triggers, SSH tunnels, or certificate-file configuration. SQLite remains the only built-in driver without native cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
 
 MySQL `information_schema.tables.table_rows` is an engine-dependent estimate, not an exact `COUNT(*)`. Use an explicit query when an exact count matters.
 

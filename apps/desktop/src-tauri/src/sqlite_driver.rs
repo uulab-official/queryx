@@ -2,21 +2,22 @@ use std::{collections::HashMap, str::FromStr, time::Instant};
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
-    Column, Row, SqlitePool, TypeInfo, ValueRef,
+    Column, Row, Sqlite, SqlitePool, TypeInfo, ValueRef,
 };
 use uuid::Uuid;
 
 use crate::{
-    driver::{DatabaseDriver, ExecutionMode},
+    driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
         ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
         DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
-        IndexMetadata, QueryColumn, QueryResult, RelationRef, TableMetadata, TriggerEvent,
-        TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, TableMetadata,
+        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
         TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
@@ -75,7 +76,11 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     fn capabilities(&self) -> Vec<DriverCapability> {
-        let mut capabilities = vec![DriverCapability::Transactions, DriverCapability::Explain];
+        let mut capabilities = vec![
+            DriverCapability::Transactions,
+            DriverCapability::Explain,
+            DriverCapability::Streaming,
+        ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
         }
@@ -89,6 +94,23 @@ impl DatabaseDriver for SqliteDriver {
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
         execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
+    }
+
+    async fn execute_stream(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        execute_stream_on_pool(
+            &self.pool,
+            query_id,
+            sql,
+            mode == ExecutionMode::Transaction,
+            on_chunk,
+        )
+        .await
     }
 
     async fn execute_batch(
@@ -407,6 +429,92 @@ async fn execute_on_pool(
     execute_with_executor(pool, sql, is_query, started).await
 }
 
+async fn execute_stream_on_pool(
+    pool: &SqlitePool,
+    query_id: Uuid,
+    sql: &str,
+    in_transaction: bool,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    if !is_row_returning_query(sql) {
+        let result = execute_on_pool(pool, sql, in_transaction).await?;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: 0,
+            columns: result.columns.clone(),
+            rows: Vec::new(),
+            warnings: result.warnings.clone(),
+        });
+        return Ok(result);
+    }
+
+    if in_transaction {
+        let mut transaction = pool.begin().await?;
+        let result =
+            execute_stream_with_executor(&mut *transaction, query_id, sql, started, on_chunk)
+                .await?;
+        transaction.commit().await?;
+        return Ok(result);
+    }
+
+    execute_stream_with_executor(pool, query_id, sql, started, on_chunk).await
+}
+
+async fn execute_stream_with_executor<'e, E>(
+    executor: E,
+    query_id: Uuid,
+    sql: &str,
+    started: Instant,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError>
+where
+    E: sqlx::Executor<'e, Database = Sqlite>,
+{
+    let mut rows = sqlx::query(sql).fetch(executor);
+    let mut columns = Vec::new();
+    let warnings = Vec::new();
+    let mut chunk_rows = Vec::with_capacity(256);
+    let mut row_offset = 0_u64;
+
+    while let Some(row) = rows.try_next().await? {
+        if columns.is_empty() {
+            columns = columns_from_row(&row);
+        }
+        chunk_rows.push(row_to_json(&row)?);
+        if chunk_rows.len() >= 256 {
+            let chunk_offset = row_offset;
+            row_offset += chunk_rows.len() as u64;
+            on_chunk(QueryChunk {
+                query_id: query_id.to_string(),
+                row_offset: chunk_offset,
+                columns: columns.clone(),
+                rows: std::mem::take(&mut chunk_rows),
+                warnings: warnings.clone(),
+            });
+        }
+    }
+    if !chunk_rows.is_empty() {
+        let chunk_offset = row_offset;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: chunk_offset,
+            columns: columns.clone(),
+            rows: chunk_rows,
+            warnings: warnings.clone(),
+        });
+    }
+
+    Ok(QueryResult {
+        columns,
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows: 0,
+        warnings,
+        error: None,
+    })
+}
+
 async fn execute_edit_batch_on_pool(
     pool: &SqlitePool,
     statements: &[String],
@@ -569,6 +677,49 @@ async fn seed_demo_database(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use crate::{driver::QueryChunkHandler, models::QueryChunk};
+
+    #[tokio::test]
+    async fn streams_sqlite_rows_in_bounded_chunks() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        assert!(driver.capabilities().contains(&DriverCapability::Streaming));
+        assert!(!driver.capabilities().contains(&DriverCapability::Cancel));
+
+        let chunks = Arc::new(std::sync::Mutex::new(Vec::<QueryChunk>::new()));
+        let captured_chunks = Arc::clone(&chunks);
+        let handler: QueryChunkHandler = Arc::new(move |chunk| {
+            captured_chunks
+                .lock()
+                .expect("lock sqlite stream chunks")
+                .push(chunk);
+        });
+        let result = driver
+            .execute_stream(
+                Uuid::new_v4(),
+                "WITH RECURSIVE numbers AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM numbers WHERE n < 300) SELECT n FROM numbers",
+                ExecutionMode::Direct,
+                handler,
+            )
+            .await
+            .expect("stream sqlite rows");
+        let (total_rows, first_offset, second_offset) = {
+            let chunks = chunks.lock().expect("read sqlite stream chunks");
+            (
+                chunks.iter().map(|chunk| chunk.rows.len()).sum::<usize>(),
+                chunks.first().map(|chunk| chunk.row_offset),
+                chunks.get(1).map(|chunk| chunk.row_offset),
+            )
+        };
+
+        assert!(result.rows.is_empty());
+        assert_eq!(total_rows, 300);
+        assert_eq!(first_offset, Some(0));
+        assert_eq!(second_offset, Some(256));
+    }
 
     #[tokio::test]
     async fn reports_affected_rows_inside_a_transaction() {

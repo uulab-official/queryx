@@ -1081,7 +1081,7 @@ function App() {
     }
     if (!driver.capabilities().has("streaming")) {
       notify(
-        "Streaming is currently available for PostgreSQL and MySQL/MariaDB connections",
+        "Streaming is currently available for native PostgreSQL, MySQL/MariaDB, and SQLite connections",
       );
       return;
     }
@@ -2295,7 +2295,7 @@ function App() {
     {
       id: "stream",
       label: "Stream query results",
-      hint: "PostgreSQL/MySQL · chunked",
+      hint: "Native drivers · chunked",
       disabled: isRunning || !driver.capabilities().has("streaming"),
       execute: () => handleStream(),
     },
@@ -2995,7 +2995,7 @@ function App() {
                   title={
                     driver.capabilities().has("streaming")
                       ? "Stream a single SELECT/WITH result in chunks"
-                      : "Chunked streaming is currently available for PostgreSQL and MySQL/MariaDB connections"
+                      : "Chunked streaming is currently available for native PostgreSQL, MySQL/MariaDB, and SQLite connections"
                   }
                 >
                   Stream

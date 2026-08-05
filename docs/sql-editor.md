@@ -29,7 +29,7 @@ The table view supports spreadsheet-oriented copy without sending result data an
 - Press Cmd/Ctrl+C while the grid is focused, or choose **Copy**, to copy the selected cells/rows as TSV. With no selection, Copy includes the visible column headers and filtered/sorted rows.
 - Toggle **NULL** to switch between the literal `NULL` display and a blank display. Clipboard output follows the selected display mode; CSV export continues to use empty cells for null values.
 
-Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. Results are displayed in local pages of up to 100 rows, while the grid keeps loaded rows in memory. Column dividers can be dragged or adjusted with the keyboard; the PostgreSQL/MySQL **Stream** action appends cursor chunks while a single `SELECT`/`WITH` query runs. SQLite streaming, spill-to-disk, and arbitrary-query server paging remain planned.
+Cells containing tabs, line breaks, or quotes are quoted so a pasted range remains rectangular in spreadsheet applications. Results are displayed in local pages of up to 100 rows, while the grid keeps loaded rows in memory. Column dividers can be dragged or adjusted with the keyboard; the native-driver **Stream** action appends cursor chunks while a single `SELECT`/`WITH` query runs. Spill-to-disk and arbitrary-query server paging remain planned.
 
 For a table with a reported primary key, choose **Browse data** in the Inspector, then **Edit** in the result toolbar. Double-click a non-key cell to stage a value, press Enter to commit the draft, and use **Review & Apply** to inspect the generated UPDATE statements before execution. QueryX includes original-value predicates and checks each affected row through the native edit-batch transaction; a mismatch is surfaced as an optimistic conflict and the full batch rolls back. QueryX never auto-writes a cell on blur.
 
@@ -71,9 +71,9 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - The command palette currently covers the core query/editor/result actions; extension-contributed commands remain planned.
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs, active-tab selection, dirty SQL, history, and favorites are restored from the native workspace snapshot or browser preview fallback; settings, cross-profile recovery, and SQLite migration remain planned.
-- SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL.
+- SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL/MySQL/MariaDB. SQLite streaming remains available without cancellation.
 - Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
-- Result-grid copy operates on the currently visible filtered/sorted page; CSV export includes all loaded filtered/sorted rows. Binary viewers, SQLite streaming, spill-to-disk, and arbitrary-query server paging remain planned.
+- Result-grid copy operates on the currently visible filtered/sorted page; CSV export includes all loaded filtered/sorted rows. Binary viewers, spill-to-disk, and arbitrary-query server paging remain planned.
 
 ## Related
 

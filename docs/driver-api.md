@@ -89,7 +89,7 @@ Every native driver must pass the registry contract suite before it can be expos
 
 DDL Inspector actions are intentionally layered on this contract: copying is renderer-local, **Edit in SQL** creates a normal query document, and **Run in Transaction** calls `execute_query_transaction`. No object-specific mutation command exists yet. The transaction path must roll back on execution failure and return an actionable error while preserving the edited SQL in the tab.
 
-Cancellation is capability-driven. PostgreSQL and MySQL/MariaDB report `cancel` and `streaming`; SQLite returns `CancellationUnsupported` and does not expose the Cancel control. PostgreSQL and MySQL/MariaDB stream chunks in bounded 256-row batches and use the same active-query cancellation state machine, with database-specific control statements kept inside the native driver. Repeated cancellation while a query is active is idempotent, while cancellation after completion returns `false`.
+Cancellation is capability-driven. PostgreSQL and MySQL/MariaDB report `cancel` and `streaming`; SQLite reports `streaming` but intentionally returns `CancellationUnsupported` and does not expose the Cancel control. All native drivers stream chunks in bounded 256-row batches. Repeated cancellation while a cancellable query is active is idempotent, while cancellation after completion returns `false`.
 
 Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, documented in [mysql-driver.md](mysql-driver.md).
 

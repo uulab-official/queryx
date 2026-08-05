@@ -218,7 +218,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add metadata-safe table-browser server filtering/sorting with deterministic primary-key tie-breakers and literal wildcard escaping.
 - [x] Add guarded table-browser row deletion with original-value conflict predicates, SQL preview, exact affected-row verification, and rollback tests.
 - [x] Add default-aware table-browser row insertion with typed Value/NULL/Default modes, dialect-specific SQL, exact affected-row verification, and refresh.
-- [x] Add PostgreSQL/MySQL cursor-backed 256-row driver chunks, Tauri event delivery, incremental result accumulation, capability-gated Stream actions, and cancellation cleanup; SQLite streaming, progress telemetry, disk spill/backpressure, and server-side filtering for arbitrary queries remain next large-data slices.
+- [x] Add PostgreSQL/MySQL/SQLite cursor-backed 256-row driver chunks, Tauri event delivery, incremental result accumulation, capability-gated Stream actions, and cancellation cleanup; progress telemetry, disk spill/backpressure, and server-side filtering for arbitrary queries remain next large-data slices.
 
 ### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix
 
