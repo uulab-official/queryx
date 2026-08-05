@@ -241,6 +241,9 @@ export interface DatabaseDriver {
     expectedRows: number,
     signal?: AbortSignal,
   ): Promise<QueryResult>;
+  beginTransaction(): Promise<void>;
+  commitTransaction(): Promise<void>;
+  rollbackTransaction(): Promise<void>;
   metadata(): Promise<DatabaseMetadata>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;

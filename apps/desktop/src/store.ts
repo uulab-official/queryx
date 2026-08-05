@@ -110,6 +110,7 @@ interface QueryState {
   connectionName: string;
   connectionStatus: "connecting" | "connected" | "error";
   connectionError: string | null;
+  transactionActive: boolean;
   setSql: (sql: string) => void;
   newQuery: () => string;
   selectQuery: (id: string) => void;
@@ -144,6 +145,9 @@ interface QueryState {
     config: DriverConfig,
   ) => Promise<DatabaseMetadata>;
   connectDatabase: (config: DriverConfig) => Promise<boolean>;
+  beginTransaction: () => Promise<void>;
+  commitTransaction: () => Promise<void>;
+  rollbackTransaction: () => Promise<void>;
   notify: (message: string) => void;
   addHistory: (entry: QueryHistoryEntry) => void;
   clearHistory: () => void;
@@ -486,6 +490,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
     connectionName: driver.kind === "sqlite" ? "local-demo" : "production-db",
     connectionStatus: "connecting",
     connectionError: null,
+    transactionActive: false,
     setSql: (sql) => {
       set((state) => {
         const tabs = state.tabs.map((tab) =>
@@ -841,6 +846,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
           tabs: nextTabs,
           result: null,
           executionStatus: "idle",
+          transactionActive: false,
           toast: `Connected to ${config.name}`,
         });
         persistWorkspaceState(get());
@@ -854,6 +860,37 @@ export const useQueryStore = create<QueryState>((set, get) => {
           toast: message,
         });
         return false;
+      }
+    },
+    beginTransaction: async () => {
+      if (get().transactionActive) return;
+      await driverReady;
+      await get().driver.beginTransaction();
+      set({ transactionActive: true, toast: "Transaction started" });
+      globalThis.setTimeout(() => set({ toast: null }), 2200);
+    },
+    commitTransaction: async () => {
+      if (!get().transactionActive) return;
+      await driverReady;
+      try {
+        await get().driver.commitTransaction();
+        set({ transactionActive: false, toast: "Transaction committed" });
+        globalThis.setTimeout(() => set({ toast: null }), 2200);
+      } catch (error) {
+        set({ transactionActive: false });
+        throw error;
+      }
+    },
+    rollbackTransaction: async () => {
+      if (!get().transactionActive) return;
+      await driverReady;
+      try {
+        await get().driver.rollbackTransaction();
+        set({ transactionActive: false, toast: "Transaction rolled back" });
+        globalThis.setTimeout(() => set({ toast: null }), 2200);
+      } catch (error) {
+        set({ transactionActive: false });
+        throw error;
       }
     },
     notify: (toast) => {

@@ -7,6 +7,7 @@ use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
+    pool::PoolConnection,
     postgres::{PgConnectOptions, PgPoolOptions, PgRow, PgSslMode},
     Column, Connection, PgConnection, PgPool, Postgres, Row, TypeInfo, ValueRef,
 };
@@ -31,6 +32,7 @@ pub struct PostgresDriver {
     database: String,
     pool: PgPool,
     cancellation_pool: PgPool,
+    explicit_transaction: Mutex<Option<PoolConnection<Postgres>>>,
     active_queries: RwLock<HashMap<Uuid, Arc<ActiveQuery>>>,
     read_only: bool,
 }
@@ -169,6 +171,7 @@ impl PostgresDriver {
             database: database.to_string(),
             pool,
             cancellation_pool,
+            explicit_transaction: Mutex::new(None),
             active_queries: RwLock::new(HashMap::new()),
             read_only: config.read_only,
         })
@@ -180,6 +183,24 @@ impl PostgresDriver {
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            let process_id = sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+                .fetch_one(&mut **connection)
+                .await?;
+            if !active.activate(process_id).await {
+                active.finish_execution().await;
+                return Err(AppError::QueryCancelled);
+            }
+            let result = execute_on_connection(connection, sql, false).await;
+            let was_cancelled = active.finish_execution().await;
+            return if was_cancelled {
+                Err(AppError::QueryCancelled)
+            } else {
+                result
+            };
+        }
+        drop(explicit_transaction);
         let mut connection = match self.pool.acquire().await {
             Ok(connection) => connection,
             Err(error) => {
@@ -222,6 +243,25 @@ impl PostgresDriver {
         mode: ExecutionMode,
         on_chunk: QueryChunkHandler,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            let process_id = sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+                .fetch_one(&mut **connection)
+                .await?;
+            if !active.activate(process_id).await {
+                active.finish_execution().await;
+                return Err(AppError::QueryCancelled);
+            }
+            let result =
+                execute_stream_on_connection(connection, query_id, sql, false, on_chunk).await;
+            let was_cancelled = active.finish_execution().await;
+            return if was_cancelled {
+                Err(AppError::QueryCancelled)
+            } else {
+                result
+            };
+        }
+        drop(explicit_transaction);
         let mut connection = match self.pool.acquire().await {
             Ok(connection) => connection,
             Err(error) => {
@@ -344,8 +384,45 @@ impl DatabaseDriver for PostgresDriver {
         statements: &[String],
         expected_rows: u64,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            return execute_edit_batch_on_connection(connection, statements, expected_rows).await;
+        }
+        drop(explicit_transaction);
         let mut connection = self.pool.acquire().await?;
         execute_edit_batch_on_connection(&mut connection, statements, expected_rows).await
+    }
+
+    async fn begin_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if explicit_transaction.is_some() {
+            return Err(AppError::TransactionAlreadyActive);
+        }
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("BEGIN").execute(&mut *connection).await?;
+        *explicit_transaction = Some(connection);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        let result = sqlx::query("COMMIT").execute(&mut *connection).await;
+        if result.is_err() {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+        }
+        result.map(|_| ()).map_err(AppError::from)
+    }
+
+    async fn rollback_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        sqlx::query("ROLLBACK").execute(&mut *connection).await?;
+        Ok(())
     }
 
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError> {
@@ -383,6 +460,7 @@ impl DatabaseDriver for PostgresDriver {
     }
 
     async fn disconnect(&self) -> Result<(), AppError> {
+        let _ = self.rollback_transaction().await;
         self.pool.close().await;
         self.cancellation_pool.close().await;
         Ok(())

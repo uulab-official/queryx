@@ -8,6 +8,9 @@ interface DatabaseDriver {
   connect(config: DriverConfig): Promise<void>;
   execute(sql: string, signal?: AbortSignal): Promise<QueryResult>;
   executeStream(sql: string, onChunk: (chunk: QueryChunk) => void, signal?: AbortSignal): Promise<QueryResult>;
+  beginTransaction(): Promise<void>;
+  commitTransaction(): Promise<void>;
+  rollbackTransaction(): Promise<void>;
   metadata(): Promise<DatabaseMetadata>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
@@ -23,6 +26,8 @@ interface DatabaseDriver {
 - Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
 - `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, indexes, foreign keys, routines, relation triggers, event triggers, and direct dependencies.
 - `transaction()` must not silently commit a failed workflow.
+- `beginTransaction()` must reserve a connection for the session; subsequent `execute()`, `executeStream()`, and `executeBatch()` calls use that same connection until commit or rollback.
+- `commitTransaction()` and `rollbackTransaction()` must reject when no session is active. Disconnect must safely roll back an unfinished session.
 - `disconnect()` releases the connection and any driver-owned resources.
 - `capabilities()` describes optional behavior instead of making the UI infer support from vendor names.
 - Drivers advertising `explain` must accept a vendor-compatible non-executing `EXPLAIN` statement through `execute()`. The UI never generates `EXPLAIN ANALYZE` in the baseline plan action.
@@ -64,6 +69,9 @@ pub trait DatabaseDriver: Send + Sync {
     async fn prepare(&self, query_id: Uuid) -> Result<(), AppError>;
     async fn execute(&self, query_id: Uuid, sql: &str, mode: ExecutionMode) -> Result<QueryResult, AppError>;
     async fn execute_stream(&self, query_id: Uuid, sql: &str, mode: ExecutionMode, on_chunk: QueryChunkHandler) -> Result<QueryResult, AppError>;
+    async fn begin_transaction(&self) -> Result<(), AppError>;
+    async fn commit_transaction(&self) -> Result<(), AppError>;
+    async fn rollback_transaction(&self) -> Result<(), AppError>;
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
@@ -81,13 +89,16 @@ Generic Tauri commands:
 - `execute_query`
 - `execute_query_transaction`
 - `execute_query_stream`
+- `begin_transaction`
+- `commit_transaction`
+- `rollback_transaction`
 - `cancel_query`
 - `database_metadata`
 - `disconnect_database`
 
 Every native driver must pass the registry contract suite before it can be exposed in the UI.
 
-DDL Inspector actions are intentionally layered on this contract: copying is renderer-local, **Edit in SQL** creates a normal query document, and **Run in Transaction** calls `execute_query_transaction`. No object-specific mutation command exists yet. The transaction path must roll back on execution failure and return an actionable error while preserving the edited SQL in the tab.
+DDL Inspector actions are intentionally layered on this contract: copying is renderer-local, **Edit in SQL** creates a normal query document, and **Run in Transaction** calls `execute_query_transaction`. No object-specific mutation command exists yet. The one-shot transaction path rolls back on execution failure; the explicit session path reserves one native connection until **Commit** or **Rollback** and also covers streamed queries and edit batches.
 
 Cancellation is capability-driven. PostgreSQL and MySQL/MariaDB report `cancel` and `streaming`; SQLite reports `streaming` but intentionally returns `CancellationUnsupported` and does not expose the Cancel control. All native drivers stream chunks in bounded 256-row batches. Repeated cancellation while a cancellable query is active is idempotent, while cancellation after completion returns `false`.
 

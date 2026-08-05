@@ -88,10 +88,10 @@ Release gates:
 
 Goal: support production-oriented work without turning mistakes into incidents.
 
-- [ ] Explicit auto-commit state and begin/commit/rollback controls
+- [x] Explicit auto-commit state and native begin/commit/rollback controls across SQLite, PostgreSQL, and MySQL/MariaDB; the held connection is reused by queries and edit batches
 - [x] Keyed table-browser data editing with staged cell updates, default-aware row insertion, selected-row deletion, original-value predicates, affected-row conflict detection, atomic native batch rollback, explicit preview/apply, and refresh; stronger arbitrary-query table identity/validation remains planned
 - [ ] Parser-backed destructive-statement analysis and database-backed affected-row estimates
-- [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state remains separate work
+- [x] Read-only connection enforcement in both UI and Rust execution layer; explicit transaction state is visible in the status bar and command palette
 - [x] Table data editor with filters, ordering, pagination, keyed cell updates, default-aware row insertion, guarded selected-row deletion, and optimistic conflict detection; arbitrary-query table identity remains planned
 - [x] Table creation, add-column, type/nullability/non-PK-drop, ordered UNIQUE/non-unique index-create, regular index-drop, named foreign-key add/drop, and view create/alter/drop forms with validation, SQL preview, explicit transaction apply, driver-aware manual review, dependency warnings, and metadata refresh; rename/index-alter/CHECK/unique constraint forms remain planned
 - [x] Schema compare applied-migration confirmation and native durable migration history on top of the metadata dependency graph, privilege preflight, and forward/rollback preview; object-specific DDL forms remain planned

@@ -200,6 +200,24 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     return result;
   }
 
+  async beginTransaction(): Promise<void> {
+    await invoke("begin_transaction", {
+      connectionId: this.requireConnection(),
+    });
+  }
+
+  async commitTransaction(): Promise<void> {
+    await invoke("commit_transaction", {
+      connectionId: this.requireConnection(),
+    });
+  }
+
+  async rollbackTransaction(): Promise<void> {
+    await invoke("rollback_transaction", {
+      connectionId: this.requireConnection(),
+    });
+  }
+
   async metadata(): Promise<DatabaseMetadata> {
     return invoke<DatabaseMetadata>("database_metadata", {
       connectionId: this.requireConnection(),

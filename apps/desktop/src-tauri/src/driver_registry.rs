@@ -89,6 +89,27 @@ impl DriverRegistry {
             .await
     }
 
+    pub async fn begin_transaction(&self, connection_id: &str) -> Result<(), AppError> {
+        self.connection(connection_id)
+            .await?
+            .begin_transaction()
+            .await
+    }
+
+    pub async fn commit_transaction(&self, connection_id: &str) -> Result<(), AppError> {
+        self.connection(connection_id)
+            .await?
+            .commit_transaction()
+            .await
+    }
+
+    pub async fn rollback_transaction(&self, connection_id: &str) -> Result<(), AppError> {
+        self.connection(connection_id)
+            .await?
+            .rollback_transaction()
+            .await
+    }
+
     pub async fn prepare(&self, connection_id: &str, query_id: &str) -> Result<(), AppError> {
         let query_id = parse_query_id(query_id)?;
         self.connection(connection_id)

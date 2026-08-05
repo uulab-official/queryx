@@ -49,6 +49,8 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added keyed result-cell editing for SQLite/PostgreSQL with staged local diffs, generated UPDATE preview, explicit transaction apply, and post-write refresh.
 - Added incremental 100-row table browsing with deterministic primary-key ordering and local result-page append.
 - Added optimistic edit conflict detection using original-value predicates, per-row affected-row verification, and atomic native batch rollback before refreshing results.
+- Added explicit native transaction sessions across SQLite, PostgreSQL, and MySQL/MariaDB with held-connection reuse for queries, streams, and edit batches, plus Begin/Commit/Rollback controls and visible auto-commit state.
+- Added bounded 256-row result streaming for SQLite alongside the existing PostgreSQL/MySQL/MariaDB streaming contract; SQLite correctly remains non-cancellable.
 - Added a connection-manager vertical slice with secret-free native app-local profiles, browser fallback persistence, duplicate/delete actions, isolated connection tests, and session-only passwords.
 - Added versioned native workspace snapshots for tabs, active documents, query history, and favorites, with browser-preview migration and no-query-execution recovery.
 - Added read-only connection sessions with secret-free profile persistence, database/runtime enforcement for SQLite and PostgreSQL, and disabled result editing as a secondary UI guard.

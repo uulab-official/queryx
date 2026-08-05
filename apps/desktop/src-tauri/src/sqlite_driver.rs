@@ -5,9 +5,11 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
+    pool::PoolConnection,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions, SqliteRow},
     Column, Row, Sqlite, SqlitePool, TypeInfo, ValueRef,
 };
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::{
@@ -26,6 +28,7 @@ pub struct SqliteDriver {
     path: String,
     pool: SqlitePool,
     read_only: bool,
+    explicit_transaction: Mutex<Option<PoolConnection<Sqlite>>>,
 }
 
 impl SqliteDriver {
@@ -57,6 +60,7 @@ impl SqliteDriver {
             path: path.to_string(),
             pool,
             read_only,
+            explicit_transaction: Mutex::new(None),
         })
     }
 }
@@ -93,6 +97,17 @@ impl DatabaseDriver for SqliteDriver {
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            return execute_with_executor(
+                &mut **connection,
+                sql,
+                is_row_returning_query(sql),
+                Instant::now(),
+            )
+            .await;
+        }
+        drop(explicit_transaction);
         execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
     }
 
@@ -103,6 +118,30 @@ impl DatabaseDriver for SqliteDriver {
         mode: ExecutionMode,
         on_chunk: QueryChunkHandler,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            if !is_row_returning_query(sql) {
+                let result =
+                    execute_with_executor(&mut **connection, sql, false, Instant::now()).await?;
+                on_chunk(QueryChunk {
+                    query_id: query_id.to_string(),
+                    row_offset: 0,
+                    columns: result.columns.clone(),
+                    rows: Vec::new(),
+                    warnings: result.warnings.clone(),
+                });
+                return Ok(result);
+            }
+            return execute_stream_with_executor(
+                &mut **connection,
+                query_id,
+                sql,
+                Instant::now(),
+                on_chunk,
+            )
+            .await;
+        }
+        drop(explicit_transaction);
         execute_stream_on_pool(
             &self.pool,
             query_id,
@@ -119,7 +158,44 @@ impl DatabaseDriver for SqliteDriver {
         statements: &[String],
         expected_rows: u64,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            return execute_edit_batch_on_connection(connection, statements, expected_rows).await;
+        }
+        drop(explicit_transaction);
         execute_edit_batch_on_pool(&self.pool, statements, expected_rows).await
+    }
+
+    async fn begin_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if explicit_transaction.is_some() {
+            return Err(AppError::TransactionAlreadyActive);
+        }
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("BEGIN").execute(&mut *connection).await?;
+        *explicit_transaction = Some(connection);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        let result = sqlx::query("COMMIT").execute(&mut *connection).await;
+        if result.is_err() {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+        }
+        result.map(|_| ()).map_err(AppError::from)
+    }
+
+    async fn rollback_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        sqlx::query("ROLLBACK").execute(&mut *connection).await?;
+        Ok(())
     }
 
     async fn cancel(&self, _query_id: Uuid) -> Result<bool, AppError> {
@@ -356,6 +432,7 @@ impl DatabaseDriver for SqliteDriver {
     }
 
     async fn disconnect(&self) -> Result<(), AppError> {
+        let _ = self.rollback_transaction().await;
         self.pool.close().await;
         Ok(())
     }
@@ -546,6 +623,35 @@ async fn execute_edit_batch_on_pool(
     })
 }
 
+async fn execute_edit_batch_on_connection(
+    connection: &mut PoolConnection<Sqlite>,
+    statements: &[String],
+    expected_rows: u64,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    let mut affected_rows = 0;
+    for statement in statements {
+        affected_rows += sqlx::query(statement)
+            .execute(&mut **connection)
+            .await?
+            .rows_affected();
+    }
+    if affected_rows != expected_rows {
+        return Err(AppError::EditConflict {
+            expected: expected_rows,
+            actual: affected_rows,
+        });
+    }
+    Ok(QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows,
+        warnings: Vec::new(),
+        error: None,
+    })
+}
+
 async fn execute_with_executor<'e, E>(
     executor: E,
     sql: &str,
@@ -719,6 +825,112 @@ mod tests {
         assert_eq!(total_rows, 300);
         assert_eq!(first_offset, Some(0));
         assert_eq!(second_offset, Some(256));
+    }
+
+    #[tokio::test]
+    async fn rolls_back_changes_in_an_explicit_transaction_session() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        driver
+            .begin_transaction()
+            .await
+            .expect("begin explicit transaction");
+        driver
+            .execute(
+                Uuid::new_v4(),
+                "UPDATE orders SET status = 'review' WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("execute inside explicit transaction");
+        let inside = driver
+            .execute(
+                Uuid::new_v4(),
+                "SELECT status FROM orders WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("read inside explicit transaction");
+        assert_eq!(inside.rows[0]["status"], serde_json::Value::from("review"));
+
+        driver
+            .rollback_transaction()
+            .await
+            .expect("rollback explicit transaction");
+        let after = driver
+            .execute(
+                Uuid::new_v4(),
+                "SELECT status FROM orders WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("read after rollback");
+        assert_eq!(after.rows[0]["status"], serde_json::Value::from("paid"));
+    }
+
+    #[tokio::test]
+    async fn commits_changes_in_an_explicit_transaction_session() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        driver
+            .begin_transaction()
+            .await
+            .expect("begin explicit transaction");
+        driver
+            .execute(
+                Uuid::new_v4(),
+                "UPDATE orders SET status = 'review' WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("execute inside explicit transaction");
+        driver
+            .commit_transaction()
+            .await
+            .expect("commit explicit transaction");
+        let after = driver
+            .execute(
+                Uuid::new_v4(),
+                "SELECT status FROM orders WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("read after commit");
+        assert_eq!(after.rows[0]["status"], serde_json::Value::from("review"));
+    }
+
+    #[tokio::test]
+    async fn runs_edit_batches_on_the_explicit_transaction_connection() {
+        let driver = SqliteDriver::connect(":memory:", false)
+            .await
+            .expect("connect sqlite memory database");
+        driver
+            .begin_transaction()
+            .await
+            .expect("begin explicit transaction");
+        driver
+            .execute_batch(
+                Uuid::new_v4(),
+                &["UPDATE orders SET status = 'review' WHERE id = 1".into()],
+                1,
+            )
+            .await
+            .expect("execute edit batch inside explicit transaction");
+        driver
+            .rollback_transaction()
+            .await
+            .expect("rollback explicit transaction");
+        let after = driver
+            .execute(
+                Uuid::new_v4(),
+                "SELECT status FROM orders WHERE id = 1",
+                ExecutionMode::Direct,
+            )
+            .await
+            .expect("read after rollback");
+        assert_eq!(after.rows[0]["status"], serde_json::Value::from("paid"));
     }
 
     #[tokio::test]

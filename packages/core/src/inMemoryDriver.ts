@@ -411,6 +411,12 @@ export class InMemoryDriver implements DatabaseDriver {
     return metadata;
   }
 
+  async beginTransaction(): Promise<void> {}
+
+  async commitTransaction(): Promise<void> {}
+
+  async rollbackTransaction(): Promise<void> {}
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
     return work();
   }

@@ -12,6 +12,7 @@ use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
     mysql::{MySqlConnectOptions, MySqlConnection, MySqlPoolOptions, MySqlRow, MySqlSslMode},
+    pool::PoolConnection,
     Column, Connection, MySql, MySqlPool, Row, TypeInfo, ValueRef,
 };
 use tokio::sync::{Mutex, Notify, RwLock};
@@ -35,6 +36,7 @@ pub struct MysqlDriver {
     database: String,
     pool: MySqlPool,
     cancellation_pool: MySqlPool,
+    explicit_transaction: Mutex<Option<PoolConnection<MySql>>>,
     active_queries: RwLock<HashMap<Uuid, Arc<ActiveQuery>>>,
     read_only: bool,
 }
@@ -177,6 +179,7 @@ impl MysqlDriver {
             database: database.to_string(),
             pool,
             cancellation_pool,
+            explicit_transaction: Mutex::new(None),
             active_queries: RwLock::new(HashMap::new()),
             read_only,
         })
@@ -188,6 +191,24 @@ impl MysqlDriver {
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            let connection_id = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+                .fetch_one(&mut **connection)
+                .await?;
+            if !active.activate(connection_id).await {
+                active.finish_execution().await;
+                return Err(AppError::QueryCancelled);
+            }
+            let result = execute_on_connection(connection, sql, false).await;
+            let was_cancelled = active.finish_execution().await;
+            return if was_cancelled {
+                Err(AppError::QueryCancelled)
+            } else {
+                result
+            };
+        }
+        drop(explicit_transaction);
         let mut connection = match self.pool.acquire().await {
             Ok(connection) => connection,
             Err(error) => {
@@ -230,6 +251,25 @@ impl MysqlDriver {
         mode: ExecutionMode,
         on_chunk: QueryChunkHandler,
     ) -> Result<QueryResult, AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            let connection_id = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+                .fetch_one(&mut **connection)
+                .await?;
+            if !active.activate(connection_id).await {
+                active.finish_execution().await;
+                return Err(AppError::QueryCancelled);
+            }
+            let result =
+                execute_stream_on_connection(connection, query_id, sql, false, on_chunk).await;
+            let was_cancelled = active.finish_execution().await;
+            return if was_cancelled {
+                Err(AppError::QueryCancelled)
+            } else {
+                result
+            };
+        }
+        drop(explicit_transaction);
         let mut connection = match self.pool.acquire().await {
             Ok(connection) => connection,
             Err(error) => {
@@ -361,7 +401,46 @@ impl DatabaseDriver for MysqlDriver {
         if self.read_only {
             return Err(AppError::ReadOnlyViolation);
         }
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if let Some(connection) = explicit_transaction.as_mut() {
+            return execute_edit_batch_on_connection(connection, statements, expected_rows).await;
+        }
+        drop(explicit_transaction);
         execute_edit_batch_on_pool(&self.pool, statements, expected_rows).await
+    }
+
+    async fn begin_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        if explicit_transaction.is_some() {
+            return Err(AppError::TransactionAlreadyActive);
+        }
+        let mut connection = self.pool.acquire().await?;
+        sqlx::query("START TRANSACTION")
+            .execute(&mut *connection)
+            .await?;
+        *explicit_transaction = Some(connection);
+        Ok(())
+    }
+
+    async fn commit_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        let result = sqlx::query("COMMIT").execute(&mut *connection).await;
+        if result.is_err() {
+            let _ = sqlx::query("ROLLBACK").execute(&mut *connection).await;
+        }
+        result.map(|_| ()).map_err(AppError::from)
+    }
+
+    async fn rollback_transaction(&self) -> Result<(), AppError> {
+        let mut explicit_transaction = self.explicit_transaction.lock().await;
+        let Some(mut connection) = explicit_transaction.take() else {
+            return Err(AppError::TransactionNotActive);
+        };
+        sqlx::query("ROLLBACK").execute(&mut *connection).await?;
+        Ok(())
     }
 
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError> {
@@ -675,6 +754,7 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     async fn disconnect(&self) -> Result<(), AppError> {
+        let _ = self.rollback_transaction().await;
         self.pool.close().await;
         self.cancellation_pool.close().await;
         Ok(())
@@ -822,6 +902,35 @@ async fn execute_edit_batch_on_pool(
         });
     }
     transaction.commit().await?;
+    Ok(QueryResult {
+        columns: Vec::new(),
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows,
+        warnings: Vec::new(),
+        error: None,
+    })
+}
+
+async fn execute_edit_batch_on_connection(
+    connection: &mut MySqlConnection,
+    statements: &[String],
+    expected_rows: u64,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    let mut affected_rows = 0;
+    for statement in statements {
+        affected_rows += sqlx::query(statement)
+            .execute(&mut *connection)
+            .await?
+            .rows_affected();
+    }
+    if affected_rows != expected_rows {
+        return Err(AppError::EditConflict {
+            expected: expected_rows,
+            actual: affected_rows,
+        });
+    }
     Ok(QueryResult {
         columns: Vec::new(),
         rows: Vec::new(),
@@ -985,6 +1094,7 @@ mod tests {
             cancellation_pool: MySqlPoolOptions::new()
                 .connect_lazy("mysql://queryx:queryx@localhost/queryx_test")
                 .expect("valid lazy MySQL cancellation pool"),
+            explicit_transaction: Mutex::new(None),
             active_queries: RwLock::new(HashMap::new()),
             read_only: false,
         };

@@ -24,6 +24,10 @@ pub enum AppError {
     EditConflict { expected: u64, actual: u64 },
     #[error("read-only connection rejects this statement")]
     ReadOnlyViolation,
+    #[error("a transaction is already active")]
+    TransactionAlreadyActive,
+    #[error("no active transaction")]
+    TransactionNotActive,
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

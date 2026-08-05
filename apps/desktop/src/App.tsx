@@ -480,6 +480,7 @@ function App() {
     connectionName,
     connectionStatus,
     connectionError,
+    transactionActive,
     setSql,
     newQuery,
     selectQuery,
@@ -498,6 +499,9 @@ function App() {
     testDatabaseConnection,
     inspectConnectionMetadata,
     connectDatabase,
+    beginTransaction,
+    commitTransaction,
+    rollbackTransaction,
     notify,
     clearHistory,
     addMigrationHistory,
@@ -2307,6 +2311,30 @@ function App() {
       execute: () => handleRun("transaction"),
     },
     {
+      id: "begin-transaction",
+      label: "Begin transaction session",
+      hint: transactionActive ? "already active" : "native session",
+      disabled: isRunning || transactionActive,
+      execute: () =>
+        void beginTransaction().catch((error) => notify(String(error))),
+    },
+    {
+      id: "commit-transaction",
+      label: "Commit transaction",
+      hint: transactionActive ? "persist changes" : "no active session",
+      disabled: isRunning || !transactionActive,
+      execute: () =>
+        void commitTransaction().catch((error) => notify(String(error))),
+    },
+    {
+      id: "rollback-transaction",
+      label: "Rollback transaction",
+      hint: transactionActive ? "discard changes" : "no active session",
+      disabled: isRunning || !transactionActive,
+      execute: () =>
+        void rollbackTransaction().catch((error) => notify(String(error))),
+    },
+    {
       id: "format",
       label: "Format SQL",
       hint: "⌘L",
@@ -3030,6 +3058,45 @@ function App() {
                 >
                   Run in Transaction
                 </button>
+                <button
+                  type="button"
+                  className={`toolbar-button ${transactionActive ? "active" : ""}`}
+                  onClick={() =>
+                    void beginTransaction().catch((error) =>
+                      notify(String(error)),
+                    )
+                  }
+                  disabled={isRunning || transactionActive}
+                  title="Keep subsequent queries on one native database transaction session"
+                >
+                  Begin
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button"
+                  onClick={() =>
+                    void commitTransaction().catch((error) =>
+                      notify(String(error)),
+                    )
+                  }
+                  disabled={isRunning || !transactionActive}
+                  title="Commit the active native transaction session"
+                >
+                  Commit
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button"
+                  onClick={() =>
+                    void rollbackTransaction().catch((error) =>
+                      notify(String(error)),
+                    )
+                  }
+                  disabled={isRunning || !transactionActive}
+                  title="Roll back the active native transaction session"
+                >
+                  Rollback
+                </button>
               </div>
               <div className="toolbar-right">
                 <button
@@ -3631,6 +3698,15 @@ function App() {
               )}
             </span>
             <span>{driverDisplayName(driverKind)} · Rust native</span>
+            <span
+              className={
+                transactionActive
+                  ? "transaction-status active"
+                  : "transaction-status"
+              }
+            >
+              {transactionActive ? "Transaction active" : "Auto-commit"}
+            </span>
             <span className="footer-spacer" />
             <span>
               Safe mode <i className="toggle" />

@@ -73,6 +73,15 @@ pub trait DatabaseDriver: Send + Sync {
     ) -> Result<QueryResult, AppError> {
         Err(AppError::UnsupportedDriver("edit batches".into()))
     }
+    async fn begin_transaction(&self) -> Result<(), AppError> {
+        Err(AppError::UnsupportedDriver("explicit transactions".into()))
+    }
+    async fn commit_transaction(&self) -> Result<(), AppError> {
+        Err(AppError::UnsupportedDriver("explicit transactions".into()))
+    }
+    async fn rollback_transaction(&self) -> Result<(), AppError> {
+        Err(AppError::UnsupportedDriver("explicit transactions".into()))
+    }
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;

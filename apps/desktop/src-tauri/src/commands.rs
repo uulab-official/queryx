@@ -68,6 +68,30 @@ pub async fn execute_query_stream(
 }
 
 #[tauri::command]
+pub async fn begin_transaction(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+) -> Result<(), AppError> {
+    state.begin_transaction(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn commit_transaction(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+) -> Result<(), AppError> {
+    state.commit_transaction(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn rollback_transaction(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+) -> Result<(), AppError> {
+    state.rollback_transaction(&connection_id).await
+}
+
+#[tauri::command]
 pub async fn execute_edit_batch(
     state: State<'_, DriverRegistry>,
     connection_id: String,

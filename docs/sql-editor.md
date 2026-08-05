@@ -18,6 +18,8 @@ Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common
 
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
+Use **Begin** to switch the connection from **Auto-commit** to an explicit native transaction session. Queries, streamed results, and table-editor batches keep using the same database connection until **Commit** or **Rollback** is chosen. The status bar shows the current state; disconnecting an unfinished session rolls it back. **Run in Transaction** remains the one-shot rollback-on-error workflow for a complete SQL document.
+
 Click the ♡ toolbar button to save the active SQL to local **Favorites**. Press Cmd/Ctrl+P or click the Explorer search icon to open **Quick Open**, which searches favorites and recent queries by label or SQL. Selecting a result only loads it into the active tab; it never executes during recall. Favorites are deduplicated by SQL text and capped at 50 entries; see [Workspaces](workspaces.md) for the persistence boundary.
 
 ## Result grid
@@ -52,6 +54,9 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Ctrl+Space — show metadata completion
 - Escape — cancel an active query when the driver advertises cancellation; close Safe Mode or connection dialogs when one is open
 - Run in Transaction — execute the complete active document in one native transaction
+- Begin — start a reusable native transaction session
+- Commit — commit the active transaction session
+- Rollback — discard the active transaction session
 - Explain — show a non-executing plan for the active document
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available
 

@@ -19,6 +19,7 @@ describe("query tabs", () => {
       isRunning: false,
       executionStatus: "idle",
       toast: null,
+      transactionActive: false,
     });
   });
 
@@ -40,6 +41,25 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().executionStatus).toBe("cancelled");
     expect(useQueryStore.getState().toast).toBe("Query cancelled");
     expect(useQueryStore.getState().history[0]?.status).toBe("cancelled");
+  });
+
+  it("tracks explicit transaction session controls", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "sqlite",
+      name: "test",
+      database: ":memory:",
+    });
+    useQueryStore.setState({ driver });
+
+    await useQueryStore.getState().beginTransaction();
+    expect(useQueryStore.getState().transactionActive).toBe(true);
+    await useQueryStore.getState().commitTransaction();
+    expect(useQueryStore.getState().transactionActive).toBe(false);
+
+    await useQueryStore.getState().beginTransaction();
+    await useQueryStore.getState().rollbackTransaction();
+    expect(useQueryStore.getState().transactionActive).toBe(false);
   });
 
   it("keeps the original SQL in history when execution uses a page wrapper", async () => {
