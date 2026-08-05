@@ -44,6 +44,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - PostgreSQL/MySQL/MariaDB TLS profile configuration with verify-CA/verify-full modes and CA, client certificate, and client key file paths.
 - Native OpenSSH local-forward tunnels with profile persistence, strict host-key checking, non-interactive authentication, keepalive, and connection-lifecycle cleanup.
 - Native PostgreSQL/MySQL/MariaDB session explorer with activity state, wait-event visibility, refresh, and protected query cancellation.
+- Native point-in-time lock graph for PostgreSQL `pg_locks` and MySQL/MariaDB Performance Schema/InnoDB lock waits, with blocker routing and protected query cancellation.
 - Open-source release and OTA operations guide covering updater secrets, key rotation, platform signing boundaries, and rollback.
 - QueryX visual identity refresh with a reusable vector icon system, branded query mark, and regenerated desktop/mobile platform icon assets.
 - Refined the app mark into a quieter neon Q-lens with a single orbit accent for clearer recognition at small sizes.

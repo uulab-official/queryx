@@ -1,4 +1,5 @@
 import type {
+  DatabaseLock,
   DatabaseDriver,
   DatabaseSession,
   DatabaseMetadata,
@@ -420,6 +421,10 @@ export class InMemoryDriver implements DatabaseDriver {
     throw new Error(
       "session inspection is not available in the browser preview",
     );
+  }
+
+  async locks(): Promise<DatabaseLock[]> {
+    return [];
   }
 
   async beginTransaction(): Promise<void> {}

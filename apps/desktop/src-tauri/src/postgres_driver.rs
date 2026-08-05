@@ -18,13 +18,13 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
-        AggregateKind, AggregateMetadata, ColumnMetadata, ConnectionConfig, DatabaseMetadata,
-        DatabaseObjectKind, DatabaseObjectRef, DatabaseSession, DatabaseSessionState,
-        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, EventTriggerEvent,
-        EventTriggerMetadata, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk,
-        QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode,
-        TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind,
-        TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
+        AggregateKind, AggregateMetadata, ColumnMetadata, ConnectionConfig, DatabaseLock,
+        DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DatabaseSession,
+        DatabaseSessionState, DependencyKind, DependencyMetadata, DriverCapability, DriverKind,
+        EventTriggerEvent, EventTriggerMetadata, ForeignKeyColumnPair, ForeignKeyMetadata,
+        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind,
+        RoutineMetadata, SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
+        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -339,6 +339,7 @@ impl DatabaseDriver for PostgresDriver {
             DriverCapability::Cancel,
             DriverCapability::Streaming,
             DriverCapability::Sessions,
+            DriverCapability::Locks,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -479,6 +480,10 @@ impl DatabaseDriver for PostgresDriver {
         load_sessions(&self.pool).await
     }
 
+    async fn locks(&self) -> Result<Vec<DatabaseLock>, AppError> {
+        load_locks(&self.pool).await
+    }
+
     async fn cancel_session(&self, session_id: &str) -> Result<(), AppError> {
         let pid = session_id.parse::<i32>().map_err(|_| {
             AppError::SessionOperation("PostgreSQL session id must be a backend PID".into())
@@ -544,6 +549,98 @@ async fn load_sessions(pool: &PgPool) -> Result<Vec<DatabaseSession>, AppError> 
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()
         .map_err(AppError::from)
+}
+
+async fn load_locks(pool: &PgPool) -> Result<Vec<DatabaseLock>, AppError> {
+    let rows = sqlx::query(
+        r#"
+        SELECT DISTINCT
+            blocked.pid::text AS blocked_session_id,
+            blocking.pid::text AS blocking_session_id,
+            blocked_locks.locktype AS lock_type,
+            CASE
+                WHEN blocked_locks.relation IS NOT NULL THEN blocked_locks.relation::regclass::text
+                WHEN blocked_locks.transactionid IS NOT NULL THEN 'transaction:' || blocked_locks.transactionid::text
+                WHEN blocked_locks.virtualxid IS NOT NULL THEN 'virtualxid:' || blocked_locks.virtualxid
+                ELSE blocked_locks.locktype
+            END AS resource,
+            blocked_locks.mode AS blocked_mode,
+            blocking_locks.mode AS blocking_mode,
+            ROUND(EXTRACT(EPOCH FROM (clock_timestamp() - blocked.query_start)) * 1000)::bigint AS blocked_duration_ms,
+            blocked.query AS blocked_query,
+            blocking.query AS blocking_query,
+            (blocking.pid <> pg_backend_pid()) AS blocking_can_cancel
+        FROM pg_catalog.pg_locks AS blocked_locks
+        JOIN pg_catalog.pg_stat_activity AS blocked
+          ON blocked.pid = blocked_locks.pid
+        JOIN pg_catalog.pg_locks AS blocking_locks
+          ON blocking_locks.locktype = blocked_locks.locktype
+         AND blocking_locks.database IS NOT DISTINCT FROM blocked_locks.database
+         AND blocking_locks.relation IS NOT DISTINCT FROM blocked_locks.relation
+         AND blocking_locks.page IS NOT DISTINCT FROM blocked_locks.page
+         AND blocking_locks.tuple IS NOT DISTINCT FROM blocked_locks.tuple
+         AND blocking_locks.virtualxid IS NOT DISTINCT FROM blocked_locks.virtualxid
+         AND blocking_locks.transactionid IS NOT DISTINCT FROM blocked_locks.transactionid
+         AND blocking_locks.classid IS NOT DISTINCT FROM blocked_locks.classid
+         AND blocking_locks.objid IS NOT DISTINCT FROM blocked_locks.objid
+         AND blocking_locks.objsubid IS NOT DISTINCT FROM blocked_locks.objsubid
+         AND blocking_locks.granted
+        JOIN pg_catalog.pg_stat_activity AS blocking
+          ON blocking.pid = blocking_locks.pid
+        WHERE NOT blocked_locks.granted
+          AND blocked.pid <> blocking.pid
+        ORDER BY blocked_duration_ms DESC NULLS LAST, blocked.pid, blocking.pid
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let blocked_session_id: String = row.try_get("blocked_session_id")?;
+            let blocking_session_id: String = row.try_get("blocking_session_id")?;
+            let lock_type: String = row.try_get("lock_type")?;
+            let resource: String = row.try_get("resource")?;
+            let blocked_mode: Option<String> = row.try_get("blocked_mode")?;
+            let blocking_mode: Option<String> = row.try_get("blocking_mode")?;
+            Ok(DatabaseLock {
+                id: lock_identity(
+                    &blocked_session_id,
+                    &blocking_session_id,
+                    &lock_type,
+                    &resource,
+                    blocked_mode.as_deref(),
+                    blocking_mode.as_deref(),
+                ),
+                blocked_session_id,
+                blocking_session_id,
+                resource,
+                lock_type,
+                blocked_mode,
+                blocking_mode,
+                blocked_duration_ms: row.try_get("blocked_duration_ms")?,
+                blocked_query: row.try_get("blocked_query")?,
+                blocking_query: row.try_get("blocking_query")?,
+                blocking_can_cancel: row.try_get("blocking_can_cancel")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()
+        .map_err(AppError::from)
+}
+
+fn lock_identity(
+    blocked_session_id: &str,
+    blocking_session_id: &str,
+    lock_type: &str,
+    resource: &str,
+    blocked_mode: Option<&str>,
+    blocking_mode: Option<&str>,
+) -> String {
+    format!(
+        "{blocked_session_id}:{blocking_session_id}:{lock_type}:{resource}:{}:{}",
+        blocked_mode.unwrap_or_default(),
+        blocking_mode.unwrap_or_default()
+    )
 }
 
 fn combine_wait_event(kind: Option<&str>, name: Option<&str>) -> Option<String> {
@@ -1443,6 +1540,21 @@ mod tests {
         assert_eq!(
             map_postgres_session_state(Some("unknown"), None),
             DatabaseSessionState::Unknown
+        );
+    }
+
+    #[test]
+    fn creates_stable_lock_identity_from_the_blocking_pair() {
+        assert_eq!(
+            lock_identity(
+                "1201",
+                "1198",
+                "relation",
+                "public.orders",
+                Some("AccessShareLock"),
+                Some("RowExclusiveLock"),
+            ),
+            "1201:1198:relation:public.orders:AccessShareLock:RowExclusiveLock"
         );
     }
 

@@ -166,6 +166,13 @@ impl DriverRegistry {
             .await
     }
 
+    pub async fn locks(
+        &self,
+        connection_id: &str,
+    ) -> Result<Vec<crate::models::DatabaseLock>, AppError> {
+        self.connection(connection_id).await?.locks().await
+    }
+
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), AppError> {
         let id = parse_connection_id(connection_id)?;
         let driver = self

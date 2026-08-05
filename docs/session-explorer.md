@@ -1,6 +1,6 @@
 # Session Explorer
 
-The native desktop app includes a session explorer for PostgreSQL and MySQL/MariaDB. Open it from the top-bar activity control or the command palette after connecting to a native network database.
+The native desktop app includes a session explorer and point-in-time lock graph for PostgreSQL and MySQL/MariaDB. Open either panel from the top-bar operations controls or the command palette after connecting to a native network database.
 
 ## What it shows
 
@@ -26,6 +26,16 @@ QueryX does not terminate the database connection from this panel. The current Q
 
 Refreshing the list is explicit, so the panel does not poll continuously or create hidden workload. Query text and session metadata stay inside the local native process and connected database boundary.
 
+## Lock graph
+
+The lock graph shows visible blocked → blocking relationships at refresh time:
+
+- PostgreSQL reads `pg_locks` joined with `pg_stat_activity` and preserves the lock type, resource, requested/held modes, query text, and blocked-query age.
+- MySQL 8 reads `performance_schema.data_lock_waits` and `data_locks`; MariaDB and older compatible installations fall back to `information_schema.innodb_lock_waits`, `innodb_locks`, and `innodb_trx` when those views are available.
+- The **Cancel blocker** action routes through the same query-cancellation contract as the session explorer. It never uses `pg_terminate_backend`, `KILL CONNECTION`, or an equivalent connection-kill operation.
+
+Database privileges and server configuration control which lock rows and query text are visible. If neither the Performance Schema nor InnoDB lock views are available, the driver reports the server error rather than presenting an invented empty graph.
+
 ## Limitations
 
-The current slice does not yet draw a blocker/blocked lock graph, retain session history, show server wait statistics, or provide configurable long-query alerts. Those are separate operational IDE roadmap items. SQLite and browser preview intentionally do not claim session inspection.
+The current slice does not retain session history, show server wait statistics, or provide configurable long-query alerts. SQLite and browser preview intentionally do not claim session or lock inspection.

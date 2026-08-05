@@ -22,12 +22,12 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DatabaseSession,
-        DatabaseSessionState, DependencyKind, DependencyMetadata, DriverCapability, DriverKind,
-        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk, QueryColumn,
-        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
-        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
-        TriggerStatus, TriggerTiming, ViewMetadata,
+        ColumnMetadata, DatabaseLock, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
+        DatabaseSession, DatabaseSessionState, DependencyKind, DependencyMetadata,
+        DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata,
+        QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode,
+        TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind,
+        TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -348,6 +348,7 @@ impl DatabaseDriver for MysqlDriver {
             DriverCapability::Cancel,
             DriverCapability::Streaming,
             DriverCapability::Sessions,
+            DriverCapability::Locks,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -774,6 +775,10 @@ impl DatabaseDriver for MysqlDriver {
         load_sessions(&self.pool).await
     }
 
+    async fn locks(&self) -> Result<Vec<DatabaseLock>, AppError> {
+        load_locks(&self.pool).await
+    }
+
     async fn cancel_session(&self, session_id: &str) -> Result<(), AppError> {
         let connection_id = session_id.parse::<u64>().map_err(|_| {
             AppError::SessionOperation("MySQL session id must be a numeric connection id".into())
@@ -839,6 +844,189 @@ fn map_mysql_session_state(command: &str, state: Option<&str>) -> DatabaseSessio
         "sleep" => DatabaseSessionState::Idle,
         _ => DatabaseSessionState::Unknown,
     }
+}
+
+async fn load_locks(pool: &MySqlPool) -> Result<Vec<DatabaseLock>, AppError> {
+    match load_performance_schema_locks(pool).await {
+        Ok(locks) => Ok(locks),
+        Err(primary_error) => load_innodb_locks(pool)
+            .await
+            .map_err(|_| AppError::from(primary_error)),
+    }
+}
+
+async fn load_performance_schema_locks(pool: &MySqlPool) -> Result<Vec<DatabaseLock>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            blocked_thread.PROCESSLIST_ID AS blocked_session_id,
+            blocking_thread.PROCESSLIST_ID AS blocking_session_id,
+            blocked_lock.OBJECT_SCHEMA AS object_schema,
+            blocked_lock.OBJECT_NAME AS object_name,
+            blocked_lock.INDEX_NAME AS index_name,
+            blocked_lock.LOCK_TYPE AS lock_type,
+            blocked_lock.LOCK_MODE AS blocked_mode,
+            blocking_lock.LOCK_MODE AS blocking_mode,
+            blocked_process.TIME AS blocked_duration_seconds,
+            blocked_process.INFO AS blocked_query,
+            blocking_process.INFO AS blocking_query,
+            (blocking_thread.PROCESSLIST_ID <> CONNECTION_ID()) AS blocking_can_cancel
+        FROM performance_schema.data_lock_waits AS waits
+        JOIN performance_schema.data_locks AS blocked_lock
+          ON blocked_lock.ENGINE_LOCK_ID = waits.REQUESTING_ENGINE_LOCK_ID
+        JOIN performance_schema.data_locks AS blocking_lock
+          ON blocking_lock.ENGINE_LOCK_ID = waits.BLOCKING_ENGINE_LOCK_ID
+        JOIN performance_schema.threads AS blocked_thread
+          ON blocked_thread.THREAD_ID = waits.REQUESTING_THREAD_ID
+        JOIN performance_schema.threads AS blocking_thread
+          ON blocking_thread.THREAD_ID = waits.BLOCKING_THREAD_ID
+        LEFT JOIN information_schema.PROCESSLIST AS blocked_process
+          ON blocked_process.ID = blocked_thread.PROCESSLIST_ID
+        LEFT JOIN information_schema.PROCESSLIST AS blocking_process
+          ON blocking_process.ID = blocking_thread.PROCESSLIST_ID
+        WHERE blocked_thread.PROCESSLIST_ID IS NOT NULL
+          AND blocking_thread.PROCESSLIST_ID IS NOT NULL
+        ORDER BY blocked_process.TIME DESC, blocked_session_id, blocking_session_id
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let blocked_session_id: u64 = row.try_get("blocked_session_id")?;
+            let blocking_session_id: u64 = row.try_get("blocking_session_id")?;
+            let object_schema: Option<String> = row.try_get("object_schema")?;
+            let object_name: Option<String> = row.try_get("object_name")?;
+            let index_name: Option<String> = row.try_get("index_name")?;
+            let lock_type: String = row.try_get("lock_type")?;
+            let blocked_mode: Option<String> = row.try_get("blocked_mode")?;
+            let blocking_mode: Option<String> = row.try_get("blocking_mode")?;
+            Ok(DatabaseLock {
+                id: mysql_lock_identity(
+                    blocked_session_id,
+                    blocking_session_id,
+                    &lock_type,
+                    &format_mysql_lock_resource(
+                        object_schema.as_deref(),
+                        object_name.as_deref(),
+                        index_name.as_deref(),
+                    ),
+                    blocked_mode.as_deref(),
+                    blocking_mode.as_deref(),
+                ),
+                blocked_session_id: blocked_session_id.to_string(),
+                blocking_session_id: blocking_session_id.to_string(),
+                resource: format_mysql_lock_resource(
+                    object_schema.as_deref(),
+                    object_name.as_deref(),
+                    index_name.as_deref(),
+                ),
+                lock_type,
+                blocked_mode,
+                blocking_mode,
+                blocked_duration_ms: row
+                    .try_get::<Option<i64>, _>("blocked_duration_seconds")?
+                    .map(|seconds| seconds.max(0) * 1000),
+                blocked_query: row.try_get("blocked_query")?,
+                blocking_query: row.try_get("blocking_query")?,
+                blocking_can_cancel: row.try_get("blocking_can_cancel")?,
+            })
+        })
+        .collect()
+}
+
+async fn load_innodb_locks(pool: &MySqlPool) -> Result<Vec<DatabaseLock>, sqlx::Error> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            waiting_trx.trx_mysql_thread_id AS blocked_session_id,
+            blocking_trx.trx_mysql_thread_id AS blocking_session_id,
+            waiting_lock.lock_table AS resource,
+            waiting_lock.lock_type AS lock_type,
+            waiting_lock.lock_mode AS blocked_mode,
+            blocking_lock.lock_mode AS blocking_mode,
+            TIMESTAMPDIFF(MICROSECOND, waiting_trx.trx_wait_started, NOW()) DIV 1000 AS blocked_duration_ms,
+            waiting_trx.trx_query AS blocked_query,
+            blocking_trx.trx_query AS blocking_query,
+            (blocking_trx.trx_mysql_thread_id <> CONNECTION_ID()) AS blocking_can_cancel
+        FROM information_schema.innodb_lock_waits AS waits
+        JOIN information_schema.innodb_locks AS waiting_lock
+          ON waiting_lock.lock_id = waits.requested_lock_id
+        JOIN information_schema.innodb_locks AS blocking_lock
+          ON blocking_lock.lock_id = waits.blocking_lock_id
+        JOIN information_schema.innodb_trx AS waiting_trx
+          ON waiting_trx.trx_id = waits.requesting_trx_id
+        JOIN information_schema.innodb_trx AS blocking_trx
+          ON blocking_trx.trx_id = waits.blocking_trx_id
+        ORDER BY blocked_duration_ms DESC, blocked_session_id, blocking_session_id
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    rows.into_iter()
+        .map(|row| {
+            let blocked_session_id: u64 = row.try_get("blocked_session_id")?;
+            let blocking_session_id: u64 = row.try_get("blocking_session_id")?;
+            let resource: String = row.try_get("resource")?;
+            let lock_type: String = row.try_get("lock_type")?;
+            let blocked_mode: Option<String> = row.try_get("blocked_mode")?;
+            let blocking_mode: Option<String> = row.try_get("blocking_mode")?;
+            Ok(DatabaseLock {
+                id: mysql_lock_identity(
+                    blocked_session_id,
+                    blocking_session_id,
+                    &lock_type,
+                    &resource,
+                    blocked_mode.as_deref(),
+                    blocking_mode.as_deref(),
+                ),
+                blocked_session_id: blocked_session_id.to_string(),
+                blocking_session_id: blocking_session_id.to_string(),
+                resource,
+                lock_type,
+                blocked_mode,
+                blocking_mode,
+                blocked_duration_ms: row.try_get("blocked_duration_ms")?,
+                blocked_query: row.try_get("blocked_query")?,
+                blocking_query: row.try_get("blocking_query")?,
+                blocking_can_cancel: row.try_get("blocking_can_cancel")?,
+            })
+        })
+        .collect()
+}
+
+fn format_mysql_lock_resource(
+    schema: Option<&str>,
+    table: Option<&str>,
+    index: Option<&str>,
+) -> String {
+    let table_name = match (schema, table) {
+        (Some(schema), Some(table)) => format!("{schema}.{table}"),
+        (None, Some(table)) => table.to_string(),
+        (Some(schema), None) => schema.to_string(),
+        (None, None) => "unknown resource".into(),
+    };
+    match index.filter(|value| !value.is_empty()) {
+        Some(index) => format!("{table_name} [{index}]"),
+        None => table_name,
+    }
+}
+
+fn mysql_lock_identity(
+    blocked_session_id: u64,
+    blocking_session_id: u64,
+    lock_type: &str,
+    resource: &str,
+    blocked_mode: Option<&str>,
+    blocking_mode: Option<&str>,
+) -> String {
+    format!(
+        "{blocked_session_id}:{blocking_session_id}:{lock_type}:{resource}:{}:{}",
+        blocked_mode.unwrap_or_default(),
+        blocking_mode.unwrap_or_default()
+    )
 }
 
 fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
@@ -1190,6 +1378,18 @@ mod tests {
         assert_eq!(
             map_mysql_session_state("Binlog Dump", None),
             DatabaseSessionState::Unknown
+        );
+    }
+
+    #[test]
+    fn formats_mysql_lock_resources_without_losing_schema_context() {
+        assert_eq!(
+            format_mysql_lock_resource(Some("app"), Some("orders"), Some("PRIMARY")),
+            "app.orders [PRIMARY]"
+        );
+        assert_eq!(
+            format_mysql_lock_resource(None, Some("orders"), None),
+            "orders"
         );
     }
 

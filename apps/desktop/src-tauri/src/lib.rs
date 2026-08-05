@@ -36,6 +36,7 @@ pub fn run() {
             commands::database_metadata,
             commands::database_sessions,
             commands::cancel_database_session,
+            commands::database_locks,
             commands::disconnect_database,
         ])
         .run(tauri::generate_context!())

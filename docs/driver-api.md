@@ -12,6 +12,9 @@ interface DatabaseDriver {
   commitTransaction(): Promise<void>;
   rollbackTransaction(): Promise<void>;
   metadata(): Promise<DatabaseMetadata>;
+  sessions(): Promise<DatabaseSession[]>;
+  locks(): Promise<DatabaseLock[]>;
+  cancelSession(sessionId: string): Promise<void>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
   capabilities(): ReadonlySet<DriverCapability>;
@@ -25,6 +28,7 @@ interface DatabaseDriver {
 - `executeStream()` is the large-result path: it delivers ordered `QueryChunk` values while the query runs and returns a completion summary whose `rows` array may be empty. Drivers without native streaming use the buffered fallback and must not advertise `streaming`.
 - Cancellation uses `AbortSignal` in the frontend and maps to the native mechanism only when the driver advertises `cancel`.
 - `metadata()` returns vendor-neutral databases, schemas, tables, views, columns, indexes, foreign keys, routines, relation triggers, event triggers, and direct dependencies.
+- `sessions()` and `locks()` are optional operations exposed only when the corresponding capabilities are advertised. They return server-visible activity and point-in-time blocker relationships; unsupported drivers must return a typed unsupported-operation error rather than guessing.
 - `transaction()` must not silently commit a failed workflow.
 - `beginTransaction()` must reserve a connection for the session; subsequent `execute()`, `executeStream()`, and `executeBatch()` calls use that same connection until commit or rollback.
 - `commitTransaction()` and `rollbackTransaction()` must reject when no session is active. Disconnect must safely roll back an unfinished session.
@@ -74,6 +78,9 @@ pub trait DatabaseDriver: Send + Sync {
     async fn rollback_transaction(&self) -> Result<(), AppError>;
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
+    async fn sessions(&self) -> Result<Vec<DatabaseSession>, AppError>;
+    async fn locks(&self) -> Result<Vec<DatabaseLock>, AppError>;
+    async fn cancel_session(&self, session_id: &str) -> Result<(), AppError>;
     async fn disconnect(&self) -> Result<(), AppError>;
 }
 ```
@@ -94,13 +101,16 @@ Generic Tauri commands:
 - `rollback_transaction`
 - `cancel_query`
 - `database_metadata`
+- `database_sessions`
+- `database_locks`
+- `cancel_database_session`
 - `disconnect_database`
 
 Every native driver must pass the registry contract suite before it can be exposed in the UI.
 
 DDL Inspector actions are intentionally layered on this contract: copying is renderer-local, **Edit in SQL** creates a normal query document, and **Run in Transaction** calls `execute_query_transaction`. No object-specific mutation command exists yet. The one-shot transaction path rolls back on execution failure; the explicit session path reserves one native connection until **Commit** or **Rollback** and also covers streamed queries and edit batches.
 
-Cancellation is capability-driven. PostgreSQL and MySQL/MariaDB report `cancel` and `streaming`; SQLite reports `streaming` but intentionally returns `CancellationUnsupported` and does not expose the Cancel control. All native drivers stream chunks in bounded 256-row batches. Repeated cancellation while a cancellable query is active is idempotent, while cancellation after completion returns `false`.
+Cancellation and operations inspection are capability-driven. PostgreSQL and MySQL/MariaDB report `cancel`, `streaming`, `sessions`, and `locks`; SQLite reports `streaming` but intentionally returns `CancellationUnsupported` and does not expose the Cancel or operations controls. All native drivers stream chunks in bounded 256-row batches. Repeated cancellation while a cancellable query is active is idempotent, while cancellation after completion returns `false`.
 
 Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, documented in [mysql-driver.md](mysql-driver.md).
 

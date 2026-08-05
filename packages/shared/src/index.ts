@@ -6,7 +6,8 @@ export type DriverCapability =
   | "cancel"
   | "streaming"
   | "editing"
-  | "sessions";
+  | "sessions"
+  | "locks";
 
 export interface QueryColumn {
   name: string;
@@ -42,6 +43,20 @@ export interface DatabaseSession {
   durationMs: number | null;
   waitEvent: string | null;
   canCancel: boolean;
+}
+
+export interface DatabaseLock {
+  id: string;
+  blockedSessionId: string;
+  blockingSessionId: string;
+  resource: string;
+  lockType: string;
+  blockedMode: string | null;
+  blockingMode: string | null;
+  blockedDurationMs: number | null;
+  blockedQuery: string | null;
+  blockingQuery: string | null;
+  blockingCanCancel: boolean;
 }
 
 export interface QueryChunk {
@@ -288,6 +303,7 @@ export interface DatabaseDriver {
   metadata(): Promise<DatabaseMetadata>;
   sessions(): Promise<DatabaseSession[]>;
   cancelSession(sessionId: string): Promise<void>;
+  locks(): Promise<DatabaseLock[]>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
   capabilities(): ReadonlySet<DriverCapability>;

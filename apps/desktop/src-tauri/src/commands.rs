@@ -155,6 +155,14 @@ pub async fn cancel_database_session(
 }
 
 #[tauri::command]
+pub async fn database_locks(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+) -> Result<Vec<crate::models::DatabaseLock>, AppError> {
+    state.locks(&connection_id).await
+}
+
+#[tauri::command]
 pub async fn disconnect_database(
     state: State<'_, DriverRegistry>,
     connection_id: String,

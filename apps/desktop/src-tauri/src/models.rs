@@ -90,6 +90,7 @@ pub enum DriverCapability {
     Streaming,
     Editing,
     Sessions,
+    Locks,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -116,6 +117,22 @@ pub struct DatabaseSession {
     pub duration_ms: Option<i64>,
     pub wait_event: Option<String>,
     pub can_cancel: bool,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseLock {
+    pub id: String,
+    pub blocked_session_id: String,
+    pub blocking_session_id: String,
+    pub resource: String,
+    pub lock_type: String,
+    pub blocked_mode: Option<String>,
+    pub blocking_mode: Option<String>,
+    pub blocked_duration_ms: Option<i64>,
+    pub blocked_query: Option<String>,
+    pub blocking_query: Option<String>,
+    pub blocking_can_cancel: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

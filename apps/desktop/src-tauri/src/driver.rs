@@ -6,7 +6,8 @@ use uuid::Uuid;
 use crate::{
     error::AppError,
     models::{
-        DatabaseMetadata, DatabaseSession, DriverCapability, DriverKind, QueryChunk, QueryResult,
+        DatabaseLock, DatabaseMetadata, DatabaseSession, DriverCapability, DriverKind, QueryChunk,
+        QueryResult,
     },
 };
 
@@ -91,6 +92,9 @@ pub trait DatabaseDriver: Send + Sync {
     }
     async fn cancel_session(&self, _session_id: &str) -> Result<(), AppError> {
         Err(AppError::UnsupportedDriver("session cancellation".into()))
+    }
+    async fn locks(&self) -> Result<Vec<DatabaseLock>, AppError> {
+        Err(AppError::UnsupportedDriver("lock graph inspection".into()))
     }
     async fn disconnect(&self) -> Result<(), AppError>;
 }

@@ -87,6 +87,7 @@ import type {
   TableBrowseSortDirection,
 } from "@queryx/core";
 import type {
+  DatabaseLock,
   ConnectionProfile,
   DatabaseSession,
   DatabaseObjectRef,
@@ -260,6 +261,7 @@ type UiIconName =
   | "commands"
   | "connections"
   | "sessions"
+  | "locks"
   | "help"
   | "refresh"
   | "settings"
@@ -295,6 +297,14 @@ function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
       <>
         <circle cx="12" cy="7" r="3" />
         <path d="M6 21v-2a6 6 0 0 1 12 0v2M4 12h16" />
+      </>
+    ),
+    locks: (
+      <>
+        <path d="M8 7h8M8 17h8" />
+        <circle cx="5" cy="7" r="2" />
+        <circle cx="19" cy="17" r="2" />
+        <path d="M7 8.5 17 15.5" />
       </>
     ),
     help: (
@@ -582,6 +592,10 @@ function App() {
   const [sessions, setSessions] = useState<DatabaseSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
+  const [locksOpen, setLocksOpen] = useState(false);
+  const [locks, setLocks] = useState<DatabaseLock[]>([]);
+  const [locksLoading, setLocksLoading] = useState(false);
+  const [locksError, setLocksError] = useState<string | null>(null);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -609,6 +623,7 @@ function App() {
   );
   const connectionIdentity = `${connectionName}:${driverKind}`;
   const canInspectSessions = driver.capabilities().has("sessions");
+  const canInspectLocks = driver.capabilities().has("locks");
   const loadSessionsPanel = async () => {
     if (!canInspectSessions) {
       notify(
@@ -652,6 +667,55 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSessionsError(message);
+      notify(message);
+    }
+  };
+  const loadLocksPanel = async () => {
+    if (!canInspectLocks) {
+      notify(
+        "Lock graph inspection is available in native PostgreSQL/MySQL connections",
+      );
+      return;
+    }
+    setLocksLoading(true);
+    setLocksError(null);
+    try {
+      setLocks(await driver.locks());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocksError(message);
+      notify(message);
+    } finally {
+      setLocksLoading(false);
+    }
+  };
+  const openLocks = () => {
+    if (!canInspectLocks) {
+      notify(
+        "Lock graph inspection is available in native PostgreSQL/MySQL connections",
+      );
+      return;
+    }
+    setLocksOpen(true);
+    void loadLocksPanel();
+  };
+  const cancelBlockingSession = async (lock: DatabaseLock) => {
+    if (!lock.blockingCanCancel) return;
+    if (
+      !window.confirm(
+        `Cancel the running query for blocking session ${lock.blockingSessionId}?`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await driver.cancelSession(lock.blockingSessionId);
+      notify(`Cancellation requested for session ${lock.blockingSessionId}`);
+      await loadLocksPanel();
+      if (sessionsOpen && canInspectSessions) await loadSessionsPanel();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setLocksError(message);
       notify(message);
     }
   };
@@ -2495,6 +2559,15 @@ function App() {
       execute: openSessions,
     },
     {
+      id: "open-lock-graph",
+      label: "Open lock graph",
+      hint: canInspectLocks
+        ? `${locks.length} lock waits`
+        : "native driver required",
+      disabled: !canInspectLocks,
+      execute: openLocks,
+    },
+    {
       id: "create-table",
       label: "Create table from form",
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
@@ -2642,6 +2715,20 @@ function App() {
             disabled={!canInspectSessions}
           >
             <UiIcon name="sessions" size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Open lock graph"
+            title={
+              canInspectLocks
+                ? "Lock graph"
+                : "Lock graph requires a native database connection"
+            }
+            onClick={openLocks}
+            disabled={!canInspectLocks}
+          >
+            <UiIcon name="locks" size={16} />
           </button>
           <button
             type="button"
@@ -3954,6 +4041,17 @@ function App() {
           onClose={() => setSessionsOpen(false)}
         />
       )}
+      {locksOpen && (
+        <LockGraphDialog
+          driverKind={driverKind}
+          locks={locks}
+          loading={locksLoading}
+          error={locksError}
+          onRefresh={() => void loadLocksPanel()}
+          onCancel={(lock) => void cancelBlockingSession(lock)}
+          onClose={() => setLocksOpen(false)}
+        />
+      )}
       {createTableOpen && metadata && (
         <CreateTableDialog
           driverKind={driverKind}
@@ -4183,6 +4281,133 @@ function App() {
           onClose={() => setQuickOpenOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function LockGraphDialog({
+  driverKind,
+  locks,
+  loading,
+  error,
+  onRefresh,
+  onCancel,
+  onClose,
+}: {
+  driverKind: DriverKind;
+  locks: DatabaseLock[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onCancel: (lock: DatabaseLock) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="lock-modal"
+        aria-modal="true"
+        aria-labelledby="lock-graph-title"
+      >
+        <div className="session-modal-heading">
+          <div>
+            <p className="modal-kicker">LOCK GRAPH</p>
+            <h2 id="lock-graph-title">
+              {driverDisplayName(driverKind)} lock waits
+            </h2>
+            <p className="session-modal-subtitle">
+              {locks.length} blocking relationship
+              {locks.length === 1 ? "" : "s"} visible
+            </p>
+          </div>
+          <div className="session-modal-actions">
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Refresh lock graph"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Close lock graph"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        {error && <p className="connection-error">{error}</p>}
+        {loading ? (
+          <div className="session-empty">Loading lock waits…</div>
+        ) : locks.length === 0 ? (
+          <div className="session-empty">
+            No lock waits are visible for the connected database.
+          </div>
+        ) : (
+          <ul className="lock-graph-list" aria-label="Database lock waits">
+            {locks.map((lock) => (
+              <li className="lock-card" key={lock.id}>
+                <div className="lock-card-route">
+                  <span className="lock-node blocked">
+                    <small>BLOCKED</small>
+                    <strong>{lock.blockedSessionId}</strong>
+                  </span>
+                  <span className="lock-arrow" aria-hidden="true">
+                    →
+                  </span>
+                  <span className="lock-node blocking">
+                    <small>BLOCKING</small>
+                    <strong>{lock.blockingSessionId}</strong>
+                  </span>
+                </div>
+                <div className="lock-card-details">
+                  <strong>{lock.resource}</strong>
+                  <span>
+                    {lock.lockType}
+                    {lock.blockedMode ? ` · wants ${lock.blockedMode}` : ""}
+                    {lock.blockingMode ? ` · holds ${lock.blockingMode}` : ""}
+                  </span>
+                  <small>
+                    blocked query age{" "}
+                    {formatSessionDuration(lock.blockedDurationMs)}
+                  </small>
+                </div>
+                <div className="lock-card-queries">
+                  <code>
+                    {lock.blockedQuery?.trim() || "(blocked query unavailable)"}
+                  </code>
+                  <code>
+                    {lock.blockingQuery?.trim() ||
+                      "(blocking query unavailable)"}
+                  </code>
+                </div>
+                <button
+                  type="button"
+                  className="mini-button session-cancel"
+                  disabled={!lock.blockingCanCancel}
+                  onClick={() => onCancel(lock)}
+                  title={
+                    lock.blockingCanCancel
+                      ? "Request cancellation of the blocking query"
+                      : "The current QueryX session cannot cancel itself"
+                  }
+                >
+                  Cancel blocker
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="session-safety-note">
+          The graph is a point-in-time view. QueryX requests query cancellation
+          only; it never terminates a database connection from this panel.
+        </p>
+      </dialog>
     </div>
   );
 }

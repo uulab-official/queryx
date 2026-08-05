@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { InMemoryDriver } from "@queryx/core";
 import type {
+  DatabaseLock,
   DatabaseDriver,
   DatabaseMetadata,
   DatabaseSession,
@@ -260,6 +261,14 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     await invoke("cancel_database_session", {
       connectionId: this.connectionId,
       sessionId,
+    });
+  }
+
+  async locks(): Promise<DatabaseLock[]> {
+    if (!this.connectionId)
+      throw new Error(`${this.kind} driver is not connected`);
+    return invoke<DatabaseLock[]>("database_locks", {
+      connectionId: this.connectionId,
     });
   }
 

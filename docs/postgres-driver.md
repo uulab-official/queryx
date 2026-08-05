@@ -26,7 +26,7 @@ One batched `pg_event_trigger` query loads database-scoped event names, activati
 
 ## Connection behavior
 
-The connection dialog maps host, port, database, username, optional password, SSL mode, optional CA/client certificate/key file paths, and an optional SSH tunnel to `PgConnectOptions`. `Verify CA` maps to `verify-ca`; `Verify Full / Identity` maps to `verify-full`. The session explorer reads visible rows from `pg_stat_activity`, including state, wait event, query start, and duration. Query cancellation uses `pg_cancel_backend` and never terminates the selected backend; the current QueryX session cannot cancel itself. The pool uses the `QueryX` application name, at most five connections, and a ten-second acquisition timeout. Passwords are never returned in `ConnectionSummary`.
+The connection dialog maps host, port, database, username, optional password, SSL mode, optional CA/client certificate/key file paths, and an optional SSH tunnel to `PgConnectOptions`. `Verify CA` maps to `verify-ca`; `Verify Full / Identity` maps to `verify-full`. The session explorer reads visible rows from `pg_stat_activity`, including state, wait event, query start, and duration. The lock graph joins `pg_locks` with `pg_stat_activity` to show visible blocked-to-blocking relationships, lock modes, resources, query text, and blocked-query age. Query cancellation uses `pg_cancel_backend` and never terminates the selected backend; the current QueryX session cannot cancel itself. The pool uses the `QueryX` application name, at most five connections, and a ten-second acquisition timeout. Passwords are never returned in `ConnectionSummary`.
 
 ## Query cancellation
 

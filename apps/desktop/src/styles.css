@@ -2622,6 +2622,99 @@ button:disabled {
   letter-spacing: 0.05em;
   text-transform: uppercase;
 }
+.lock-modal {
+  width: min(980px, calc(100vw - 40px));
+}
+.lock-graph-list {
+  display: grid;
+  gap: 8px;
+  max-height: min(62vh, 620px);
+  overflow: auto;
+  margin: 0;
+  padding: 1px;
+  list-style: none;
+}
+.lock-card {
+  display: grid;
+  grid-template-columns: 155px 1fr minmax(270px, 1.6fr) auto;
+  gap: 13px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid #2d4249;
+  border-radius: 7px;
+  background: #121b1f;
+}
+.lock-card-route {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.lock-node {
+  display: grid;
+  min-width: 54px;
+  gap: 3px;
+  padding: 6px 7px;
+  border: 1px solid #43545b;
+  border-radius: 5px;
+  text-align: center;
+}
+.lock-node small {
+  color: #81949a;
+  font: 8px var(--mono);
+  letter-spacing: 0.05em;
+}
+.lock-node strong {
+  color: #d9e5e5;
+  font: 11px var(--mono);
+}
+.lock-node.blocked {
+  border-color: #b36a67;
+}
+.lock-node.blocking {
+  border-color: #d2a45f;
+}
+.lock-arrow {
+  color: #d6ab61;
+  font-size: 18px;
+}
+.lock-card-details,
+.lock-card-queries {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.lock-card-details strong {
+  overflow: hidden;
+  color: #d8e3e2;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-card-details span,
+.lock-card-details small {
+  overflow: hidden;
+  color: #8da1a5;
+  font: 9px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-card-details small {
+  color: #d2a45f;
+}
+.lock-card-queries code {
+  display: block;
+  overflow: hidden;
+  color: #b9c9c7;
+  font: 9px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lock-card-queries code + code {
+  color: #8ca0a3;
+}
+.lock-card .session-cancel {
+  white-space: nowrap;
+}
 .session-state,
 .session-wait,
 .session-identity small,
