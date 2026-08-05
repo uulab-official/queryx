@@ -22,11 +22,12 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
-        DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
-        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind,
-        RoutineMetadata, SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
-        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
+        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DatabaseSession,
+        DatabaseSessionState, DependencyKind, DependencyMetadata, DriverCapability, DriverKind,
+        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk, QueryColumn,
+        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
+        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
+        TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -346,6 +347,7 @@ impl DatabaseDriver for MysqlDriver {
             DriverCapability::Explain,
             DriverCapability::Cancel,
             DriverCapability::Streaming,
+            DriverCapability::Sessions,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -768,11 +770,74 @@ impl DatabaseDriver for MysqlDriver {
         })
     }
 
+    async fn sessions(&self) -> Result<Vec<DatabaseSession>, AppError> {
+        load_sessions(&self.pool).await
+    }
+
+    async fn cancel_session(&self, session_id: &str) -> Result<(), AppError> {
+        let connection_id = session_id.parse::<u64>().map_err(|_| {
+            AppError::SessionOperation("MySQL session id must be a numeric connection id".into())
+        })?;
+        let current_id = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+            .fetch_one(&self.cancellation_pool)
+            .await?;
+        if connection_id == current_id {
+            return Err(AppError::SessionOperation(
+                "QueryX will not cancel its own session".into(),
+            ));
+        }
+        let statement = format!("KILL QUERY {connection_id}");
+        sqlx::raw_sql(&statement)
+            .execute(&self.cancellation_pool)
+            .await?;
+        Ok(())
+    }
+
     async fn disconnect(&self) -> Result<(), AppError> {
         let _ = self.rollback_transaction().await;
         self.pool.close().await;
         self.cancellation_pool.close().await;
         Ok(())
+    }
+}
+
+async fn load_sessions(pool: &MySqlPool) -> Result<Vec<DatabaseSession>, AppError> {
+    let current_id = sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+        .fetch_one(pool)
+        .await?;
+    let rows = sqlx::query("SHOW FULL PROCESSLIST").fetch_all(pool).await?;
+    rows.into_iter()
+        .map(|row| {
+            let command: String = row.try_get("Command")?;
+            let state: Option<String> = row.try_get("State")?;
+            let connection_id: u64 = row.try_get("Id")?;
+            let duration_seconds: i64 = row.try_get("Time")?;
+            Ok(DatabaseSession {
+                id: connection_id.to_string(),
+                user: row.try_get("User")?,
+                database: row.try_get("db")?,
+                client_address: row.try_get("Host")?,
+                application_name: None,
+                state: map_mysql_session_state(&command, state.as_deref()),
+                query: row.try_get("Info")?,
+                started_at: None,
+                duration_ms: Some(duration_seconds.max(0) * 1000),
+                wait_event: state,
+                can_cancel: connection_id != current_id,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()
+        .map_err(AppError::from)
+}
+
+fn map_mysql_session_state(command: &str, state: Option<&str>) -> DatabaseSessionState {
+    if state.is_some_and(|value| value.to_ascii_lowercase().contains("wait")) {
+        return DatabaseSessionState::Waiting;
+    }
+    match command.to_ascii_lowercase().as_str() {
+        "query" => DatabaseSessionState::Active,
+        "sleep" => DatabaseSessionState::Idle,
+        _ => DatabaseSessionState::Unknown,
     }
 }
 
@@ -1106,6 +1171,26 @@ mod tests {
             map_ssl_mode(SslMode::VerifyFull),
             MySqlSslMode::VerifyIdentity
         ));
+    }
+
+    #[test]
+    fn normalizes_mysql_process_states_and_waits() {
+        assert_eq!(
+            map_mysql_session_state("Query", None),
+            DatabaseSessionState::Active
+        );
+        assert_eq!(
+            map_mysql_session_state("Query", Some("Waiting for table metadata lock")),
+            DatabaseSessionState::Waiting
+        );
+        assert_eq!(
+            map_mysql_session_state("Sleep", None),
+            DatabaseSessionState::Idle
+        );
+        assert_eq!(
+            map_mysql_session_state("Binlog Dump", None),
+            DatabaseSessionState::Unknown
+        );
     }
 
     #[test]

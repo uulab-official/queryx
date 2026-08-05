@@ -148,6 +148,24 @@ impl DriverRegistry {
         self.connection(connection_id).await?.metadata().await
     }
 
+    pub async fn sessions(
+        &self,
+        connection_id: &str,
+    ) -> Result<Vec<crate::models::DatabaseSession>, AppError> {
+        self.connection(connection_id).await?.sessions().await
+    }
+
+    pub async fn cancel_session(
+        &self,
+        connection_id: &str,
+        session_id: &str,
+    ) -> Result<(), AppError> {
+        self.connection(connection_id)
+            .await?
+            .cancel_session(session_id)
+            .await
+    }
+
     pub async fn disconnect(&self, connection_id: &str) -> Result<(), AppError> {
         let id = parse_connection_id(connection_id)?;
         let driver = self

@@ -5,7 +5,9 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
-    models::{DatabaseMetadata, DriverCapability, DriverKind, QueryChunk, QueryResult},
+    models::{
+        DatabaseMetadata, DatabaseSession, DriverCapability, DriverKind, QueryChunk, QueryResult,
+    },
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -84,5 +86,11 @@ pub trait DatabaseDriver: Send + Sync {
     }
     async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError>;
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError>;
+    async fn sessions(&self) -> Result<Vec<DatabaseSession>, AppError> {
+        Err(AppError::UnsupportedDriver("session inspection".into()))
+    }
+    async fn cancel_session(&self, _session_id: &str) -> Result<(), AppError> {
+        Err(AppError::UnsupportedDriver("session cancellation".into()))
+    }
     async fn disconnect(&self) -> Result<(), AppError>;
 }

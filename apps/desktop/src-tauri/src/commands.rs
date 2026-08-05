@@ -138,6 +138,23 @@ pub async fn database_metadata(
 }
 
 #[tauri::command]
+pub async fn database_sessions(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+) -> Result<Vec<crate::models::DatabaseSession>, AppError> {
+    state.sessions(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn cancel_database_session(
+    state: State<'_, DriverRegistry>,
+    connection_id: String,
+    session_id: String,
+) -> Result<(), AppError> {
+    state.cancel_session(&connection_id, &session_id).await
+}
+
+#[tauri::command]
 pub async fn disconnect_database(
     state: State<'_, DriverRegistry>,
     connection_id: String,

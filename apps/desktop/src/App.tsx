@@ -88,6 +88,7 @@ import type {
 } from "@queryx/core";
 import type {
   ConnectionProfile,
+  DatabaseSession,
   DatabaseObjectRef,
   DependencyKind,
   DriverConfig,
@@ -258,6 +259,7 @@ type UiIconName =
   | "search"
   | "commands"
   | "connections"
+  | "sessions"
   | "help"
   | "refresh"
   | "settings"
@@ -287,6 +289,12 @@ function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
       <>
         <path d="M8 3v6M16 3v6M5 9h14v3a7 7 0 0 1-14 0V9Z" />
         <path d="M12 19v2M9 21h6" />
+      </>
+    ),
+    sessions: (
+      <>
+        <circle cx="12" cy="7" r="3" />
+        <path d="M6 21v-2a6 6 0 0 1 12 0v2M4 12h16" />
       </>
     ),
     help: (
@@ -570,6 +578,10 @@ function App() {
   const [schemaTargetOpen, setSchemaTargetOpen] = useState(false);
   const [migrationHistoryOpen, setMigrationHistoryOpen] = useState(false);
   const [erdOpen, setErdOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessions, setSessions] = useState<DatabaseSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -596,6 +608,53 @@ function App() {
     [driverKind, metadata, schemaBaseline],
   );
   const connectionIdentity = `${connectionName}:${driverKind}`;
+  const canInspectSessions = driver.capabilities().has("sessions");
+  const loadSessionsPanel = async () => {
+    if (!canInspectSessions) {
+      notify(
+        "Session inspection is available in native PostgreSQL/MySQL connections",
+      );
+      return;
+    }
+    setSessionsLoading(true);
+    setSessionsError(null);
+    try {
+      setSessions(await driver.sessions());
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSessionsError(message);
+      notify(message);
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+  const openSessions = () => {
+    if (!canInspectSessions) {
+      notify(
+        "Session inspection is available in native PostgreSQL/MySQL connections",
+      );
+      return;
+    }
+    setSessionsOpen(true);
+    void loadSessionsPanel();
+  };
+  const cancelDatabaseSession = async (session: DatabaseSession) => {
+    if (!session.canCancel) return;
+    if (
+      !window.confirm(`Cancel the running query for session ${session.id}?`)
+    ) {
+      return;
+    }
+    try {
+      await driver.cancelSession(session.id);
+      notify(`Cancellation requested for session ${session.id}`);
+      await loadSessionsPanel();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setSessionsError(message);
+      notify(message);
+    }
+  };
   const captureSchemaBaseline = () => {
     if (!metadata) {
       notify("Connect to a database before capturing a schema baseline");
@@ -2427,6 +2486,15 @@ function App() {
       execute: openErd,
     },
     {
+      id: "open-sessions",
+      label: "Open session explorer",
+      hint: canInspectSessions
+        ? `${sessions.length} sessions`
+        : "native driver required",
+      disabled: !canInspectSessions,
+      execute: openSessions,
+    },
+    {
       id: "create-table",
       label: "Create table from form",
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
@@ -2561,6 +2629,20 @@ function App() {
             ⌘K
           </button>
           <UpdateButton onNotify={notify} />
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Open session explorer"
+            title={
+              canInspectSessions
+                ? "Session explorer"
+                : "Session explorer requires a native database connection"
+            }
+            onClick={openSessions}
+            disabled={!canInspectSessions}
+          >
+            <UiIcon name="sessions" size={16} />
+          </button>
           <button
             type="button"
             className="icon-button"
@@ -3861,6 +3943,17 @@ function App() {
           }}
         />
       )}
+      {sessionsOpen && (
+        <SessionExplorerDialog
+          driverKind={driverKind}
+          sessions={sessions}
+          loading={sessionsLoading}
+          error={sessionsError}
+          onRefresh={() => void loadSessionsPanel()}
+          onCancel={(session) => void cancelDatabaseSession(session)}
+          onClose={() => setSessionsOpen(false)}
+        />
+      )}
       {createTableOpen && metadata && (
         <CreateTableDialog
           driverKind={driverKind}
@@ -4092,6 +4185,161 @@ function App() {
       )}
     </div>
   );
+}
+
+function SessionExplorerDialog({
+  driverKind,
+  sessions,
+  loading,
+  error,
+  onRefresh,
+  onCancel,
+  onClose,
+}: {
+  driverKind: DriverKind;
+  sessions: DatabaseSession[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onCancel: (session: DatabaseSession) => void;
+  onClose: () => void;
+}) {
+  const activeCount = sessions.filter(
+    (session) => session.state === "active" || session.state === "waiting",
+  ).length;
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="session-modal"
+        aria-modal="true"
+        aria-labelledby="session-explorer-title"
+      >
+        <div className="session-modal-heading">
+          <div>
+            <p className="modal-kicker">SESSION EXPLORER</p>
+            <h2 id="session-explorer-title">
+              {driverDisplayName(driverKind)} sessions
+            </h2>
+            <p className="session-modal-subtitle">
+              {sessions.length} visible · {activeCount} active or waiting
+            </p>
+          </div>
+          <div className="session-modal-actions">
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Refresh sessions"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Close session explorer"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        {error && <p className="connection-error">{error}</p>}
+        {loading ? (
+          <div className="session-empty">Loading database sessions…</div>
+        ) : sessions.length === 0 ? (
+          <div className="session-empty">
+            No visible sessions were returned by the database.
+          </div>
+        ) : (
+          <table className="session-table" aria-label="Database sessions">
+            <thead>
+              <tr className="session-table-row session-table-header">
+                <th scope="col">State</th>
+                <th scope="col">Session</th>
+                <th scope="col">Query / wait event</th>
+                <th scope="col">Duration</th>
+                <th scope="col" aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((session) => (
+                <tr className="session-table-row" key={session.id}>
+                  <td>
+                    <strong className={`session-state ${session.state}`}>
+                      {session.state === "idleInTransaction"
+                        ? "idle in tx"
+                        : session.state}
+                    </strong>
+                    {session.waitEvent && (
+                      <small className="session-wait">
+                        {session.waitEvent}
+                      </small>
+                    )}
+                  </td>
+                  <td className="session-identity">
+                    <strong>{session.user ?? "unknown user"}</strong>
+                    <small>
+                      {session.database ?? "—"}
+                      {session.clientAddress
+                        ? ` · ${session.clientAddress}`
+                        : ""}
+                    </small>
+                    <small>{session.applicationName ?? ""}</small>
+                  </td>
+                  <td className="session-query">
+                    <code>{session.query?.trim() || "(idle)"}</code>
+                  </td>
+                  <td className="session-duration">
+                    {formatSessionDuration(session.durationMs)}
+                    {session.startedAt && (
+                      <small>{formatSessionStartedAt(session.startedAt)}</small>
+                    )}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="mini-button session-cancel"
+                      disabled={!session.canCancel}
+                      onClick={() => onCancel(session)}
+                      title={
+                        session.canCancel
+                          ? "Request cancellation of this session's running query"
+                          : "The current QueryX session cannot cancel itself"
+                      }
+                    >
+                      Cancel
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="session-safety-note">
+          QueryX requests query cancellation only. It never terminates the
+          database connection from this panel, and the current QueryX session is
+          protected.
+        </p>
+      </dialog>
+    </div>
+  );
+}
+
+function formatSessionDuration(durationMs: number | null): string {
+  if (durationMs === null) return "—";
+  if (durationMs < 1000) return `${durationMs} ms`;
+  const seconds = Math.floor(durationMs / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+function formatSessionStartedAt(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString();
 }
 
 function CommandPalette({

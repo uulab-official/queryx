@@ -32,6 +32,8 @@ pub enum AppError {
     Keychain(String),
     #[error("SSH tunnel error: {0}")]
     SshTunnel(String),
+    #[error("session operation failed: {0}")]
+    SessionOperation(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

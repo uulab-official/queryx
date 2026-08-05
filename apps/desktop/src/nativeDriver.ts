@@ -4,6 +4,7 @@ import { InMemoryDriver } from "@queryx/core";
 import type {
   DatabaseDriver,
   DatabaseMetadata,
+  DatabaseSession,
   DriverCapability,
   DriverConfig,
   DriverKind,
@@ -243,6 +244,23 @@ export class TauriDatabaseDriver implements DatabaseDriver {
     this.connectionId = null;
     this.driverCapabilities.clear();
     this.readOnly = false;
+  }
+
+  async sessions(): Promise<DatabaseSession[]> {
+    if (!this.connectionId)
+      throw new Error(`${this.kind} driver is not connected`);
+    return invoke<DatabaseSession[]>("database_sessions", {
+      connectionId: this.connectionId,
+    });
+  }
+
+  async cancelSession(sessionId: string): Promise<void> {
+    if (!this.connectionId)
+      throw new Error(`${this.kind} driver is not connected`);
+    await invoke("cancel_database_session", {
+      connectionId: this.connectionId,
+      sessionId,
+    });
   }
 
   capabilities(): ReadonlySet<DriverCapability> {

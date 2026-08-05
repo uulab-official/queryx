@@ -19,12 +19,12 @@ use crate::{
     error::AppError,
     models::{
         AggregateKind, AggregateMetadata, ColumnMetadata, ConnectionConfig, DatabaseMetadata,
-        DatabaseObjectKind, DatabaseObjectRef, DependencyKind, DependencyMetadata,
-        DriverCapability, DriverKind, EventTriggerEvent, EventTriggerMetadata,
-        ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk, QueryColumn,
-        QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode, TableMetadata,
-        TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind, TriggerRelationRef,
-        TriggerStatus, TriggerTiming, ViewMetadata,
+        DatabaseObjectKind, DatabaseObjectRef, DatabaseSession, DatabaseSessionState,
+        DependencyKind, DependencyMetadata, DriverCapability, DriverKind, EventTriggerEvent,
+        EventTriggerMetadata, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata, QueryChunk,
+        QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata, SslMode,
+        TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind,
+        TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -338,6 +338,7 @@ impl DatabaseDriver for PostgresDriver {
             DriverCapability::Explain,
             DriverCapability::Cancel,
             DriverCapability::Streaming,
+            DriverCapability::Sessions,
         ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
@@ -474,11 +475,100 @@ impl DatabaseDriver for PostgresDriver {
         load_metadata(&self.pool).await
     }
 
+    async fn sessions(&self) -> Result<Vec<DatabaseSession>, AppError> {
+        load_sessions(&self.pool).await
+    }
+
+    async fn cancel_session(&self, session_id: &str) -> Result<(), AppError> {
+        let pid = session_id.parse::<i32>().map_err(|_| {
+            AppError::SessionOperation("PostgreSQL session id must be a backend PID".into())
+        })?;
+        let current_pid = sqlx::query_scalar::<_, i32>("SELECT pg_backend_pid()")
+            .fetch_one(&self.cancellation_pool)
+            .await?;
+        if pid == current_pid {
+            return Err(AppError::SessionOperation(
+                "QueryX will not cancel its own session".into(),
+            ));
+        }
+        let cancelled = sqlx::query_scalar::<_, bool>("SELECT pg_cancel_backend($1)")
+            .bind(pid)
+            .fetch_one(&self.cancellation_pool)
+            .await?;
+        if cancelled {
+            Ok(())
+        } else {
+            Err(AppError::SessionOperation(
+                "PostgreSQL did not cancel the selected session".into(),
+            ))
+        }
+    }
+
     async fn disconnect(&self) -> Result<(), AppError> {
         let _ = self.rollback_transaction().await;
         self.pool.close().await;
         self.cancellation_pool.close().await;
         Ok(())
+    }
+}
+
+async fn load_sessions(pool: &PgPool) -> Result<Vec<DatabaseSession>, AppError> {
+    let rows = sqlx::query(
+        "SELECT pid::text AS id, usename AS user_name, datname AS database_name, client_addr::text AS client_address, application_name, state, query, query_start, ROUND(EXTRACT(EPOCH FROM (clock_timestamp() - query_start)) * 1000)::bigint AS duration_ms, wait_event_type, wait_event, (pid <> pg_backend_pid()) AS can_cancel FROM pg_stat_activity WHERE datname = current_database() ORDER BY query_start DESC NULLS LAST, pid",
+    )
+    .fetch_all(pool)
+    .await?;
+    rows.into_iter()
+        .map(|row| {
+            let state: Option<String> = row.try_get("state")?;
+            let wait_event_type: Option<String> = row.try_get("wait_event_type")?;
+            let wait_event_name: Option<String> = row.try_get("wait_event")?;
+            Ok(DatabaseSession {
+                id: row.try_get("id")?,
+                user: row.try_get("user_name")?,
+                database: row.try_get("database_name")?,
+                client_address: row.try_get("client_address")?,
+                application_name: row.try_get("application_name")?,
+                state: map_postgres_session_state(state.as_deref(), wait_event_type.as_deref()),
+                query: row.try_get("query")?,
+                started_at: row
+                    .try_get::<Option<DateTime<Utc>>, _>("query_start")?
+                    .map(|value| value.to_rfc3339()),
+                duration_ms: row.try_get("duration_ms")?,
+                wait_event: combine_wait_event(
+                    wait_event_type.as_deref(),
+                    wait_event_name.as_deref(),
+                ),
+                can_cancel: row.try_get("can_cancel")?,
+            })
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()
+        .map_err(AppError::from)
+}
+
+fn combine_wait_event(kind: Option<&str>, name: Option<&str>) -> Option<String> {
+    match (kind, name) {
+        (Some(kind), Some(name)) => Some(format!("{kind}: {name}")),
+        (None, Some(name)) => Some(name.to_string()),
+        (Some(kind), None) => Some(kind.to_string()),
+        (None, None) => None,
+    }
+}
+
+fn map_postgres_session_state(
+    state: Option<&str>,
+    wait_event_type: Option<&str>,
+) -> DatabaseSessionState {
+    if state == Some("active") && wait_event_type.is_some() {
+        return DatabaseSessionState::Waiting;
+    }
+    match state.unwrap_or_default() {
+        "active" => DatabaseSessionState::Active,
+        "idle" => DatabaseSessionState::Idle,
+        "idle in transaction" | "idle in transaction (aborted)" => {
+            DatabaseSessionState::IdleInTransaction
+        }
+        _ => DatabaseSessionState::Unknown,
     }
 }
 
@@ -1330,6 +1420,30 @@ mod tests {
             map_ssl_mode(SslMode::VerifyFull),
             PgSslMode::VerifyFull
         ));
+    }
+
+    #[test]
+    fn normalizes_postgres_session_states_and_waits() {
+        assert_eq!(
+            map_postgres_session_state(Some("active"), None),
+            DatabaseSessionState::Active
+        );
+        assert_eq!(
+            map_postgres_session_state(Some("active"), Some("Lock")),
+            DatabaseSessionState::Waiting
+        );
+        assert_eq!(
+            map_postgres_session_state(Some("idle in transaction"), None),
+            DatabaseSessionState::IdleInTransaction
+        );
+        assert_eq!(
+            map_postgres_session_state(Some("idle"), None),
+            DatabaseSessionState::Idle
+        );
+        assert_eq!(
+            map_postgres_session_state(Some("unknown"), None),
+            DatabaseSessionState::Unknown
+        );
     }
 
     #[test]

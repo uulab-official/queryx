@@ -37,6 +37,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 - Local persistence: the native desktop stores connection profiles and a versioned workspace snapshot in app-local data; the browser preview stores the same workspace schema in localStorage. Password values are kept in the native OS keychain and never enter either profile storage boundary.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 - Safety policy: read-only sessions are enforced in the native database connection and reflected through `DatabaseDriver.isReadOnly()`; disabling the React editor is only a secondary guard.
+- Operations policy: native PostgreSQL and MySQL/MariaDB sessions are inspected through the driver capability contract; the session explorer may cancel a running query, but never terminates a database connection or bypasses server permissions.
 
 ## Editor boundary
 

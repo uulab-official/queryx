@@ -5,7 +5,8 @@ export type DriverCapability =
   | "explain"
   | "cancel"
   | "streaming"
-  | "editing";
+  | "editing"
+  | "sessions";
 
 export interface QueryColumn {
   name: string;
@@ -20,6 +21,27 @@ export interface QueryResult {
   affectedRows: number;
   warnings: string[];
   error?: { code: string; message: string };
+}
+
+export type DatabaseSessionState =
+  | "active"
+  | "idle"
+  | "idleInTransaction"
+  | "waiting"
+  | "unknown";
+
+export interface DatabaseSession {
+  id: string;
+  user: string | null;
+  database: string | null;
+  clientAddress: string | null;
+  applicationName: string | null;
+  state: DatabaseSessionState;
+  query: string | null;
+  startedAt: string | null;
+  durationMs: number | null;
+  waitEvent: string | null;
+  canCancel: boolean;
 }
 
 export interface QueryChunk {
@@ -264,6 +286,8 @@ export interface DatabaseDriver {
   commitTransaction(): Promise<void>;
   rollbackTransaction(): Promise<void>;
   metadata(): Promise<DatabaseMetadata>;
+  sessions(): Promise<DatabaseSession[]>;
+  cancelSession(sessionId: string): Promise<void>;
   transaction<T>(work: () => Promise<T>): Promise<T>;
   disconnect(): Promise<void>;
   capabilities(): ReadonlySet<DriverCapability>;

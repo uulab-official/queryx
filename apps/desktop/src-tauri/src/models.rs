@@ -89,6 +89,33 @@ pub enum DriverCapability {
     Cancel,
     Streaming,
     Editing,
+    Sessions,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DatabaseSessionState {
+    Active,
+    Idle,
+    IdleInTransaction,
+    Waiting,
+    Unknown,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DatabaseSession {
+    pub id: String,
+    pub user: Option<String>,
+    pub database: Option<String>,
+    pub client_address: Option<String>,
+    pub application_name: Option<String>,
+    pub state: DatabaseSessionState,
+    pub query: Option<String>,
+    pub started_at: Option<String>,
+    pub duration_ms: Option<i64>,
+    pub wait_event: Option<String>,
+    pub can_cancel: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]

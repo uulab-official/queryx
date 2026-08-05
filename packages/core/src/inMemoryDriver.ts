@@ -1,5 +1,6 @@
 import type {
   DatabaseDriver,
+  DatabaseSession,
   DatabaseMetadata,
   DriverCapability,
   DriverConfig,
@@ -409,6 +410,16 @@ export class InMemoryDriver implements DatabaseDriver {
 
   async metadata(): Promise<DatabaseMetadata> {
     return metadata;
+  }
+
+  async sessions(): Promise<DatabaseSession[]> {
+    return [];
+  }
+
+  async cancelSession(_sessionId: string): Promise<void> {
+    throw new Error(
+      "session inspection is not available in the browser preview",
+    );
   }
 
   async beginTransaction(): Promise<void> {}

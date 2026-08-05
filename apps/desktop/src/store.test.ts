@@ -62,6 +62,21 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().transactionActive).toBe(false);
   });
 
+  it("keeps session inspection unavailable in the browser preview", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "preview",
+      database: "queryx_test",
+    });
+
+    expect(driver.capabilities().has("sessions")).toBe(false);
+    expect(await driver.sessions()).toEqual([]);
+    await expect(driver.cancelSession("preview-session")).rejects.toThrow(
+      "session inspection",
+    );
+  });
+
   it("keeps the original SQL in history when execution uses a page wrapper", async () => {
     const driver = new InMemoryDriver();
     await driver.connect({
