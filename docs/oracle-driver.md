@@ -14,11 +14,13 @@ QueryX includes an initial native Oracle driver for the connect → query → in
 - read-only session enforcement at the native driver boundary;
 - users, database name, tables, approximate row counts, views, and table/view columns from Oracle catalog views;
 - primary-key columns, ordered normal/function-based indexes, composite foreign keys, referential actions, deferrability, and FK dependency edges from `ALL_CONSTRAINTS`, `ALL_CONS_COLUMNS`, `ALL_INDEXES`, and related catalog views;
+- standalone and package procedure/function signatures from `ALL_PROCEDURES` and `ALL_ARGUMENTS`, including subprogram-stable snapshot IDs, overload-safe argument lists, `IN`/`OUT`/`IN OUT` directions, and return types;
+- table and view trigger inspection from `ALL_TRIGGERS`, including owner navigation, DML events, before/after/instead-of timing, row/statement orientation, enabled/disabled status, conditions, and catalog-rendered description/body text;
 - Oracle-safe identifier quoting, `VARCHAR2(4000)` browse casts, `ADD`/`MODIFY` DDL previews, and numeric boolean literals in SQL export.
 
 ## Deliberate limitations
 
-The first Oracle slice does not advertise cancellation, sessions, lock graphs, routines, triggers, or view/trigger dependency metadata until each has an authoritative catalog query and a contract test. SID/connect-descriptor profiles, wallet authentication, proxy authentication, fine-grained SSL mode semantics, and Oracle-specific `MERGE` conflict import modes are planned. CSV/JSON imports in `error` conflict mode are supported through transactional batches; `ignore` and `upsert` return an actionable error rather than emitting unreviewed Oracle-specific SQL.
+The first Oracle slice does not advertise cancellation, sessions, lock graphs, or view dependency metadata. Routine definitions are not reconstructed as executable `CREATE OR REPLACE` DDL yet; the Inspector exposes the authoritative signature and argument metadata. Trigger definitions combine Oracle's catalog description and body text, so they are read-only inspection text rather than a promise of byte-for-byte recreate SQL. SID/connect-descriptor profiles, wallet authentication, proxy authentication, fine-grained SSL mode semantics, and Oracle-specific `MERGE` conflict import modes are planned. CSV/JSON imports in `error` conflict mode are supported through transactional batches; `ignore` and `upsert` return an actionable error rather than emitting unreviewed Oracle-specific SQL.
 
 The profile currently models one service name, not a full Oracle Net connect descriptor. For RAC, wallets, TCPS aliases, or SID-based installations, use an SSH/local listener endpoint that exposes a service name or wait for the dedicated connection-profile work.
 
@@ -29,6 +31,8 @@ The repository checks the driver through Rust compilation, Clippy with warnings 
 ## Related
 
 - [Connections](connections.md)
+- [Routine Inspector](routine-inspector.md)
+- [Trigger Inspector](trigger-inspector.md)
 - [Driver API](driver-api.md)
 - [Database IDE Capability Matrix](parity-matrix.md)
 - [Roadmap](../ROADMAP.md)

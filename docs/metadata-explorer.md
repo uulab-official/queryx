@@ -1,6 +1,6 @@
 # Metadata Explorer
 
-QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, functions, procedures, aggregates, window functions, relation triggers, and direct object dependencies. SQLite and PostgreSQL currently provide the broadest metadata snapshot; the MySQL/MariaDB driver provides tables, views, columns, approximate row counts, indexes, foreign keys, routines, triggers, and relation dependencies; SQL Server provides tables/views/columns, PK/index metadata, composite foreign keys, stored procedures/functions, relation triggers, and FK/trigger-owner dependencies; Oracle provides tables/views/columns, PK/index metadata, composite foreign keys, and FK dependencies. Vendor-specific advanced catalog details remain capability-gated.
+QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, functions, procedures, aggregates, window functions, relation triggers, and direct object dependencies. SQLite and PostgreSQL currently provide the broadest metadata snapshot; the MySQL/MariaDB driver provides tables, views, columns, approximate row counts, indexes, foreign keys, routines, triggers, and relation dependencies; SQL Server provides tables/views/columns, PK/index metadata, composite foreign keys, stored procedures/functions, relation triggers, and FK/trigger-owner dependencies; Oracle provides tables/views/columns, PK/index metadata, composite foreign keys, standalone/package routines, table/view triggers, and FK/trigger-owner dependencies. Vendor-specific advanced catalog details remain capability-gated.
 
 ## Browse relations
 
@@ -71,6 +71,12 @@ A separate batched `pg_trigger` query loads non-internal relation triggers, acti
 PostgreSQL adds direct view-to-relation edges from rewrite dependencies and trigger-to-function edges from `tgfoid`. Routine OIDs keep trigger function navigation overload safe.
 
 A batched `pg_event_trigger` query loads database-scoped event triggers and their execution functions. PostgreSQL-provided quoting is used for the catalog-reconstructed read-only definition. See [Event Trigger Inspector](event-trigger-inspector.md).
+
+### Oracle
+
+QueryX reads `ALL_PROCEDURES` first so no-argument procedures remain visible, then joins `ALL_ARGUMENTS` locally by owner, object name, and subprogram ID. Package methods are displayed as `package.method`; argument position `0` becomes the function return type, while `IN`, `OUT`, and `IN OUT` directions are preserved in the signature. The routine snapshot ID includes Oracle's object and subprogram identifiers, so overloads do not collapse by name.
+
+`ALL_TRIGGERS` supplies table/view owner navigation, DML events, timing, row/statement orientation, status, conditions, and catalog description/body text. Oracle trigger-owner edges are emitted into the same dependency graph. QueryX does not infer view dependencies from Oracle SQL text and does not synthesize routine or trigger recreate DDL.
 
 Expression index entries use the database-rendered expression when no physical column name exists. Partial index predicates and complete definitions remain available in metadata even though the alpha Inspector currently presents only the compact summary.
 

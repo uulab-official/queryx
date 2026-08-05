@@ -12,8 +12,9 @@ use crate::{
     models::{
         ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
         DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
-        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, TableMetadata,
-        ViewMetadata,
+        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind,
+        RoutineMetadata, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
+        TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -571,6 +572,151 @@ impl DatabaseDriver for OracleDriver {
                 })
             })
             .collect();
+        let routine_rows = self
+            .metadata_query(
+                "SELECT owner AS schema_name, object_name, procedure_name,
+                        object_id, subprogram_id, object_type, overload
+                 FROM all_procedures
+                 WHERE object_type IN ('FUNCTION', 'PROCEDURE', 'PACKAGE')
+                   AND (procedure_name IS NOT NULL OR object_type IN ('FUNCTION', 'PROCEDURE'))
+                 ORDER BY owner, object_name, procedure_name, subprogram_id",
+            )
+            .await?
+            .rows;
+        let argument_rows = self
+            .metadata_query(
+                "SELECT owner AS schema_name, object_name, package_name, subprogram_id,
+                        argument_name, position, sequence, data_type, in_out, type_name
+                 FROM all_arguments
+                 WHERE data_level = 0
+                 ORDER BY owner, object_name, package_name, subprogram_id, sequence",
+            )
+            .await?
+            .rows;
+        let mut routine_map: BTreeMap<String, RoutineMetadata> = BTreeMap::new();
+        let mut routine_by_argument_key: BTreeMap<(String, String, u64), String> = BTreeMap::new();
+        for row in &routine_rows {
+            let (Some(schema), Some(object_name)) = (
+                row_string(row, "schema_name"),
+                row_string(row, "object_name"),
+            ) else {
+                continue;
+            };
+            let object_id = row_u64(row, "object_id");
+            let subprogram_id = row_u64(row, "subprogram_id");
+            let procedure_name = row_string(row, "procedure_name");
+            let name = procedure_name
+                .as_ref()
+                .map(|procedure| format!("{object_name}.{procedure}"))
+                .unwrap_or_else(|| object_name.clone());
+            let id = format!("oracle:routine:{schema}:{object_id}:{subprogram_id}");
+            let object_type = row_string(row, "object_type").unwrap_or_default();
+            routine_map
+                .entry(id.clone())
+                .or_insert_with(|| RoutineMetadata {
+                    id: id.clone(),
+                    schema: schema.clone(),
+                    name,
+                    kind: oracle_routine_kind(&object_type),
+                    identity_arguments: String::new(),
+                    return_type: None,
+                    language: "PL/SQL".into(),
+                    definition: None,
+                    aggregate: None,
+                });
+            routine_by_argument_key.insert((schema, object_name, subprogram_id), id);
+        }
+        for row in &argument_rows {
+            let (Some(schema), Some(object_name)) = (
+                row_string(row, "schema_name"),
+                row_string(row, "object_name"),
+            ) else {
+                continue;
+            };
+            let key = (schema, object_name, row_u64(row, "subprogram_id"));
+            let Some(routine_id) = routine_by_argument_key.get(&key) else {
+                continue;
+            };
+            let Some(routine) = routine_map.get_mut(routine_id) else {
+                continue;
+            };
+            let data_type = row_string(row, "data_type")
+                .or_else(|| row_string(row, "type_name"))
+                .unwrap_or_else(|| "UNKNOWN".into());
+            let position = row_u64(row, "position");
+            if position == 0 {
+                routine.kind = RoutineKind::Function;
+                routine.return_type = Some(data_type);
+                continue;
+            }
+            let argument_name =
+                row_string(row, "argument_name").unwrap_or_else(|| format!("arg{position}"));
+            let direction = row_string(row, "in_out").unwrap_or_else(|| "IN".into());
+            let argument = format!("{argument_name} {direction} {data_type}");
+            if !routine.identity_arguments.is_empty() {
+                routine.identity_arguments.push_str(", ");
+            }
+            routine.identity_arguments.push_str(&argument);
+        }
+        let routines = routine_map.into_values().collect::<Vec<_>>();
+        let trigger_rows = self
+            .metadata_query(
+                "SELECT owner AS schema_name, trigger_name, table_owner, table_name,
+                        base_object_type, trigger_type, triggering_event, when_clause,
+                        status, description, trigger_body
+                 FROM all_triggers
+                 WHERE base_object_type IN ('TABLE', 'VIEW')
+                 ORDER BY owner, trigger_name",
+            )
+            .await?
+            .rows;
+        let mut trigger_map: BTreeMap<String, TriggerMetadata> = BTreeMap::new();
+        for row in &trigger_rows {
+            let (Some(schema), Some(name), Some(relation_name)) = (
+                row_string(row, "schema_name"),
+                row_string(row, "trigger_name"),
+                row_string(row, "table_name"),
+            ) else {
+                continue;
+            };
+            let id = format!("oracle:trigger:{schema}:{name}");
+            let relation_schema = row_string(row, "table_owner").unwrap_or_else(|| schema.clone());
+            let relation_kind = if row_string(row, "base_object_type").as_deref() == Some("VIEW") {
+                TriggerRelationKind::View
+            } else {
+                TriggerRelationKind::Table
+            };
+            let trigger_type = row_string(row, "trigger_type").unwrap_or_default();
+            let entry = trigger_map
+                .entry(id.clone())
+                .or_insert_with(|| TriggerMetadata {
+                    id,
+                    schema: schema.clone(),
+                    name,
+                    relation: TriggerRelationRef {
+                        schema: relation_schema,
+                        name: relation_name,
+                        kind: relation_kind,
+                    },
+                    timing: oracle_trigger_timing(&trigger_type),
+                    events: Vec::new(),
+                    update_columns: None,
+                    orientation: oracle_trigger_orientation(&trigger_type),
+                    status: oracle_trigger_status(row_string(row, "status").as_deref()),
+                    condition: row_string(row, "when_clause"),
+                    definition: oracle_trigger_definition(row),
+                });
+            for event in oracle_trigger_events(
+                row_string(row, "triggering_event")
+                    .as_deref()
+                    .unwrap_or_default(),
+            ) {
+                if !entry.events.contains(&event) {
+                    entry.events.push(event);
+                }
+            }
+        }
+        let triggers = trigger_map.into_values().collect::<Vec<_>>();
         let mut dependencies = Vec::new();
         for table in &tables {
             for foreign_key in &table.foreign_keys {
@@ -590,14 +736,35 @@ impl DatabaseDriver for OracleDriver {
                 });
             }
         }
+        for trigger in &triggers {
+            dependencies.push(DependencyMetadata {
+                id: format!("oracle:dependency:trigger-owner:{}", trigger.id),
+                kind: DependencyKind::TriggerOwner,
+                dependent: DatabaseObjectRef {
+                    kind: DatabaseObjectKind::Trigger,
+                    id: Some(trigger.id.clone()),
+                    schema: Some(trigger.schema.clone()),
+                    name: trigger.name.clone(),
+                    identity_arguments: None,
+                },
+                referenced: relation_object_ref(
+                    match trigger.relation.kind {
+                        TriggerRelationKind::Table => DatabaseObjectKind::Table,
+                        TriggerRelationKind::View => DatabaseObjectKind::View,
+                    },
+                    &trigger.relation.schema,
+                    &trigger.relation.name,
+                ),
+            });
+        }
         dependencies.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(DatabaseMetadata {
             databases,
             schemas,
             tables,
             views,
-            routines: Vec::new(),
-            triggers: Vec::new(),
+            routines,
+            triggers,
             event_triggers: Vec::new(),
             dependencies,
         })
@@ -719,6 +886,68 @@ fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> Da
     }
 }
 
+fn oracle_routine_kind(object_type: &str) -> RoutineKind {
+    if object_type.eq_ignore_ascii_case("FUNCTION") {
+        RoutineKind::Function
+    } else {
+        RoutineKind::Procedure
+    }
+}
+
+fn oracle_trigger_timing(trigger_type: &str) -> TriggerTiming {
+    let normalized = trigger_type.to_ascii_uppercase();
+    if normalized.contains("INSTEAD OF") {
+        TriggerTiming::InsteadOf
+    } else if normalized.contains("BEFORE") {
+        TriggerTiming::Before
+    } else if normalized.contains("AFTER") {
+        TriggerTiming::After
+    } else {
+        TriggerTiming::Unknown
+    }
+}
+
+fn oracle_trigger_orientation(trigger_type: &str) -> TriggerOrientation {
+    if trigger_type.to_ascii_uppercase().contains("EACH ROW") {
+        TriggerOrientation::Row
+    } else {
+        TriggerOrientation::Statement
+    }
+}
+
+fn oracle_trigger_events(triggering_event: &str) -> Vec<TriggerEvent> {
+    let normalized = triggering_event.to_ascii_uppercase();
+    [
+        ("INSERT", TriggerEvent::Insert),
+        ("UPDATE", TriggerEvent::Update),
+        ("DELETE", TriggerEvent::Delete),
+        ("TRUNCATE", TriggerEvent::Truncate),
+    ]
+    .into_iter()
+    .filter_map(|(name, event)| normalized.contains(name).then_some(event))
+    .collect()
+}
+
+fn oracle_trigger_status(status: Option<&str>) -> TriggerStatus {
+    if status.is_some_and(|value| value.eq_ignore_ascii_case("DISABLED")) {
+        TriggerStatus::Disabled
+    } else {
+        TriggerStatus::Enabled
+    }
+}
+
+fn oracle_trigger_definition(row: &oracle_rs::Row) -> Option<String> {
+    match (
+        row_string(row, "description"),
+        row_string(row, "trigger_body"),
+    ) {
+        (Some(description), Some(body)) => Some(format!("{description}\n{body}")),
+        (Some(description), None) => Some(description),
+        (None, Some(body)) => Some(body),
+        (None, None) => None,
+    }
+}
+
 fn returns_rows(sql: &str) -> bool {
     matches!(
         sql.split_whitespace()
@@ -751,7 +980,13 @@ fn is_read_only_statement(sql: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_read_only_statement, returns_rows};
+    use super::{
+        is_read_only_statement, oracle_routine_kind, oracle_trigger_events,
+        oracle_trigger_orientation, oracle_trigger_status, oracle_trigger_timing, returns_rows,
+    };
+    use crate::models::{
+        RoutineKind, TriggerEvent, TriggerOrientation, TriggerStatus, TriggerTiming,
+    };
 
     #[test]
     fn classifies_oracle_queries() {
@@ -771,6 +1006,49 @@ mod tests {
         assert!(!is_read_only_statement(
             "WITH rows AS (SELECT 1 FROM dual) UPDATE audit_log SET id = 1"
         ));
+    }
+
+    #[test]
+    fn maps_oracle_routine_catalog_kinds() {
+        assert_eq!(oracle_routine_kind("FUNCTION"), RoutineKind::Function);
+        assert_eq!(oracle_routine_kind("procedure"), RoutineKind::Procedure);
+        assert_eq!(oracle_routine_kind("PACKAGE"), RoutineKind::Procedure);
+    }
+
+    #[test]
+    fn maps_oracle_trigger_catalog_fields() {
+        assert_eq!(
+            oracle_trigger_timing("BEFORE EACH ROW"),
+            TriggerTiming::Before
+        );
+        assert_eq!(
+            oracle_trigger_timing("INSTEAD OF"),
+            TriggerTiming::InsteadOf
+        );
+        assert_eq!(
+            oracle_trigger_orientation("AFTER EACH ROW"),
+            TriggerOrientation::Row
+        );
+        assert_eq!(
+            oracle_trigger_orientation("AFTER STATEMENT"),
+            TriggerOrientation::Statement
+        );
+        assert_eq!(
+            oracle_trigger_events("INSERT OR UPDATE OR DELETE"),
+            [
+                TriggerEvent::Insert,
+                TriggerEvent::Update,
+                TriggerEvent::Delete
+            ]
+        );
+        assert_eq!(
+            oracle_trigger_status(Some("DISABLED")),
+            TriggerStatus::Disabled
+        );
+        assert_eq!(
+            oracle_trigger_status(Some("ENABLED")),
+            TriggerStatus::Enabled
+        );
     }
 
     #[tokio::test]

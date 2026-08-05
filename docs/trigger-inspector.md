@@ -2,7 +2,7 @@
 
 ## What it does
 
-QueryX lists relation triggers under each schema's **Triggers** group for PostgreSQL, SQLite, and SQL Server. Selecting a trigger shows its owner, timing, events, row/statement orientation, activation mode, optional condition, and database-rendered DDL without executing SQL.
+QueryX lists relation triggers under each schema's **Triggers** group for PostgreSQL, SQLite, SQL Server, and Oracle. Selecting a trigger shows its owner, timing, events, row/statement orientation, activation mode, optional condition, and database-rendered or catalog-rendered definition text without executing SQL.
 
 PostgreSQL database-wide event triggers are a distinct object type under the connection root. See [Event Trigger Inspector](event-trigger-inspector.md).
 
@@ -22,6 +22,8 @@ SQLite reads trigger ownership and SQL from `main.sqlite_master`. SQLite has no 
 
 SQL Server reads DML triggers from `sys.triggers`, `sys.trigger_events`, and `sys.sql_modules`. SQL Server triggers are statement-oriented; `AFTER` and `INSTEAD OF` timing, INSERT/UPDATE/DELETE events, enabled/disabled status, and owner navigation are preserved. `UPDATE OF` column lists and trigger-body dependency edges are not inferred.
 
+Oracle reads table and view triggers from `ALL_TRIGGERS`. It preserves `TABLE_OWNER`/`TABLE_NAME`, `BASE_OBJECT_TYPE`, DML events, `BEFORE`/`AFTER`/`INSTEAD OF` timing, `EACH ROW` orientation, `ENABLED`/`DISABLED` status, `WHEN_CLAUSE`, and the catalog's description/body text. Oracle's body text is not presented as guaranteed complete recreate DDL, and column-specific `UPDATE OF` metadata is not loaded yet.
+
 ## Safety and privacy
 
 Trigger definitions can contain business logic and literals. They travel only between the connected database, native driver, and local UI. QueryX treats definitions as untrusted read-only text, does not log their bodies, and never executes them automatically.
@@ -38,7 +40,7 @@ Database-rendered DDL is not guaranteed to preserve the original comments or for
 - **Owner link unavailable:** the relation is outside the loaded catalog or unsupported relation kind.
 - **Copy fails:** grant clipboard permission and retry; the DDL remains selectable.
 - **The trigger change is not visible:** use **Refresh metadata** after the transaction succeeds or after the object was changed elsewhere.
-- **Oracle triggers are missing:** Oracle trigger metadata remains a separate roadmap slice.
+- **Oracle trigger text is not executable DDL:** the Inspector combines `DESCRIPTION` and `TRIGGER_BODY` for safe review. Review or reconstruct the full `CREATE TRIGGER` statement before applying a change.
 
 ## Related
 
