@@ -22,7 +22,7 @@ pnpm --filter @queryx/desktop tauri:dev
 
 ## A query will not cancel
 
-PostgreSQL advertises native cancellation. SQLite currently does not, so its Run control remains non-cancellable once execution begins. For PostgreSQL, Escape or the Cancel button requests server-side cancellation; network/server timing can delay acknowledgement.
+PostgreSQL and MySQL/MariaDB advertise native cancellation. SQLite currently does not, so its Run control remains non-cancellable once execution begins. For PostgreSQL, Escape or the Cancel button requests `pg_cancel_backend`; for MySQL/MariaDB it requests `KILL QUERY` through a separate local control connection. Network/server permissions and timing can delay acknowledgement or return a cancellation error.
 
 ## Results are slow or memory usage grows
 

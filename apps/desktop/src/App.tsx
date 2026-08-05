@@ -1080,7 +1080,9 @@ function App() {
       return;
     }
     if (!driver.capabilities().has("streaming")) {
-      notify("Streaming is currently available for PostgreSQL connections");
+      notify(
+        "Streaming is currently available for PostgreSQL and MySQL/MariaDB connections",
+      );
       return;
     }
     const executableSql = sqlOverride?.trim() || sql;
@@ -2293,7 +2295,7 @@ function App() {
     {
       id: "stream",
       label: "Stream query results",
-      hint: "PostgreSQL · chunked",
+      hint: "PostgreSQL/MySQL · chunked",
       disabled: isRunning || !driver.capabilities().has("streaming"),
       execute: () => handleStream(),
     },
@@ -2993,7 +2995,7 @@ function App() {
                   title={
                     driver.capabilities().has("streaming")
                       ? "Stream a single SELECT/WITH result in chunks"
-                      : "Chunked streaming is currently available for PostgreSQL connections"
+                      : "Chunked streaming is currently available for PostgreSQL and MySQL/MariaDB connections"
                   }
                 >
                   Stream
