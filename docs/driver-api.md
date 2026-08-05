@@ -112,7 +112,7 @@ DDL Inspector actions are intentionally layered on this contract: copying is ren
 
 Cancellation and operations inspection are capability-driven. PostgreSQL and MySQL/MariaDB report `cancel`, `streaming`, `sessions`, and `locks`; SQL Server reports `streaming`, `sessions`, and `locks` plus transaction/edit capabilities, while safe query-only cancellation remains planned; Oracle reports `streaming` and transaction/edit capabilities while cancellation, sessions, and locks remain planned; SQLite reports `streaming` but intentionally returns `CancellationUnsupported` and does not expose the Cancel or operations controls. All native drivers stream chunks in bounded 256-row batches. Repeated cancellation while a cancellable query is active is idempotent, while cancellation after completion returns `false`.
 
-Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, documented in [mysql-driver.md](mysql-driver.md).
+Live PostgreSQL contract coverage is enabled with the `QUERYX_TEST_POSTGRES_*` environment variables documented in [postgres-driver.md](postgres-driver.md). The optional MySQL/MariaDB health and read-only contract uses `QUERYX_TEST_MYSQL_*`, and the Oracle health/metadata/read-only contract uses `QUERYX_TEST_ORACLE_SERVICE` plus optional `QUERYX_TEST_ORACLE_HOST`, `QUERYX_TEST_ORACLE_PORT`, `QUERYX_TEST_ORACLE_USER`, and `QUERYX_TEST_ORACLE_PASSWORD` variables; both are documented in their driver guides.
 
 ## Metadata contract
 

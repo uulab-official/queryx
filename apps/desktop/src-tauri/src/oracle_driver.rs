@@ -10,8 +10,10 @@ use crate::{
     driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
-        ColumnMetadata, DatabaseMetadata, DriverCapability, DriverKind, QueryChunk, QueryColumn,
-        QueryResult, TableMetadata, ViewMetadata,
+        ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
+        DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
+        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, TableMetadata,
+        ViewMetadata,
     },
 };
 
@@ -348,8 +350,16 @@ impl DatabaseDriver for OracleDriver {
         let column_rows = self
             .metadata_query(
                 "SELECT owner AS schema_name, table_name AS relation_name, column_name,
-                        data_type, nullable, column_id
-                 FROM all_tab_columns ORDER BY owner, table_name, column_id",
+                        data_type, nullable, column_id,
+                        CASE WHEN EXISTS (
+                            SELECT 1 FROM all_cons_columns pkc
+                            JOIN all_constraints pk ON pk.owner = pkc.owner
+                              AND pk.constraint_name = pkc.constraint_name
+                              AND pk.constraint_type = 'P'
+                            WHERE pkc.owner = c.owner AND pkc.table_name = c.table_name
+                              AND pkc.column_name = c.column_name
+                        ) THEN 'Y' ELSE 'N' END AS is_primary_key
+                 FROM all_tab_columns c ORDER BY owner, table_name, column_id",
             )
             .await?;
         let mut columns: BTreeMap<(String, String), Vec<ColumnMetadata>> = BTreeMap::new();
@@ -367,22 +377,150 @@ impl DatabaseDriver for OracleDriver {
                     name: row_string(row, "column_name").unwrap_or_default(),
                     r#type: row_string(row, "data_type").unwrap_or_else(|| "UNKNOWN".into()),
                     nullable: row_string(row, "nullable").is_some_and(|value| value == "Y"),
-                    primary_key: false,
+                    primary_key: row_string(row, "is_primary_key")
+                        .is_some_and(|value| value == "Y"),
                 });
         }
-        let tables = table_rows
+        let index_rows = self
+            .metadata_query(
+                "SELECT i.table_owner AS schema_name, i.table_name, i.index_name,
+                        i.uniqueness, i.index_type, ic.column_position,
+                        COALESCE(ic.column_name, ie.column_expression) AS column_name,
+                        CASE WHEN EXISTS (
+                            SELECT 1 FROM all_constraints pc
+                            WHERE pc.owner = i.table_owner AND pc.table_name = i.table_name
+                              AND pc.constraint_type = 'P' AND pc.index_name = i.index_name
+                        ) THEN 'Y' ELSE 'N' END AS is_primary
+                 FROM all_indexes i
+                 JOIN all_ind_columns ic ON ic.index_owner = i.owner
+                    AND ic.index_name = i.index_name AND ic.table_owner = i.table_owner
+                    AND ic.table_name = i.table_name
+                 LEFT JOIN all_ind_expressions ie ON ie.index_owner = ic.index_owner
+                    AND ie.index_name = ic.index_name AND ie.table_owner = ic.table_owner
+                    AND ie.table_name = ic.table_name AND ie.column_position = ic.column_position
+                 ORDER BY i.table_owner, i.table_name, i.index_name, ic.column_position",
+            )
+            .await?
+            .rows;
+        let mut indexes: BTreeMap<(String, String, String), IndexMetadata> = BTreeMap::new();
+        for row in &index_rows {
+            let (Some(schema), Some(table), Some(name)) = (
+                row_string(row, "schema_name"),
+                row_string(row, "table_name"),
+                row_string(row, "index_name"),
+            ) else {
+                continue;
+            };
+            let entry = indexes
+                .entry((schema, table, name.clone()))
+                .or_insert_with(|| IndexMetadata {
+                    name,
+                    columns: Vec::new(),
+                    unique: row_string(row, "uniqueness").is_some_and(|value| value == "UNIQUE"),
+                    primary: row_string(row, "is_primary").is_some_and(|value| value == "Y"),
+                    r#type: row_string(row, "index_type").unwrap_or_else(|| "UNKNOWN".into()),
+                    definition: None,
+                });
+            if let Some(column) = row_string(row, "column_name") {
+                entry.columns.push(column);
+            }
+        }
+        let foreign_key_rows = self
+            .metadata_query(
+                "SELECT c.owner AS schema_name, c.table_name, c.constraint_name,
+                        cc.position AS ordinal, cc.column_name AS source_column,
+                        rc.owner AS referenced_schema, rc.table_name AS referenced_table,
+                        rcc.column_name AS referenced_column, c.delete_rule,
+                        c.deferrable, c.deferred
+                 FROM all_constraints c
+                 JOIN all_cons_columns cc ON cc.owner = c.owner
+                    AND cc.constraint_name = c.constraint_name AND cc.table_name = c.table_name
+                 JOIN all_constraints rc ON rc.owner = c.r_owner
+                    AND rc.constraint_name = c.r_constraint_name
+                    AND rc.constraint_type IN ('P', 'U')
+                 JOIN all_cons_columns rcc ON rcc.owner = rc.owner
+                    AND rcc.constraint_name = rc.constraint_name AND rcc.table_name = rc.table_name
+                    AND rcc.position = cc.position
+                 WHERE c.constraint_type = 'R'
+                 ORDER BY c.owner, c.table_name, c.constraint_name, cc.position",
+            )
+            .await?
+            .rows;
+        let mut foreign_keys: BTreeMap<(String, String, String), ForeignKeyMetadata> =
+            BTreeMap::new();
+        for row in &foreign_key_rows {
+            let (
+                Some(schema),
+                Some(table),
+                Some(constraint_name),
+                Some(referenced_schema),
+                Some(referenced_table),
+            ) = (
+                row_string(row, "schema_name"),
+                row_string(row, "table_name"),
+                row_string(row, "constraint_name"),
+                row_string(row, "referenced_schema"),
+                row_string(row, "referenced_table"),
+            )
+            else {
+                continue;
+            };
+            let foreign_key_id = format!("oracle:foreign-key:{schema}:{constraint_name}");
+            let entry = foreign_keys
+                .entry((schema, table, constraint_name.clone()))
+                .or_insert_with(|| ForeignKeyMetadata {
+                    id: foreign_key_id,
+                    name: Some(constraint_name),
+                    columns: Vec::new(),
+                    referenced_relation: RelationRef {
+                        schema: referenced_schema,
+                        name: referenced_table,
+                    },
+                    on_update: "NO ACTION".into(),
+                    on_delete: row_string(row, "delete_rule").unwrap_or_else(|| "NO ACTION".into()),
+                    r#match: None,
+                    deferrable: row_string(row, "deferrable").map(|value| value == "DEFERRABLE"),
+                    initially_deferred: row_string(row, "deferred")
+                        .map(|value| value == "DEFERRED"),
+                });
+            if let (Some(source_column), Some(referenced_column)) = (
+                row_string(row, "source_column"),
+                row_string(row, "referenced_column"),
+            ) {
+                entry.columns.push(ForeignKeyColumnPair {
+                    ordinal: row_u64(row, "ordinal") as u32,
+                    source_column,
+                    referenced_column: Some(referenced_column),
+                });
+            }
+        }
+        let tables: Vec<TableMetadata> = table_rows
             .rows
             .iter()
             .filter_map(|row| {
                 let schema = row_string(row, "schema_name")?;
                 let name = row_string(row, "table_name")?;
+                let table_indexes = indexes
+                    .iter()
+                    .filter(|((index_schema, index_table, _), _)| {
+                        index_schema == &schema && index_table == &name
+                    })
+                    .map(|(_, index)| index.clone())
+                    .collect();
+                let table_foreign_keys = foreign_keys
+                    .iter()
+                    .filter(|((fk_schema, fk_table, _), _)| {
+                        fk_schema == &schema && fk_table == &name
+                    })
+                    .map(|(_, foreign_key)| foreign_key.clone())
+                    .collect();
                 Some(TableMetadata {
                     schema: schema.clone(),
                     name: name.clone(),
                     row_count: row_u64(row, "row_count"),
                     columns: columns.remove(&(schema, name)).unwrap_or_default(),
-                    indexes: Vec::new(),
-                    foreign_keys: Vec::new(),
+                    indexes: table_indexes,
+                    foreign_keys: table_foreign_keys,
                 })
             })
             .collect();
@@ -433,6 +571,26 @@ impl DatabaseDriver for OracleDriver {
                 })
             })
             .collect();
+        let mut dependencies = Vec::new();
+        for table in &tables {
+            for foreign_key in &table.foreign_keys {
+                dependencies.push(DependencyMetadata {
+                    id: format!("oracle:dependency:foreign-key:{}", foreign_key.id),
+                    kind: DependencyKind::ForeignKey,
+                    dependent: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &table.schema,
+                        &table.name,
+                    ),
+                    referenced: relation_object_ref(
+                        DatabaseObjectKind::Table,
+                        &foreign_key.referenced_relation.schema,
+                        &foreign_key.referenced_relation.name,
+                    ),
+                });
+            }
+        }
+        dependencies.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(DatabaseMetadata {
             databases,
             schemas,
@@ -441,7 +599,7 @@ impl DatabaseDriver for OracleDriver {
             routines: Vec::new(),
             triggers: Vec::new(),
             event_triggers: Vec::new(),
-            dependencies: Vec::new(),
+            dependencies,
         })
     }
 
@@ -551,6 +709,16 @@ fn row_u64(row: &oracle_rs::Row, name: &str) -> u64 {
         .unwrap_or_default()
 }
 
+fn relation_object_ref(kind: DatabaseObjectKind, schema: &str, name: &str) -> DatabaseObjectRef {
+    DatabaseObjectRef {
+        kind,
+        id: None,
+        schema: Some(schema.to_string()),
+        name: name.to_string(),
+        identity_arguments: None,
+    }
+}
+
 fn returns_rows(sql: &str) -> bool {
     matches!(
         sql.split_whitespace()
@@ -603,5 +771,56 @@ mod tests {
         assert!(!is_read_only_statement(
             "WITH rows AS (SELECT 1 FROM dual) UPDATE audit_log SET id = 1"
         ));
+    }
+
+    #[tokio::test]
+    async fn oracle_contract_when_test_database_is_available() {
+        let Some(service) = std::env::var_os("QUERYX_TEST_ORACLE_SERVICE") else {
+            return;
+        };
+        let config = crate::models::ConnectionConfig {
+            kind: crate::models::DriverKind::Oracle,
+            name: "oracle-contract".into(),
+            database: service.to_string_lossy().into_owned(),
+            read_only: true,
+            host: std::env::var("QUERYX_TEST_ORACLE_HOST").ok(),
+            port: std::env::var("QUERYX_TEST_ORACLE_PORT")
+                .ok()
+                .and_then(|value| value.parse().ok()),
+            username: std::env::var("QUERYX_TEST_ORACLE_USER").ok(),
+            password: std::env::var("QUERYX_TEST_ORACLE_PASSWORD").ok(),
+            ssl_mode: Some(crate::models::SslMode::Disable),
+            ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
+            ssh_tunnel: None,
+        };
+        let driver = super::OracleDriver::connect(&config)
+            .await
+            .expect("connect to configured Oracle contract service");
+        let result = crate::driver::DatabaseDriver::execute(
+            &driver,
+            uuid::Uuid::new_v4(),
+            "SELECT 1 AS health FROM dual",
+            crate::driver::ExecutionMode::Direct,
+        )
+        .await
+        .expect("read-only Oracle query");
+        assert_eq!(result.columns[0].name, "HEALTH");
+        let metadata = crate::driver::DatabaseDriver::metadata(&driver)
+            .await
+            .expect("Oracle metadata");
+        assert!(!metadata.schemas.is_empty());
+        assert!(crate::driver::DatabaseDriver::execute(
+            &driver,
+            uuid::Uuid::new_v4(),
+            "CREATE TABLE queryx_contract (id NUMBER)",
+            crate::driver::ExecutionMode::Direct,
+        )
+        .await
+        .is_err());
+        crate::driver::DatabaseDriver::disconnect(&driver)
+            .await
+            .expect("disconnect Oracle");
     }
 }
