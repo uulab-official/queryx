@@ -108,6 +108,20 @@ export type {
   SchemaDiffChange,
   SchemaDiffKind,
 } from "./schemaDiff";
+export {
+  buildDataCountSql,
+  buildDataSelectSql,
+  buildDataSyncSql,
+  buildDataSyncStatements,
+  compareTableData,
+  dataCompareMaxRows,
+  findTable,
+} from "./dataCompare";
+export type {
+  DataCompareChange,
+  DataCompareChangeKind,
+  DataCompareResult,
+} from "./dataCompare";
 export { buildQueryPagePlan } from "./queryPaging";
 export type { QueryPagePlan } from "./queryPaging";
 export { buildTableBrowsePlan } from "./tableBrowse";

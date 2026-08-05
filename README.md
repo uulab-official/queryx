@@ -24,7 +24,8 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 | SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
 | Results | Dynamic table/JSON view, virtualized loaded results, copy/export, 100-row server paging, table-browser filter/sort, all native drivers chunked streaming | Spill-to-disk, arbitrary-query server filtering |
 | Safety | Destructive-query warning, native read-only sessions, explicit transaction sessions, transaction execution path | Parser-backed analysis, affected-row estimate |
-| Metadata | Schemas, relations, keys, indexes, FK navigation, functions/procedures/aggregates/window functions, relation/event triggers, direct Depends on / Used by navigation, and safe DDL-to-SQL handoff | Schema-aware DDL diff and migration history |
+| Metadata | Schemas, relations, keys, indexes, FK navigation, functions/procedures/aggregates/window functions, relation/event triggers, direct Depends on / Used by navigation, and safe DDL-to-SQL handoff | Object-specific DDL breadth and vendor parity |
+| Data workflow | Table browsing/editing, CSV/JSON/SQL export/import, schema compare, and bounded same-driver Data Compare with transactional synchronization | Multi-million-row, LOB-aware, multi-table data compare |
 | Operations | Native PostgreSQL/MySQL/MariaDB/SQL Server session explorer, point-in-time lock graph, threshold-based long-running query diagnostics, and redacted local session audit history; safe query cancellation remains PostgreSQL/MySQL-only | Server wait statistics and broader vendor cancellation |
 | Runtime | Tauri 2, React, Rust, SQLx, signed updater integration, GitHub Release workflow | Platform notarization/codesigning and production key operations |
 

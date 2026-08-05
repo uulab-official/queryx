@@ -24,6 +24,10 @@ import {
   buildCreateTablePlan,
   buildCreateIndexPlan,
   buildCreateViewPlan,
+  buildDataCountSql,
+  buildDataSelectSql,
+  buildDataSyncSql,
+  buildDataSyncStatements,
   buildEditTableColumnsPlan,
   buildDropIndexPlan,
   buildDropForeignKeyPlan,
@@ -42,7 +46,10 @@ import {
   buildTableBrowsePlan,
   buildTableRowInsertPlan,
   compareSchemaSnapshots,
+  compareTableData,
+  dataCompareMaxRows,
   defaultCsvImportMappings,
+  findTable,
   formatSql,
   findLongRunningSessions,
   inferImportType,
@@ -64,6 +71,7 @@ import type {
   AlterViewPlan,
   CsvImportMapping,
   CsvImportPlan,
+  DataCompareResult,
   CreateTableColumnInput,
   CreateTablePlan,
   CreateIndexInput,
@@ -98,6 +106,7 @@ import type {
   EventTriggerMetadata,
   DatabaseMetadata,
   RelationRef,
+  QueryResult,
   RoutineMetadata,
   SessionAuditEntry,
   TableMetadata,
@@ -112,6 +121,7 @@ import {
   saveConnectionPassword,
 } from "./connectionSecrets";
 import { getVirtualRowWindow } from "./resultGrid";
+import { createRuntimeDriver } from "./nativeDriver";
 import {
   useQueryStore,
   sessionAuditRetentionOptions,
@@ -163,6 +173,15 @@ function driverShortName(kind: DriverKind): string {
   if (kind === "sqlserver") return "MS";
   if (kind === "oracle") return "OR";
   return "PG";
+}
+
+function scalarCount(result: QueryResult): number {
+  const value = Object.values(result.rows[0] ?? {})[0];
+  const count = typeof value === "number" ? value : Number(value);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error("Database returned an invalid row count");
+  }
+  return count;
 }
 
 function resultRowKey(row: Record<string, unknown>): string {
@@ -628,6 +647,15 @@ function App() {
     useState("Current connection");
   const [schemaDiffOpen, setSchemaDiffOpen] = useState(false);
   const [schemaTargetOpen, setSchemaTargetOpen] = useState(false);
+  const [dataCompareOpen, setDataCompareOpen] = useState(false);
+  const [dataCompareTargetOpen, setDataCompareTargetOpen] = useState(false);
+  const [dataCompare, setDataCompare] = useState<DataCompareResult | null>(
+    null,
+  );
+  const [dataCompareTarget, setDataCompareTarget] = useState<{
+    config: DriverConfig;
+    label: string;
+  } | null>(null);
   const [migrationHistoryOpen, setMigrationHistoryOpen] = useState(false);
   const [erdOpen, setErdOpen] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
@@ -1169,6 +1197,164 @@ function App() {
       return null;
     } catch (error) {
       return error instanceof Error ? error.message : String(error);
+    }
+  };
+  const openDataCompare = () => {
+    if (!currentTable) {
+      notify("Select a table before comparing table data");
+      return;
+    }
+    setDataCompareTargetOpen(true);
+  };
+  const compareSavedDataConnection = async (
+    config: DriverConfig,
+    label: string,
+  ): Promise<string | null> => {
+    if (!currentTable) return "Select a table before comparing table data";
+    if (config.kind !== driverKind) {
+      return `Data Compare requires the same driver (${driverDisplayName(driverKind)})`;
+    }
+    const targetDriver = createRuntimeDriver(config.kind);
+    try {
+      const sourceCount = scalarCount(
+        await driver.execute(buildDataCountSql(currentTable, driverKind)),
+      );
+      const targetConfig = { ...config, readOnly: true };
+      await targetDriver.connect(targetConfig);
+      const targetMetadata = await targetDriver.metadata();
+      const targetTable = findTable(
+        targetMetadata,
+        currentTable.schema,
+        currentTable.name,
+      );
+      if (!targetTable) {
+        throw new Error(
+          `Target connection does not contain ${currentTable.schema}.${currentTable.name}`,
+        );
+      }
+      const sourcePrimaryKeys = currentTable.columns
+        .filter((column) => column.primaryKey)
+        .map((column) => column.name);
+      const targetPrimaryKeys = targetTable.columns
+        .filter((column) => column.primaryKey)
+        .map((column) => column.name);
+      if (
+        JSON.stringify(sourcePrimaryKeys) !== JSON.stringify(targetPrimaryKeys)
+      ) {
+        throw new Error(
+          "Source and target primary-key definitions do not match",
+        );
+      }
+      const targetColumns = new Set(
+        targetTable.columns.map((column) => column.name),
+      );
+      const missingColumns = currentTable.columns
+        .map((column) => column.name)
+        .filter((column) => !targetColumns.has(column));
+      if (missingColumns.length > 0) {
+        throw new Error(
+          `Target is missing source columns: ${missingColumns.join(", ")}`,
+        );
+      }
+      const targetCount = scalarCount(
+        await targetDriver.execute(buildDataCountSql(currentTable, driverKind)),
+      );
+      if (
+        sourceCount > dataCompareMaxRows ||
+        targetCount > dataCompareMaxRows
+      ) {
+        throw new Error(
+          `Data Compare is limited to ${dataCompareMaxRows.toLocaleString()} rows; narrow the table before comparing`,
+        );
+      }
+      const [sourceResult, targetResult] = await Promise.all([
+        driver.execute(buildDataSelectSql(currentTable, driverKind)),
+        targetDriver.execute(buildDataSelectSql(currentTable, driverKind)),
+      ]);
+      if (
+        sourceResult.rows.length !== sourceCount ||
+        targetResult.rows.length !== targetCount
+      ) {
+        throw new Error(
+          "The database returned an incomplete row set; synchronization is blocked",
+        );
+      }
+      const comparison = compareTableData(
+        currentTable,
+        sourceResult.rows,
+        targetResult.rows,
+        driverKind,
+      );
+      setDataCompare(comparison);
+      setDataCompareTarget({ config, label });
+      setDataCompareTargetOpen(false);
+      setDataCompareOpen(true);
+      notify(
+        `Compared ${currentTable.schema}.${currentTable.name} with ${label}`,
+      );
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    } finally {
+      await targetDriver.disconnect().catch(() => undefined);
+    }
+  };
+  const applyDataSynchronization = async (selectedChangeIds: string[]) => {
+    if (!dataCompare || !dataCompareTarget) return;
+    if (dataCompare.errors.length > 0) {
+      notify("Resolve Data Compare errors before applying changes");
+      return;
+    }
+    if (dataCompareTarget.config.readOnly) {
+      notify("The selected target profile is read-only");
+      return;
+    }
+    const statements = buildDataSyncStatements(dataCompare, selectedChangeIds);
+    if (statements.length === 0) {
+      notify("Select at least one data change");
+      return;
+    }
+    const selectedChanges = dataCompare.changes.filter((change) =>
+      selectedChangeIds.includes(change.id),
+    );
+    const destructiveCount = selectedChanges.filter(
+      (change) => change.destructive,
+    ).length;
+    const warning = destructiveCount
+      ? ` This includes ${destructiveCount} destructive delete${destructiveCount === 1 ? "" : "s"}.`
+      : "";
+    if (
+      !window.confirm(
+        `Apply ${statements.length} data change${statements.length === 1 ? "" : "s"} to ${dataCompareTarget.label} in one transaction?${warning}`,
+      )
+    ) {
+      return;
+    }
+    const targetDriver = createRuntimeDriver(dataCompareTarget.config.kind);
+    try {
+      await targetDriver.connect({
+        ...dataCompareTarget.config,
+        readOnly: false,
+      });
+      const result = await targetDriver.executeBatch(
+        statements,
+        statements.length,
+      );
+      if (result.affectedRows !== statements.length) {
+        throw new Error(
+          `Data synchronization conflict: expected ${statements.length} affected rows, received ${result.affectedRows}`,
+        );
+      }
+      setDataCompareOpen(false);
+      setDataCompare(null);
+      setDataCompareTarget(null);
+      notify("Data synchronization applied and committed");
+    } catch (error) {
+      notify(
+        `Data synchronization failed; the transaction was rolled back: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      await targetDriver.disconnect().catch(() => undefined);
     }
   };
   const handleToggleFavorite = () => {
@@ -2602,6 +2788,15 @@ function App() {
         : "baseline required",
       disabled: !schemaBaseline || !metadata,
       execute: openSchemaDiff,
+    },
+    {
+      id: "compare-table-data",
+      label: "Compare selected table data",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name} · max ${dataCompareMaxRows.toLocaleString()} rows`
+        : "table with primary key required",
+      disabled: !currentTable,
+      execute: openDataCompare,
     },
     {
       id: "migration-history",
@@ -4099,6 +4294,39 @@ function App() {
           driverKind={driverKind}
           onClose={() => setSchemaTargetOpen(false)}
           onCompare={compareSavedConnection}
+        />
+      )}
+      {dataCompareTargetOpen && (
+        <DataCompareTargetDialog
+          profiles={connectionProfiles}
+          driverKind={driverKind}
+          onClose={() => setDataCompareTargetOpen(false)}
+          onCompare={compareSavedDataConnection}
+          onLoadPassword={loadConnectionPassword}
+        />
+      )}
+      {dataCompareOpen && dataCompare && dataCompareTarget && (
+        <DataCompareDialog
+          comparison={dataCompare}
+          targetLabel={dataCompareTarget.label}
+          targetReadOnly={dataCompareTarget.config.readOnly === true}
+          onClose={() => setDataCompareOpen(false)}
+          onChooseTarget={() => {
+            setDataCompareOpen(false);
+            setDataCompareTargetOpen(true);
+          }}
+          onOpenSql={(selectedIds) => {
+            const syncSql = buildDataSyncSql(dataCompare, selectedIds);
+            if (!syncSql) {
+              notify("Select at least one data change");
+              return;
+            }
+            newQuery();
+            setSql(syncSql);
+            setDataCompareOpen(false);
+            notify("Opened data synchronization preview in a new SQL tab");
+          }}
+          onApply={(selectedIds) => void applyDataSynchronization(selectedIds)}
         />
       )}
       {migrationHistoryOpen && (
@@ -7928,6 +8156,307 @@ function MigrationHistoryDialog({
             Close
           </button>
         </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DataCompareDialog({
+  comparison,
+  targetLabel,
+  targetReadOnly,
+  onClose,
+  onChooseTarget,
+  onOpenSql,
+  onApply,
+}: {
+  comparison: DataCompareResult;
+  targetLabel: string;
+  targetReadOnly: boolean;
+  onClose: () => void;
+  onChooseTarget: () => void;
+  onOpenSql: (selectedIds: string[]) => void;
+  onApply: (selectedIds: string[]) => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState(() =>
+    comparison.changes.map((change) => change.id),
+  );
+  useEffect(() => {
+    setSelectedIds(comparison.changes.map((change) => change.id));
+  }, [comparison]);
+  const selectedCount = selectedIds.length;
+  const allSelected = selectedCount === comparison.changes.length;
+  const toggle = (id: string) => {
+    setSelectedIds((current) =>
+      current.includes(id)
+        ? current.filter((item) => item !== id)
+        : [...current, id],
+    );
+  };
+  const selectAll = () => {
+    setSelectedIds(
+      allSelected ? [] : comparison.changes.map((change) => change.id),
+    );
+  };
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-diff-modal"
+        aria-modal="true"
+        aria-labelledby="data-compare-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">DATA COMPARE · CONTROLLED SYNC</p>
+            <h2 id="data-compare-title">
+              {comparison.schema}.{comparison.table}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close data comparison"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Source is the active connection. Target is{" "}
+          <strong>{targetLabel}</strong>. Only primary-key matched rows are
+          synchronized; updates and deletes include the captured target values
+          to detect concurrent changes.
+        </p>
+        <div
+          className="schema-diff-summary"
+          aria-label="Data comparison summary"
+        >
+          <span>{comparison.sourceCount} source rows</span>
+          <span>{comparison.targetCount} target rows</span>
+          <span>{comparison.matchedCount} matched</span>
+          <span>{comparison.changes.length} changes</span>
+        </div>
+        {comparison.errors.length > 0 && (
+          <div className="connection-error" role="alert">
+            {comparison.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {comparison.changes.length === 0 ? (
+          <div className="schema-diff-empty">Source and target data match.</div>
+        ) : (
+          <>
+            <div className="modal-actions">
+              <button type="button" className="mini-button" onClick={selectAll}>
+                {allSelected ? "Clear selection" : "Select all"}
+              </button>
+              <span className="modal-copy">{selectedCount} selected</span>
+            </div>
+            <div className="schema-diff-list" aria-label="Data changes">
+              {comparison.changes.map((change) => (
+                <label className="schema-diff-row" key={change.id}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(change.id)}
+                    onChange={() => toggle(change.id)}
+                  />
+                  <span
+                    className={`schema-diff-kind ${change.destructive ? "destructive" : "additive"}`}
+                  >
+                    {change.kind.toUpperCase()}
+                  </span>
+                  <span>
+                    <strong>{change.label}</strong>
+                    <small>
+                      {change.changedColumns.length > 0
+                        ? change.changedColumns.join(", ")
+                        : "Primary key"}
+                    </small>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        {targetReadOnly && (
+          <p className="connection-error">
+            The selected target profile is read-only. SQL preview is available,
+            but Apply is disabled.
+          </p>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Close
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={onChooseTarget}
+          >
+            Choose target
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(selectedIds)}
+            disabled={selectedCount === 0 || comparison.errors.length > 0}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => onApply(selectedIds)}
+            disabled={
+              selectedCount === 0 ||
+              targetReadOnly ||
+              comparison.errors.length > 0
+            }
+          >
+            Apply selected
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function DataCompareTargetDialog({
+  profiles,
+  driverKind,
+  onClose,
+  onCompare,
+  onLoadPassword,
+}: {
+  profiles: ConnectionProfile[];
+  driverKind: DriverKind;
+  onClose: () => void;
+  onCompare: (config: DriverConfig, label: string) => Promise<string | null>;
+  onLoadPassword: (profileId: string) => Promise<string | null>;
+}) {
+  const candidates = profiles.filter((profile) => profile.kind === driverKind);
+  const [selectedId, setSelectedId] = useState(candidates[0]?.id ?? "");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const selected = candidates.find((profile) => profile.id === selectedId);
+
+  const handleCompare = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selected) {
+      setError("Save another connection profile for the same driver first");
+      return;
+    }
+    let sessionPassword = password || undefined;
+    if (!sessionPassword && selected.passwordStored) {
+      sessionPassword = (await onLoadPassword(selected.id)) || undefined;
+    }
+    const config: DriverConfig = {
+      kind: selected.kind,
+      name: selected.name,
+      database: selected.database,
+      readOnly: selected.readOnly,
+      host: selected.host,
+      port: selected.port,
+      username: selected.username,
+      password: sessionPassword,
+      sslMode: selected.sslMode,
+      sslRootCert: selected.sslRootCert,
+      sslClientCert: selected.sslClientCert,
+      sslClientKey: selected.sslClientKey,
+      sshTunnel: selected.sshTunnel,
+    };
+    setLoading(true);
+    setError(null);
+    const nextError = await onCompare(config, selected.name);
+    setLoading(false);
+    if (nextError) setError(nextError);
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="schema-target-modal"
+        aria-modal="true"
+        aria-labelledby="data-compare-target-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">DATA COMPARE · TARGET</p>
+            <h2 id="data-compare-target-title">
+              Choose a {driverDisplayName(driverKind)} target
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close data compare target"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        {candidates.length === 0 ? (
+          <p className="schema-diff-empty">
+            Save another {driverDisplayName(driverKind)} profile first.
+          </p>
+        ) : (
+          <form onSubmit={handleCompare}>
+            <label className="schema-target-field">
+              <span>Saved target connection</span>
+              <select
+                value={selectedId}
+                onChange={(event) => setSelectedId(event.target.value)}
+              >
+                {candidates.map((profile) => (
+                  <option value={profile.id} key={profile.id}>
+                    {profile.name} · {profile.database}
+                    {profile.readOnly ? " · read-only" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selected?.kind !== "sqlite" && (
+              <label className="schema-target-field">
+                <span>Password for this session</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  autoComplete="current-password"
+                  placeholder={
+                    selected?.passwordStored ? "Keychain or enter" : "Optional"
+                  }
+                />
+              </label>
+            )}
+            <p className="modal-copy">
+              QueryX opens a temporary read-only connection and loads at most
+              {` ${dataCompareMaxRows.toLocaleString()} `}rows. No target write
+              happens during comparison.
+            </p>
+            {error && <p className="connection-error">{error}</p>}
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="modal-secondary"
+                onClick={onClose}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="modal-transaction"
+                disabled={loading}
+              >
+                {loading ? "Comparing…" : "Compare data"}
+              </button>
+            </div>
+          </form>
+        )}
       </dialog>
     </div>
   );

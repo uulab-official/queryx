@@ -12,6 +12,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
 - [Object Forms](object-forms.md) — table creation form, validation, SQL preview, and safe apply boundaries
 - [Schema Compare](schema-compare.md) — capture a baseline, review metadata changes, and open migration SQL safely
+- [Data Compare](data-compare.md) — compare a primary-key table across same-driver connections and apply selected changes transactionally
 - [Results and CSV Export](results.md) — table/JSON views, filter, sort, native save, data safety
 - [CSV Import](import.md) — header mapping, typed preview, validation, and transactional batch import
 - [Metadata Explorer](metadata-explorer.md) — schemas, relations, routines, triggers, and dependency navigation

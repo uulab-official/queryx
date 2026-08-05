@@ -36,7 +36,7 @@ Available and tested:
 
 Known alpha limitations:
 
-- Native desktop now restores tabs, history, favorites, redacted session audit observations, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
+- Native desktop now restores tabs, history, favorites, redacted session audit observations, and secret-free connection profiles from versioned SQLite workspace storage; browser preview remains localStorage-backed. Settings namespaces, named workspaces, and crash-recovery journals remain pending.
 - Native desktop passwords can be saved in the platform OS keychain; profile files retain only a `passwordStored` marker. Browser preview remains session-only.
 - Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages single SELECT/WITH queries, and all native drivers can stream 256-row chunks. Disk spill/backpressure and arbitrary-query server-side filtering remain pending.
 - Safety analysis is lexical, not yet parser/plan backed.
@@ -112,7 +112,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [x] Initial SQL Server driver with SQL authentication, encrypted TDS/TLS connections, native 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, tables/views/columns/database/schema metadata, PK/index/composite-FK metadata, stored procedures/functions, relation triggers, SQL Server paging, bracket quoting, SSH-tunnel support, inspection-only sessions, and lock-wait graph; safe query cancellation, routine/trigger edit forms, richer view dependencies, and Windows/AAD authentication remain planned
 - [x] Initial Oracle driver with service-name connections, TLS/CA/client-certificate paths, native 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, Oracle paging, users/tables/views/columns/database metadata, PK/index/composite-FK metadata, standalone/package routine signatures, table/view trigger inspection, and FK/trigger-owner dependency edges; SID/connect descriptors, wallet authentication, cancellation, sessions, locks, routine/trigger edit forms, and MERGE import modes remain planned
 - [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
-- [ ] Data compare and controlled synchronization scripts
+- [x] Same-driver primary-key table Data Compare with bounded 10,000-row reads, selectable INSERT/UPDATE/DELETE preview, optimistic target-value predicates, read-only target guard, and transactional apply; multi-million-row, LOB-aware, cross-dialect, and multi-table synchronization remain planned
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned
 - [ ] Excel and Markdown export
 - [x] PostgreSQL/MySQL/MariaDB session explorer, point-in-time lock graph, threshold-based long-running query diagnostics, and redacted local session audit history with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; server wait statistics remain planned
