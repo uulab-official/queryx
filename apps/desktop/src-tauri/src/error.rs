@@ -30,6 +30,8 @@ pub enum AppError {
     TransactionNotActive,
     #[error("OS keychain error: {0}")]
     Keychain(String),
+    #[error("SSH tunnel error: {0}")]
+    SshTunnel(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

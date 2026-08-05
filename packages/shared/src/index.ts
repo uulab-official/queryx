@@ -199,6 +199,15 @@ export interface DatabaseMetadata {
   dependencies: DependencyMetadata[];
 }
 
+export interface SshTunnelConfig {
+  sshHost: string;
+  sshPort?: number;
+  sshUsername: string;
+  localPort?: number;
+  privateKeyPath?: string;
+  knownHostsPath?: string;
+}
+
 export interface DriverConfig {
   kind: DriverKind;
   name: string;
@@ -212,6 +221,7 @@ export interface DriverConfig {
   sslRootCert?: string;
   sslClientCert?: string;
   sslClientKey?: string;
+  sshTunnel?: SshTunnelConfig;
 }
 
 /**
@@ -231,6 +241,7 @@ export interface ConnectionProfile {
   sslRootCert?: string;
   sslClientCert?: string;
   sslClientKey?: string;
+  sshTunnel?: SshTunnelConfig;
   /** Indicates an OS-keychain entry exists; the secret itself is never serialized. */
   passwordStored?: boolean;
 }

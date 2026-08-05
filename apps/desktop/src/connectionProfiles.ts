@@ -21,6 +21,40 @@ function isSslMode(
   );
 }
 
+function isPort(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 1 &&
+    value <= 65535
+  );
+}
+
+function normalizeSshTunnel(value: unknown): ConnectionProfile["sshTunnel"] {
+  if (!value || typeof value !== "object") return undefined;
+  const item = value as Record<string, unknown>;
+  if (
+    typeof item.sshHost !== "string" ||
+    !item.sshHost.trim() ||
+    typeof item.sshUsername !== "string" ||
+    !item.sshUsername.trim()
+  ) {
+    return undefined;
+  }
+  return {
+    sshHost: item.sshHost.trim(),
+    sshUsername: item.sshUsername.trim(),
+    ...(isPort(item.sshPort) ? { sshPort: item.sshPort } : {}),
+    ...(isPort(item.localPort) ? { localPort: item.localPort } : {}),
+    ...(typeof item.privateKeyPath === "string" && item.privateKeyPath.trim()
+      ? { privateKeyPath: item.privateKeyPath.trim() }
+      : {}),
+    ...(typeof item.knownHostsPath === "string" && item.knownHostsPath.trim()
+      ? { knownHostsPath: item.knownHostsPath.trim() }
+      : {}),
+  };
+}
+
 export function normalizeConnectionProfiles(
   value: unknown,
 ): ConnectionProfile[] {
@@ -38,33 +72,37 @@ export function normalizeConnectionProfiles(
         item.database.trim().length > 0
       );
     })
-    .map((item) => ({
-      id: item.id as string,
-      name: (item.name as string).trim().slice(0, 120),
-      kind: item.kind as DriverKind,
-      database: (item.database as string).trim(),
-      readOnly: item.readOnly === true,
-      ...(typeof item.host === "string" && item.host.trim()
-        ? { host: item.host.trim() }
-        : {}),
-      ...(typeof item.port === "number" && Number.isInteger(item.port)
-        ? { port: item.port }
-        : {}),
-      ...(typeof item.username === "string" && item.username.trim()
-        ? { username: item.username.trim() }
-        : {}),
-      ...(isSslMode(item.sslMode) ? { sslMode: item.sslMode } : {}),
-      ...(typeof item.sslRootCert === "string" && item.sslRootCert.trim()
-        ? { sslRootCert: item.sslRootCert.trim() }
-        : {}),
-      ...(typeof item.sslClientCert === "string" && item.sslClientCert.trim()
-        ? { sslClientCert: item.sslClientCert.trim() }
-        : {}),
-      ...(typeof item.sslClientKey === "string" && item.sslClientKey.trim()
-        ? { sslClientKey: item.sslClientKey.trim() }
-        : {}),
-      ...(item.passwordStored === true ? { passwordStored: true } : {}),
-    }))
+    .map((item) => {
+      const sshTunnel = normalizeSshTunnel(item.sshTunnel);
+      return {
+        id: item.id as string,
+        name: (item.name as string).trim().slice(0, 120),
+        kind: item.kind as DriverKind,
+        database: (item.database as string).trim(),
+        readOnly: item.readOnly === true,
+        ...(typeof item.host === "string" && item.host.trim()
+          ? { host: item.host.trim() }
+          : {}),
+        ...(typeof item.port === "number" && Number.isInteger(item.port)
+          ? { port: item.port }
+          : {}),
+        ...(typeof item.username === "string" && item.username.trim()
+          ? { username: item.username.trim() }
+          : {}),
+        ...(isSslMode(item.sslMode) ? { sslMode: item.sslMode } : {}),
+        ...(typeof item.sslRootCert === "string" && item.sslRootCert.trim()
+          ? { sslRootCert: item.sslRootCert.trim() }
+          : {}),
+        ...(typeof item.sslClientCert === "string" && item.sslClientCert.trim()
+          ? { sslClientCert: item.sslClientCert.trim() }
+          : {}),
+        ...(typeof item.sslClientKey === "string" && item.sslClientKey.trim()
+          ? { sslClientKey: item.sslClientKey.trim() }
+          : {}),
+        ...(sshTunnel ? { sshTunnel } : {}),
+        ...(item.passwordStored === true ? { passwordStored: true } : {}),
+      };
+    })
     .slice(0, maxProfiles);
 }
 

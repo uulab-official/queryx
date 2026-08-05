@@ -1312,6 +1312,7 @@ mod tests {
             ssl_root_cert: None,
             ssl_client_cert: None,
             ssl_client_key: None,
+            ssh_tunnel: None,
             read_only: false,
         }
     }

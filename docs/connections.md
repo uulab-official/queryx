@@ -26,6 +26,8 @@ For SQLite, select SQLite and enter `:memory:` for a temporary database or an ab
 - `Verify Full / Identity` also verifies that the certificate identity matches the host name. PostgreSQL calls this `verify-full`; MySQL/MariaDB maps it to `VERIFY_IDENTITY`.
 - `Disable` is intended for trusted local development servers.
 - `CA certificate path` points to a PEM/CRT trust bundle. `Client certificate path` and `Client key path` configure mutual TLS when the server requires client authentication. QueryX stores these paths as profile metadata; private key contents never enter QueryX storage.
+- **Connect through SSH tunnel** starts the local OpenSSH client with a loopback `-L` forward. The database `Host` and `Port` fields are the destination as seen from the SSH host; the SSH host is the bastion or jump server. Leave local port empty to let QueryX choose one.
+- SSH tunnels use `BatchMode`, `ExitOnForwardFailure`, strict host-key checking, and keepalive options. QueryX never accepts, stores, or places SSH passwords/passphrases on a command line; use an agent or an agent-unlocked key according to your platform policy.
 - The prior connection stays active until the replacement connection and its metadata both load successfully.
 - **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
 - **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only`, PostgreSQL enables `default_transaction_read_only`, and MySQL sets a read-only transaction session plus rejects non-read statements at the native driver boundary.
@@ -44,6 +46,7 @@ Saved profiles never contain passwords. On native desktop, enable **Store in OS 
 - Authentication failures should be resolved by checking the username, password, database access rule, and server authentication configuration.
 - If TLS negotiation fails on a local test server, use `Disable`; keep `Require` or a verify mode for production networks where encryption and server identity are mandatory.
 - A verify mode without a readable CA file will fail during connection creation. Check the path and file permissions in the native desktop process.
+- If an SSH tunnel fails, check that the native `ssh` command is installed, the SSH user can authenticate non-interactively, the bastion's `known_hosts` entry is trusted, and the destination host/port is reachable from the bastion.
 - QueryX keeps the current connection when a replacement connection fails, so you can correct the fields and retry.
 - A successful connection test does not change the active connection. This makes it safe to validate credentials or a copied environment profile before switching workspaces.
 

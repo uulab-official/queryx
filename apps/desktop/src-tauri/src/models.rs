@@ -32,6 +32,21 @@ pub enum SslMode {
     VerifyFull,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshTunnelConfig {
+    pub ssh_host: String,
+    #[serde(default)]
+    pub ssh_port: Option<u16>,
+    pub ssh_username: String,
+    #[serde(default)]
+    pub local_port: Option<u16>,
+    #[serde(default)]
+    pub private_key_path: Option<String>,
+    #[serde(default)]
+    pub known_hosts_path: Option<String>,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionConfig {
@@ -51,6 +66,8 @@ pub struct ConnectionConfig {
     pub ssl_client_cert: Option<String>,
     #[serde(default)]
     pub ssl_client_key: Option<String>,
+    #[serde(default)]
+    pub ssh_tunnel: Option<SshTunnelConfig>,
 }
 
 #[derive(Debug, Serialize)]

@@ -120,4 +120,38 @@ describe("connection profile persistence boundary", () => {
       sslClientKey: "/certs/client.key",
     });
   });
+
+  it("preserves SSH tunnel settings without persisting tunnel secrets", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "tunnel-1",
+        name: "Private production",
+        kind: "postgres",
+        database: "analytics",
+        host: "db.internal",
+        port: 5432,
+        username: "readonly",
+        sshTunnel: {
+          sshHost: "bastion.internal",
+          sshPort: 2222,
+          sshUsername: "deploy",
+          localPort: 15432,
+          privateKeyPath: "/keys/queryx_ed25519",
+          knownHostsPath: "/keys/known_hosts",
+        },
+      },
+    ]);
+
+    expect(profile).toMatchObject({
+      sshTunnel: {
+        sshHost: "bastion.internal",
+        sshPort: 2222,
+        sshUsername: "deploy",
+        localPort: 15432,
+        privateKeyPath: "/keys/queryx_ed25519",
+        knownHostsPath: "/keys/known_hosts",
+      },
+    });
+    expect(JSON.stringify(profile)).not.toContain("passphrase");
+  });
 });

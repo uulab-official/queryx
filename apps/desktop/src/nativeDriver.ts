@@ -46,6 +46,7 @@ export class TauriDatabaseDriver implements DatabaseDriver {
         sslRootCert: config.sslRootCert,
         sslClientCert: config.sslClientCert,
         sslClientKey: config.sslClientKey,
+        sshTunnel: config.sshTunnel,
       },
     });
     this.connectionId = connection.id;

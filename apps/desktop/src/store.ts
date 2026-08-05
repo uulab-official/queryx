@@ -854,6 +854,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         window.setTimeout(() => set({ toast: null }), 2200);
         return true;
       } catch (error) {
+        await nextDriver.disconnect().catch(() => undefined);
         const message = error instanceof Error ? error.message : String(error);
         set({
           connectionStatus: "error",

@@ -16,7 +16,7 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 
 ## Deliberate limitations
 
-The initial driver does not yet expose MySQL/MariaDB event triggers or SSH tunnels. SQLite remains the only built-in driver without native cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
+The initial driver does not yet expose MySQL/MariaDB event triggers or managed SSH jump-host chains. Native OpenSSH local forwarding is available for the common single-bastion workflow. SQLite remains the only built-in driver without native cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
 
 `Verify CA` maps to SQLx `VerifyCa`; `Verify Full / Identity` maps to `VerifyIdentity`. The CA path is passed to SQLx as `ssl_ca`, while the client certificate and key paths are passed to `ssl_client_cert` and `ssl_client_key`.
 

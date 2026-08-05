@@ -10,40 +10,61 @@ use crate::{
     mysql_driver::MysqlDriver,
     postgres_driver::PostgresDriver,
     sqlite_driver::SqliteDriver,
+    ssh_tunnel::SshTunnel,
 };
 
 pub struct DriverRegistry {
     connections: RwLock<HashMap<Uuid, Arc<dyn DatabaseDriver>>>,
+    tunnels: RwLock<HashMap<Uuid, SshTunnel>>,
 }
 
 impl Default for DriverRegistry {
     fn default() -> Self {
         Self {
             connections: RwLock::new(HashMap::new()),
+            tunnels: RwLock::new(HashMap::new()),
         }
     }
 }
 
 impl DriverRegistry {
     pub async fn connect(&self, config: ConnectionConfig) -> Result<ConnectionSummary, AppError> {
-        let read_only = config.read_only;
-        let driver: Arc<dyn DatabaseDriver> = match config.kind {
-            DriverKind::Sqlite => {
-                Arc::new(SqliteDriver::connect(&config.database, read_only).await?)
+        let tunnel = SshTunnel::start(&config).await?;
+        let mut native_config = config;
+        if let Some(tunnel) = tunnel.as_ref() {
+            native_config.host = Some("127.0.0.1".into());
+            native_config.port = Some(tunnel.local_port());
+        }
+        let read_only = native_config.read_only;
+        let driver_result: Result<Arc<dyn DatabaseDriver>, AppError> = match native_config.kind {
+            DriverKind::Sqlite => Ok(Arc::new(
+                SqliteDriver::connect(&native_config.database, read_only).await?,
+            )),
+            DriverKind::Postgres => Ok(Arc::new(PostgresDriver::connect(&native_config).await?)),
+            DriverKind::Mysql => Ok(Arc::new(MysqlDriver::connect(&native_config).await?)),
+        };
+        let driver = match driver_result {
+            Ok(driver) => driver,
+            Err(error) => {
+                if let Some(tunnel) = tunnel {
+                    tunnel.stop().await;
+                }
+                return Err(error);
             }
-            DriverKind::Postgres => Arc::new(PostgresDriver::connect(&config).await?),
-            DriverKind::Mysql => Arc::new(MysqlDriver::connect(&config).await?),
         };
         let id = Uuid::new_v4();
         let summary = ConnectionSummary {
             id: id.to_string(),
-            name: config.name,
+            name: native_config.name,
             driver: driver.kind(),
             database: driver.database().to_string(),
             read_only: driver.is_read_only(),
             capabilities: driver.capabilities(),
         };
         self.connections.write().await.insert(id, driver);
+        if let Some(tunnel) = tunnel {
+            self.tunnels.write().await.insert(id, tunnel);
+        }
         Ok(summary)
     }
 
@@ -135,7 +156,11 @@ impl DriverRegistry {
             .await
             .remove(&id)
             .ok_or_else(|| AppError::ConnectionNotFound(connection_id.into()))?;
-        driver.disconnect().await
+        let result = driver.disconnect().await;
+        if let Some(tunnel) = self.tunnels.write().await.remove(&id) {
+            tunnel.stop().await;
+        }
+        result
     }
 
     async fn connection(&self, connection_id: &str) -> Result<Arc<dyn DatabaseDriver>, AppError> {
@@ -176,6 +201,7 @@ mod tests {
             ssl_root_cert: None,
             ssl_client_cert: None,
             ssl_client_key: None,
+            ssh_tunnel: None,
             read_only: false,
         }
     }

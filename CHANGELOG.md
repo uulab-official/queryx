@@ -42,6 +42,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Client-side result pagination with 100-row pages, filter/sort page reset, page-aware clipboard copy, and full filtered-result CSV export.
 - Tauri signed updater integration with startup checks, one-click install/relaunch UX, and a cross-platform GitHub Actions release workflow that publishes `latest.json`.
 - PostgreSQL/MySQL/MariaDB TLS profile configuration with verify-CA/verify-full modes and CA, client certificate, and client key file paths.
+- Native OpenSSH local-forward tunnels with profile persistence, strict host-key checking, non-interactive authentication, keepalive, and connection-lifecycle cleanup.
 - Open-source release and OTA operations guide covering updater secrets, key rotation, platform signing boundaries, and rollback.
 - QueryX visual identity refresh with a reusable vector icon system, branded query mark, and regenerated desktop/mobile platform icon assets.
 - Refined the app mark into a quieter neon Q-lens with a single orbit accent for clearer recognition at small sizes.

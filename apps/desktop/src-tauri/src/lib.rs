@@ -7,6 +7,7 @@ mod mysql_driver;
 mod postgres_driver;
 mod secret_store;
 mod sqlite_driver;
+mod ssh_tunnel;
 
 use driver_registry::DriverRegistry;
 

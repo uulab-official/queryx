@@ -7275,6 +7275,13 @@ function ConnectionDialog({
   const [sslRootCert, setSslRootCert] = useState("");
   const [sslClientCert, setSslClientCert] = useState("");
   const [sslClientKey, setSslClientKey] = useState("");
+  const [sshTunnelEnabled, setSshTunnelEnabled] = useState(false);
+  const [sshHost, setSshHost] = useState("");
+  const [sshPort, setSshPort] = useState("22");
+  const [sshUsername, setSshUsername] = useState("");
+  const [sshLocalPort, setSshLocalPort] = useState("");
+  const [sshPrivateKeyPath, setSshPrivateKeyPath] = useState("");
+  const [sshKnownHostsPath, setSshKnownHostsPath] = useState("");
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<
     "idle" | "testing" | "success" | "error"
@@ -7311,6 +7318,15 @@ function ConnectionDialog({
     setSslRootCert(profile.sslRootCert ?? "");
     setSslClientCert(profile.sslClientCert ?? "");
     setSslClientKey(profile.sslClientKey ?? "");
+    setSshTunnelEnabled(Boolean(profile.sshTunnel));
+    setSshHost(profile.sshTunnel?.sshHost ?? "");
+    setSshPort(String(profile.sshTunnel?.sshPort ?? 22));
+    setSshUsername(profile.sshTunnel?.sshUsername ?? "");
+    setSshLocalPort(
+      profile.sshTunnel?.localPort ? String(profile.sshTunnel.localPort) : "",
+    );
+    setSshPrivateKeyPath(profile.sshTunnel?.privateKeyPath ?? "");
+    setSshKnownHostsPath(profile.sshTunnel?.knownHostsPath ?? "");
     setTestStatus("idle");
     setTestError(null);
   };
@@ -7330,6 +7346,13 @@ function ConnectionDialog({
     setSslRootCert("");
     setSslClientCert("");
     setSslClientKey("");
+    setSshTunnelEnabled(false);
+    setSshHost("");
+    setSshPort("22");
+    setSshUsername("");
+    setSshLocalPort("");
+    setSshPrivateKeyPath("");
+    setSshKnownHostsPath("");
     setTestStatus("idle");
     setTestError(null);
   };
@@ -7352,6 +7375,24 @@ function ConnectionDialog({
             ? { sslClientCert: sslClientCert.trim() }
             : {}),
           ...(sslClientKey.trim() ? { sslClientKey: sslClientKey.trim() } : {}),
+          ...(sshTunnelEnabled
+            ? {
+                sshTunnel: {
+                  sshHost: sshHost.trim(),
+                  sshPort: Number(sshPort),
+                  sshUsername: sshUsername.trim(),
+                  ...(sshLocalPort.trim()
+                    ? { localPort: Number(sshLocalPort) }
+                    : {}),
+                  ...(sshPrivateKeyPath.trim()
+                    ? { privateKeyPath: sshPrivateKeyPath.trim() }
+                    : {}),
+                  ...(sshKnownHostsPath.trim()
+                    ? { knownHostsPath: sshKnownHostsPath.trim() }
+                    : {}),
+                },
+              }
+            : {}),
         };
 
   const profileDraft = (): ConnectionProfileDraft => {
@@ -7369,6 +7410,7 @@ function ConnectionDialog({
       ...(config.sslRootCert ? { sslRootCert: config.sslRootCert } : {}),
       ...(config.sslClientCert ? { sslClientCert: config.sslClientCert } : {}),
       ...(config.sslClientKey ? { sslClientKey: config.sslClientKey } : {}),
+      ...(config.sshTunnel ? { sshTunnel: config.sshTunnel } : {}),
     };
   };
 
@@ -7531,6 +7573,13 @@ function ConnectionDialog({
                       setSslRootCert("");
                       setSslClientCert("");
                       setSslClientKey("");
+                      setSshTunnelEnabled(false);
+                      setSshHost("");
+                      setSshPort("22");
+                      setSshUsername("");
+                      setSshLocalPort("");
+                      setSshPrivateKeyPath("");
+                      setSshKnownHostsPath("");
                       setName(
                         nextKind === "sqlite"
                           ? "Local SQLite"
@@ -7678,6 +7727,93 @@ function ConnectionDialog({
                         autoComplete="off"
                       />
                     </label>
+                    <label className="connection-readonly">
+                      <input
+                        type="checkbox"
+                        checked={sshTunnelEnabled}
+                        onChange={(event) =>
+                          setSshTunnelEnabled(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>Connect through SSH tunnel</strong>
+                        <small>
+                          Uses the local OpenSSH client; passwords and
+                          passphrases are never accepted or stored by QueryX.
+                        </small>
+                      </span>
+                    </label>
+                    {sshTunnelEnabled && (
+                      <div className="connection-subgrid">
+                        <label>
+                          <span>SSH host</span>
+                          <input
+                            value={sshHost}
+                            onChange={(event) => setSshHost(event.target.value)}
+                            placeholder="bastion.example.com"
+                            autoComplete="off"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>SSH port</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="65535"
+                            value={sshPort}
+                            onChange={(event) => setSshPort(event.target.value)}
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>SSH username</span>
+                          <input
+                            value={sshUsername}
+                            onChange={(event) =>
+                              setSshUsername(event.target.value)
+                            }
+                            autoComplete="username"
+                            required
+                          />
+                        </label>
+                        <label>
+                          <span>Local port (optional)</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="65535"
+                            value={sshLocalPort}
+                            onChange={(event) =>
+                              setSshLocalPort(event.target.value)
+                            }
+                            placeholder="Auto-select"
+                          />
+                        </label>
+                        <label>
+                          <span>Private key path</span>
+                          <input
+                            value={sshPrivateKeyPath}
+                            onChange={(event) =>
+                              setSshPrivateKeyPath(event.target.value)
+                            }
+                            placeholder="~/.ssh/id_ed25519"
+                            autoComplete="off"
+                          />
+                        </label>
+                        <label>
+                          <span>Known hosts path</span>
+                          <input
+                            value={sshKnownHostsPath}
+                            onChange={(event) =>
+                              setSshKnownHostsPath(event.target.value)
+                            }
+                            placeholder="~/.ssh/known_hosts"
+                            autoComplete="off"
+                          />
+                        </label>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

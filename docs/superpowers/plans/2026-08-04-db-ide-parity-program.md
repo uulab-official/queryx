@@ -238,7 +238,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add deterministic Rust/TypeScript coverage and an opt-in live MySQL contract test that never embeds credentials.
 - [x] Document supported scope and limitations instead of claiming complete MySQL/MariaDB parity.
 - [x] Add the evidence-gated DBeaver/pgAdmin/phpMyAdmin/SQL Developer capability matrix and ADR.
-- [x] Add MySQL/MariaDB foreign keys, routines, relation triggers, cursor-backed streaming, and active-query cancellation; event triggers, SSH/certificate configuration, and hosted integration coverage remain pending.
+- [x] Add MySQL/MariaDB foreign keys, routines, relation triggers, cursor-backed streaming, active-query cancellation, SSL certificate paths, and native OpenSSH local forwarding; event triggers, managed jump-host chains, and hosted integration coverage remain pending.
 
 ### Task 7: Ship the first schema-compare slice
 
