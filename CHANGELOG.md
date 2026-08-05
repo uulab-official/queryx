@@ -75,6 +75,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added import upsert with mapped conflict-key selection, unique-index warnings, PostgreSQL/SQLite/MySQL conflict SQL, and a single-statement transaction path that preserves MySQL affected-row semantics.
 - Added metadata-safe table-browser filtering and sorting with dialect-aware literal search patterns, deterministic primary-key tie-breakers, and protection against paging with unapplied order changes.
 - Added guarded selected-row deletion from the table browser with SQL preview, primary-key/original-value conflict predicates, exact affected-row verification, and atomic rollback.
+- Added a default-aware table-browser new-row form with typed Value/NULL/Default modes, dialect-specific INSERT generation, SQL preview, exact affected-row verification, and refresh.
 - Added conservative dialect-aware server paging for single SELECT/WITH results, 100-row incremental loading, original-SQL history preservation, and fallback for mutation, locking, or multi-statement queries.
 
 ## [0.1.0] — 2026-08-03

@@ -781,6 +781,15 @@ button:disabled {
   background: #3a2827;
   color: #ffc2b5;
 }
+.result-actions .insert-row-button {
+  border: 1px solid #4f6d64;
+  color: #a7d4c4;
+}
+.result-actions .insert-row-button:hover:not(:disabled) {
+  border-color: #83bca6;
+  background: #243630;
+  color: #d0f0df;
+}
 .result-actions .apply-edits-button {
   border: 1px solid #5d6b35;
   background: #293520;
@@ -1533,6 +1542,93 @@ button:disabled {
   border-radius: 9px;
   background: #15191a;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.62);
+}
+.insert-row-modal {
+  width: min(860px, calc(100vw - 40px));
+  max-height: calc(100vh - 32px);
+  margin: 0;
+  padding: 22px;
+  overflow: auto;
+  border: 1px solid #4f6d64;
+  border-radius: 9px;
+  background: #141a18;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.64);
+}
+.insert-row-list {
+  display: grid;
+  gap: 6px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 14px 0 10px;
+  padding: 8px;
+  border: 1px solid #2d4038;
+  border-radius: 5px;
+  background: #0e1412;
+}
+.insert-row-field {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) 118px minmax(180px, 1.5fr);
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+.insert-row-label {
+  min-width: 0;
+}
+.insert-row-label strong,
+.insert-row-label small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.insert-row-label strong {
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.insert-row-label small {
+  margin-top: 3px;
+  color: #77908a;
+  font: 8px var(--mono);
+}
+.insert-row-field input,
+.insert-row-field select {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid #334942;
+  border-radius: 4px;
+  background: #0d1312;
+  color: #dbe9df;
+  font: 10px var(--mono);
+}
+.insert-row-field input:focus,
+.insert-row-field select:focus {
+  border-color: #a6cc91;
+  outline: 0;
+}
+.insert-row-field input:disabled {
+  color: #61716b;
+  background: #111916;
+}
+.insert-row-errors,
+.insert-row-warnings {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+  padding: 9px 10px;
+  border-radius: 4px;
+  font: 9px / 1.45 var(--mono);
+}
+.insert-row-errors {
+  border: 1px solid #754c40;
+  background: #281b18;
+  color: #eaa38f;
+}
+.insert-row-warnings {
+  border: 1px solid #705d32;
+  background: #282318;
+  color: #e0c27e;
 }
 .erd-modal {
   width: min(1180px, calc(100vw - 32px));

@@ -40,6 +40,7 @@ import {
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
   buildTableBrowsePlan,
+  buildTableRowInsertPlan,
   compareSchemaSnapshots,
   defaultCsvImportMappings,
   formatSql,
@@ -81,6 +82,8 @@ import type {
   SqlRowDelete,
   SqlRowUpdate,
   SchemaDiff,
+  TableRowInsertPlan,
+  TableRowInsertValue,
   TableBrowseSortDirection,
 } from "@queryx/core";
 import type {
@@ -515,6 +518,7 @@ function App() {
   );
   const [editPreviewOpen, setEditPreviewOpen] = useState(false);
   const [deletePreviewOpen, setDeletePreviewOpen] = useState(false);
+  const [insertRowOpen, setInsertRowOpen] = useState(false);
   const [tableBrowse, setTableBrowse] = useState<TableBrowseState | null>(null);
   const [serverQueryPage, setServerQueryPage] =
     useState<ServerQueryPageState | null>(null);
@@ -1396,6 +1400,15 @@ function App() {
       selectedDeleteRows.length > 0 &&
       pendingEditCount === 0,
   );
+  const canInsertRows = Boolean(
+    !readOnlyConnection &&
+      driver.capabilities().has("editing") &&
+      tableBrowse &&
+      currentTable &&
+      tableBrowse.schema === currentTable.schema &&
+      tableBrowse.name === currentTable.name &&
+      pendingEditCount === 0,
+  );
   const editPreview = useMemo(() => {
     if (!canEditResults || !currentTable || !result || pendingEditCount === 0) {
       return { sql: "", statements: [], error: null };
@@ -1603,6 +1616,42 @@ function App() {
     notify(
       `Deleted ${expectedRows.toLocaleString()} row${expectedRows === 1 ? "" : "s"}`,
     );
+  };
+  const applyInsertedRow = async (plan: TableRowInsertPlan) => {
+    if (plan.errors.length > 0 || !plan.statement) {
+      notify(plan.errors[0] ?? "Provide valid values before inserting a row");
+      return;
+    }
+    const inserted = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: {
+        statements: [plan.statement],
+        expectedRows: 1,
+      },
+    });
+    if (!inserted) return;
+    if (inserted.affectedRows !== 1) {
+      notify(
+        `Insert conflict detected: expected 1 row, inserted ${inserted.affectedRows}`,
+      );
+      return;
+    }
+    setInsertRowOpen(false);
+    setGridSelection(null);
+    setResultPage(0);
+    const refreshed = await runQuery("normal", sql);
+    if (refreshed && tableBrowse) {
+      setTableBrowse((current) =>
+        current
+          ? {
+              ...current,
+              offset: 0,
+              hasMore: refreshed.rows.length === tableBrowsePageSize,
+            }
+          : current,
+      );
+    }
+    notify("Inserted 1 row");
   };
   const getColumnWidth = (column: { name: string; type: string }) =>
     columnWidths[column.name] ?? defaultColumnWidth(column.type);
@@ -3072,6 +3121,31 @@ function App() {
                   {selectedDeleteRows.length > 0 &&
                     ` · ${selectedDeleteRows.length}`}
                 </button>
+                <button
+                  type="button"
+                  className="insert-row-button"
+                  onClick={() => {
+                    if (readOnlyConnection) {
+                      notify("Read-only connection: row insertion is disabled");
+                      return;
+                    }
+                    if (!canInsertRows || !currentTable) {
+                      notify("Open a table browser before inserting a row");
+                      return;
+                    }
+                    setInsertRowOpen(true);
+                  }}
+                  disabled={readOnlyConnection || isRunning || !canInsertRows}
+                  title={
+                    canInsertRows
+                      ? "Open a form to insert a row using values or database defaults"
+                      : readOnlyConnection
+                        ? "Read-only connection: writes are disabled by the database"
+                        : "Requires a selected table opened in the Table browser"
+                  }
+                >
+                  ＋ New row
+                </button>
                 {pendingEditCount > 0 && (
                   <button
                     type="button"
@@ -3806,6 +3880,14 @@ function App() {
           onApply={() => void applySelectedDeletes()}
         />
       )}
+      {insertRowOpen && currentTable && (
+        <InsertRowDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setInsertRowOpen(false)}
+          onApply={applyInsertedRow}
+        />
+      )}
       {connectionOpen && (
         <ConnectionDialog
           error={connectionError}
@@ -4324,6 +4406,183 @@ function DeletePreviewDialog({
             disabled={Boolean(error) || !sql}
           >
             Delete rows
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+type InsertDraft = {
+  mode: "default" | "value" | "null";
+  rawValue: string;
+};
+
+function InsertRowDialog({
+  driverKind,
+  table,
+  onClose,
+  onApply,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onApply: (plan: TableRowInsertPlan) => void;
+}) {
+  const [drafts, setDrafts] = useState<Record<string, InsertDraft>>(() =>
+    Object.fromEntries(
+      table.columns.map((column) => [
+        column.name,
+        { mode: "default", rawValue: "" },
+      ]),
+    ),
+  );
+  const plan = useMemo<TableRowInsertPlan>(() => {
+    const values: TableRowInsertValue[] = [];
+    const parseErrors: string[] = [];
+    for (const column of table.columns) {
+      const draft = drafts[column.name] ?? {
+        mode: "default" as const,
+        rawValue: "",
+      };
+      if (draft.mode === "default") continue;
+      if (draft.mode === "null") {
+        values.push({ columnName: column.name, value: null });
+        continue;
+      }
+      try {
+        values.push({
+          columnName: column.name,
+          value: parseEditedCellValue(draft.rawValue, column),
+        });
+      } catch (error) {
+        parseErrors.push(
+          `${column.name}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+    const built = buildTableRowInsertPlan(table, values, driverKind);
+    if (parseErrors.length === 0) return built;
+    return {
+      ...built,
+      statement: "",
+      sql: "",
+      errors: [...parseErrors, ...built.errors],
+    };
+  }, [driverKind, drafts, table]);
+
+  const updateDraft = (columnName: string, patch: Partial<InsertDraft>) => {
+    setDrafts((current) => ({
+      ...current,
+      [columnName]: {
+        ...(current[columnName] ?? { mode: "default", rawValue: "" }),
+        ...patch,
+      },
+    }));
+  };
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="insert-row-modal"
+        aria-modal="true"
+        aria-labelledby="insert-row-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">TABLE BROWSER · INSERT</p>
+            <h2 id="insert-row-title">
+              New row · {table.schema}.{table.name}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close insert row form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Leave columns on <strong>Default</strong> to let the database apply
+          generated values, identity keys, timestamps, and defaults. Choose
+          <strong> NULL</strong> only for nullable columns.
+        </p>
+        <div className="insert-row-list" aria-label="New row values">
+          {table.columns.map((column) => {
+            const draft = drafts[column.name] ?? {
+              mode: "default" as const,
+              rawValue: "",
+            };
+            return (
+              <div className="insert-row-field" key={column.name}>
+                <div className="insert-row-label">
+                  <strong>{column.name}</strong>
+                  <small>
+                    {column.type} · {column.nullable ? "nullable" : "required"}
+                    {column.primaryKey ? " · PK" : ""}
+                  </small>
+                </div>
+                <select
+                  value={draft.mode}
+                  onChange={(event) =>
+                    updateDraft(column.name, {
+                      mode: event.target.value as InsertDraft["mode"],
+                    })
+                  }
+                  aria-label={`${column.name} insert mode`}
+                >
+                  <option value="default">Default</option>
+                  <option value="value">Value</option>
+                  <option value="null" disabled={!column.nullable}>
+                    NULL
+                  </option>
+                </select>
+                <input
+                  value={draft.rawValue}
+                  disabled={draft.mode !== "value"}
+                  onChange={(event) =>
+                    updateDraft(column.name, { rawValue: event.target.value })
+                  }
+                  placeholder={
+                    draft.mode === "value"
+                      ? `Enter ${column.type}`
+                      : "Database default"
+                  }
+                  aria-label={`${column.name} insert value`}
+                />
+              </div>
+            );
+          })}
+        </div>
+        {plan.errors.length > 0 && (
+          <output className="insert-row-errors" aria-live="polite">
+            {plan.errors.map((error) => (
+              <span key={error}>✕ {error}</span>
+            ))}
+          </output>
+        )}
+        {plan.warnings.length > 0 && (
+          <output className="insert-row-warnings">
+            {plan.warnings.map((warning) => (
+              <span key={warning}>⚠ {warning}</span>
+            ))}
+          </output>
+        )}
+        {plan.statement && <pre className="edit-preview-sql">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => onApply(plan)}
+            disabled={plan.errors.length > 0 || !plan.statement}
+          >
+            Insert row
           </button>
         </div>
       </dialog>

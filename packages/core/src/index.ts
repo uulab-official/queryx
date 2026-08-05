@@ -105,6 +105,11 @@ export { buildQueryPagePlan } from "./queryPaging";
 export type { QueryPagePlan } from "./queryPaging";
 export { buildTableBrowsePlan } from "./tableBrowse";
 export type { TableBrowsePlan, TableBrowseSortDirection } from "./tableBrowse";
+export { buildTableRowInsertPlan } from "./tableRowInsert";
+export type {
+  TableRowInsertPlan,
+  TableRowInsertValue,
+} from "./tableRowInsert";
 export { buildExplainQuery } from "./explain";
 export type {
   ExplainQuery,
