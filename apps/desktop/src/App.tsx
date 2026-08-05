@@ -1807,15 +1807,24 @@ function App() {
       return;
     }
     setImportOpen(false);
-    const result = await runQuery("normal", plan.statements.join("\n"), {
-      batch: {
-        statements: plan.statements,
-        expectedRows: plan.statements.length,
-      },
-    });
+    const result =
+      plan.conflictPolicy === "upsert"
+        ? await runQuery("transaction", plan.statements[0] ?? "", {
+            preserveResult: true,
+          })
+        : await runQuery("normal", plan.statements.join("\n"), {
+            batch: {
+              statements: plan.statements,
+              expectedRows: plan.statements.length,
+            },
+          });
     if (!result) return;
     await loadMetadata();
-    notify(`Imported ${plan.statements.length.toLocaleString()} rows`);
+    notify(
+      plan.conflictPolicy === "upsert"
+        ? `Upserted ${plan.rowCount.toLocaleString()} rows`
+        : `Imported ${plan.statements.length.toLocaleString()} rows`,
+    );
   };
 
   const exportResults = async (format: ExportFormat) => {
@@ -5750,6 +5759,11 @@ function CsvImportDialog({
   const [sourceKind, setSourceKind] = useState<"csv" | "json">("csv");
   const [conflictPolicy, setConflictPolicy] =
     useState<ImportConflictPolicy>("error");
+  const [conflictColumns, setConflictColumns] = useState<string[]>(
+    table.columns
+      .filter((column) => column.primaryKey)
+      .map((column) => column.name),
+  );
   const [parsed, setParsed] = useState<ReturnType<typeof parseCsv> | null>(
     null,
   );
@@ -5764,9 +5778,10 @@ function CsvImportDialog({
             mappings,
             driverKind,
             conflictPolicy,
+            conflictColumns,
           )
         : null,
-    [conflictPolicy, driverKind, mappings, parsed, table],
+    [conflictColumns, conflictPolicy, driverKind, mappings, parsed, table],
   );
   const importTypes: ImportValueType[] = [
     "text",
@@ -5867,8 +5882,49 @@ function CsvImportDialog({
               >
                 <option value="error">Stop and rollback</option>
                 <option value="ignore">Ignore conflicting rows</option>
+                <option value="upsert">Update existing rows (upsert)</option>
               </select>
             </label>
+            {conflictPolicy === "upsert" && (
+              <div className="import-upsert-keys">
+                <div>
+                  <strong>Conflict key columns</strong>
+                  <small>
+                    Select mapped primary/unique columns used to find existing
+                    rows.
+                  </small>
+                </div>
+                <div className="import-upsert-key-list">
+                  {table.columns.map((column) => {
+                    const mapped = mappings.some(
+                      (mapping) =>
+                        mapping.include && mapping.targetName === column.name,
+                    );
+                    const selected = conflictColumns.includes(column.name);
+                    return (
+                      <label key={column.name}>
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          disabled={!mapped}
+                          onChange={(event) =>
+                            setConflictColumns((current) =>
+                              event.target.checked
+                                ? [...current, column.name]
+                                : current.filter(
+                                    (name) => name !== column.name,
+                                  ),
+                            )
+                          }
+                        />
+                        {column.name}
+                        {column.primaryKey && <b>PK</b>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="import-mapping-list">
               {mappings.map((mapping, index) => (
                 <div className="import-mapping-row" key={mapping.sourceName}>
@@ -5946,6 +6002,13 @@ function CsvImportDialog({
                   <span>…and {plan.errors.length - 8} more</span>
                 )}
               </div>
+            )}
+            {plan && plan.warnings.length > 0 && (
+              <output className="import-warnings">
+                {plan.warnings.map((warning) => (
+                  <span key={warning}>⚠ {warning}</span>
+                ))}
+              </output>
             )}
           </>
         )}

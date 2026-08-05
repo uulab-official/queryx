@@ -2245,6 +2245,42 @@ button:disabled {
   color: #afc0c3;
   font: 9px var(--mono);
 }
+.import-upsert-keys {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 9px 10px;
+  border: 1px solid #465d42;
+  border-radius: 4px;
+  background: #172019;
+  color: #b9d0b0;
+  font: 9px var(--mono);
+}
+.import-upsert-keys > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.import-upsert-keys small {
+  color: #879b8c;
+}
+.import-upsert-key-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.import-upsert-key-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #d7e7d0;
+}
+.import-upsert-key-list label:has(input:disabled) {
+  color: #68766c;
+}
+.import-upsert-key-list b {
+  color: #d5eb89;
+  font-size: 8px;
+}
 .import-mapping-list {
   max-height: 240px;
   overflow: auto;
@@ -2311,6 +2347,17 @@ button:disabled {
   border-radius: 4px;
   background: #251c1e;
   color: #e3a184;
+  font: 9px / 1.45 var(--mono);
+}
+.import-warnings {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 9px 10px;
+  border: 1px solid #5a5634;
+  border-radius: 4px;
+  background: #252519;
+  color: #ddcf8b;
   font: 9px / 1.45 var(--mono);
 }
 .migration-history-modal {

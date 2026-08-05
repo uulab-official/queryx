@@ -262,8 +262,9 @@ git commit -m "docs: add database ide parity gates"
 - [x] Parse quoted CSV with headers, multiline cells, duplicate/width validation, and row-level errors.
 - [x] Map CSV columns to table metadata types and generate dialect-aware INSERT batches.
 - [x] Add desktop file picker, mapping controls, five-row preview, read-only gating, and transactional execution.
-- [x] Add deterministic tests and document transforms/update-upsert/progress as remaining scope.
+- [x] Add deterministic tests and document transforms/progress as remaining scope.
 - [x] Extend the same wizard to JSON arrays/NDJSON and driver-specific ignore-conflict SQL.
+- [x] Add mapped conflict-key selection and dialect-specific transactional upsert SQL with unique-index warnings.
 
 ### Task 9: Deliver the first ERD exploration slice
 

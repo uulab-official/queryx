@@ -8,7 +8,7 @@ export type ImportValueType =
   | "date"
   | "json";
 
-export type ImportConflictPolicy = "error" | "ignore";
+export type ImportConflictPolicy = "error" | "ignore" | "upsert";
 
 export interface CsvImportParseResult {
   headers: string[];
@@ -27,7 +27,10 @@ export interface CsvImportPlan {
   mappings: CsvImportMapping[];
   statements: string[];
   errors: string[];
+  warnings: string[];
   rowCount: number;
+  conflictPolicy: ImportConflictPolicy;
+  conflictColumns: string[];
 }
 
 export function parseCsv(text: string, delimiter = ","): CsvImportParseResult {
@@ -195,13 +198,16 @@ export function defaultCsvImportMappings(
 }
 
 export function buildCsvImportPlan(
-  table: Pick<TableMetadata, "schema" | "name">,
+  table: Pick<TableMetadata, "schema" | "name" | "columns"> &
+    Partial<Pick<TableMetadata, "indexes">>,
   parsed: CsvImportParseResult,
   mappings: readonly CsvImportMapping[],
   driver: DriverKind,
   conflictPolicy: ImportConflictPolicy = "error",
+  conflictColumns: readonly string[] = [],
 ): CsvImportPlan {
   const errors = [...parsed.errors];
+  const warnings: string[] = [];
   const sourceIndexes = new Map(
     parsed.headers.map((header, index) => [header, index]),
   );
@@ -222,7 +228,87 @@ export function buildCsvImportPlan(
   if (activeMappings.length === 0)
     errors.push("Choose at least one column to import");
 
+  const normalizedConflictColumns = conflictColumns.map((column) =>
+    column.trim(),
+  );
+  const conflictSet = new Set<string>();
+  if (conflictPolicy === "upsert") {
+    if (normalizedConflictColumns.length === 0) {
+      errors.push("Choose at least one conflict key column for upsert");
+    }
+    for (const column of normalizedConflictColumns) {
+      if (!column) {
+        errors.push("Conflict key column name is required");
+        continue;
+      }
+      if (conflictSet.has(column.toLocaleLowerCase())) {
+        errors.push(`Conflict key column selected more than once: ${column}`);
+      }
+      conflictSet.add(column.toLocaleLowerCase());
+      if (!table.columns.some((candidate) => candidate.name === column)) {
+        errors.push(`Conflict key column does not exist: ${column}`);
+      }
+      if (!activeMappings.some((mapping) => mapping.targetName === column)) {
+        errors.push(
+          `Conflict key column must be mapped and included: ${column}`,
+        );
+      }
+    }
+    const hasMatchingUniqueIndex = Boolean(
+      table.indexes?.some(
+        (index) =>
+          index.unique &&
+          index.columns.length === normalizedConflictColumns.length &&
+          index.columns.every(
+            (column, indexPosition) =>
+              column === normalizedConflictColumns[indexPosition],
+          ),
+      ),
+    );
+    if (!hasMatchingUniqueIndex) {
+      warnings.push(
+        "Upsert conflict columns do not match a known unique or primary index; the database may reject the statement",
+      );
+    }
+  }
+
   const statements: string[] = [];
+  const multiRowValues: string[] = [];
+  const tableName = `${quoteIdentifier(table.schema, driver)}.${quoteIdentifier(table.name, driver)}`;
+  const activeTargetColumns = activeMappings
+    .map((mapping) => mapping.targetName)
+    .filter((target): target is string => Boolean(target));
+  const insertColumns = activeTargetColumns
+    .map((column) => quoteIdentifier(column, driver))
+    .join(", ");
+  const conflictColumnsSql = normalizedConflictColumns
+    .map((column) => quoteIdentifier(column, driver))
+    .join(", ");
+  const updateColumns = activeTargetColumns.filter(
+    (column) => !conflictSet.has(column.toLocaleLowerCase()),
+  );
+  const upsertSuffix =
+    conflictPolicy !== "upsert"
+      ? ""
+      : driver === "mysql"
+        ? ` ON DUPLICATE KEY UPDATE ${
+            updateColumns.length > 0
+              ? updateColumns
+                  .map(
+                    (column) =>
+                      `${quoteIdentifier(column, driver)} = VALUES(${quoteIdentifier(column, driver)})`,
+                  )
+                  .join(", ")
+              : `${quoteIdentifier(normalizedConflictColumns[0] ?? "", driver)} = ${quoteIdentifier(normalizedConflictColumns[0] ?? "", driver)}`
+          }`
+        : updateColumns.length > 0
+          ? ` ON CONFLICT (${conflictColumnsSql}) DO UPDATE SET ${updateColumns
+              .map(
+                (column) =>
+                  `${quoteIdentifier(column, driver)} = excluded.${quoteIdentifier(column, driver)}`,
+              )
+              .join(", ")}`
+          : ` ON CONFLICT (${conflictColumnsSql}) DO NOTHING`;
   for (const row of parsed.rows) {
     const columns: string[] = [];
     const values: string[] = [];
@@ -242,6 +328,10 @@ export function buildCsvImportPlan(
       values.push(converted.sql);
     }
     if (columns.length === activeMappings.length && columns.length > 0) {
+      if (conflictPolicy === "upsert") {
+        multiRowValues.push(`(${values.join(", ")})`);
+        continue;
+      }
       const conflictPrefix =
         conflictPolicy === "ignore" && driver === "mysql"
           ? "INSERT IGNORE INTO"
@@ -253,15 +343,27 @@ export function buildCsvImportPlan(
           ? " ON CONFLICT DO NOTHING"
           : "";
       statements.push(
-        `${conflictPrefix} ${quoteIdentifier(table.schema, driver)}.${quoteIdentifier(table.name, driver)} (${columns.join(", ")}) VALUES (${values.join(", ")})${conflictSuffix};`,
+        `${conflictPrefix} ${tableName} (${columns.join(", ")}) VALUES (${values.join(", ")})${conflictSuffix};`,
       );
     }
+  }
+  if (
+    conflictPolicy === "upsert" &&
+    multiRowValues.length > 0 &&
+    errors.length === 0
+  ) {
+    statements.push(
+      `INSERT INTO ${tableName} (${insertColumns}) VALUES ${multiRowValues.join(", ")}${upsertSuffix};`,
+    );
   }
   return {
     mappings: [...mappings],
     statements,
     errors,
+    warnings,
     rowCount: parsed.rows.length,
+    conflictPolicy,
+    conflictColumns: normalizedConflictColumns,
   };
 }
 

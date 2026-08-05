@@ -15,6 +15,15 @@ const table = {
     { name: "active", type: "boolean", nullable: false },
     { name: "profile", type: "jsonb", nullable: true },
   ],
+  indexes: [
+    {
+      name: "users_pkey",
+      columns: ["id"],
+      unique: true,
+      primary: true,
+      type: "btree",
+    },
+  ],
 };
 
 describe("parseCsv", () => {
@@ -110,5 +119,65 @@ describe("buildCsvImportPlan", () => {
       buildCsvImportPlan(table, parsed, mappings, "sqlite", "ignore")
         .statements[0],
     ).toContain("INSERT OR IGNORE INTO");
+  });
+
+  it("generates one transactional multi-row upsert with dialect-specific conflict syntax", () => {
+    const parsed = parseCsv("id,email\n1,new@example.com\n2,two@example.com\n");
+    const mappings = defaultCsvImportMappings(parsed.headers, table.columns);
+    const postgres = buildCsvImportPlan(
+      table,
+      parsed,
+      mappings,
+      "postgres",
+      "upsert",
+      ["id"],
+    );
+    expect(postgres.errors).toEqual([]);
+    expect(postgres.warnings).toEqual([]);
+    expect(postgres.statements).toHaveLength(1);
+    expect(postgres.statements[0]).toContain(
+      'VALUES (1, \'new@example.com\'), (2, \'two@example.com\') ON CONFLICT ("id") DO UPDATE SET "email" = excluded."email";',
+    );
+
+    const mysql = buildCsvImportPlan(
+      table,
+      parsed,
+      mappings,
+      "mysql",
+      "upsert",
+      ["id"],
+    );
+    expect(mysql.statements[0]).toContain(
+      "ON DUPLICATE KEY UPDATE `email` = VALUES(`email`);",
+    );
+  });
+
+  it("requires mapped conflict keys and warns when no unique index is known", () => {
+    const parsed = parseCsv("id,email\n1,a@example.com\n");
+    const mappings = defaultCsvImportMappings(parsed.headers, table.columns);
+    const plan = buildCsvImportPlan(
+      { ...table, indexes: [] },
+      parsed,
+      mappings,
+      "sqlite",
+      "upsert",
+      ["missing"],
+    );
+    expect(plan.statements).toEqual([]);
+    expect(plan.errors).toEqual(
+      expect.arrayContaining([
+        "Conflict key column does not exist: missing",
+        "Conflict key column must be mapped and included: missing",
+      ]),
+    );
+    const warningPlan = buildCsvImportPlan(
+      { ...table, indexes: [] },
+      parsed,
+      mappings,
+      "sqlite",
+      "upsert",
+      ["id"],
+    );
+    expect(warningPlan.warnings[0]).toContain("do not match");
   });
 });

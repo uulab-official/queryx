@@ -113,7 +113,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [ ] Oracle driver and Oracle-specific object metadata
 - [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
 - [ ] Data compare and controlled synchronization scripts
-- [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, and ignore-conflict policy; transforms, update/upsert, and progress remain planned
+- [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned
 - [ ] Excel and Markdown export
 - [ ] Query performance diagnostics, lock/session explorer, and long-running query controls
 - [ ] Driver SDK, compatibility matrix, and community driver certification tests
