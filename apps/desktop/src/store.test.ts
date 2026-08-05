@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InMemoryDriver } from "@queryx/core";
-import type { QueryResult } from "@queryx/shared";
+import type { DatabaseSession, QueryResult } from "@queryx/shared";
 import { useQueryStore, type QueryTab } from "./store";
 
 const initialTab: QueryTab = {
@@ -87,6 +87,65 @@ describe("query tabs", () => {
 
     expect(driver.capabilities().has("locks")).toBe(false);
     expect(await driver.locks()).toEqual([]);
+  });
+
+  it("records redacted session observations and honors retention off", () => {
+    const values = new Map<string, string>();
+    const fakeWindow = {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    } as unknown as Window & typeof globalThis;
+    const previousWindow = (
+      globalThis as typeof globalThis & { window?: Window }
+    ).window;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: fakeWindow,
+    });
+
+    try {
+      const session: DatabaseSession = {
+        id: "42",
+        user: "queryx",
+        database: "app",
+        clientAddress: null,
+        applicationName: "worker",
+        state: "waiting",
+        query: "SELECT * FROM users WHERE email = 'secret@example.com'",
+        startedAt: null,
+        durationMs: 12_000,
+        waitEvent: "Lock: relation",
+        canCancel: true,
+      };
+      useQueryStore.setState({
+        sessionAudit: [],
+        sessionAuditRetentionDays: 7,
+        driverKind: "postgres",
+        connectionName: "production",
+      });
+      useQueryStore.getState().recordSessionAudit([session]);
+
+      const entry = useQueryStore.getState().sessionAudit[0];
+      expect(entry?.queryPreview).toBe("SELECT * FROM users WHERE email = ?");
+      expect(entry?.queryPreview).not.toContain("secret@example.com");
+      expect(values.has("queryx:session-audit")).toBe(true);
+
+      useQueryStore.getState().setSessionAuditRetentionDays(0);
+      expect(useQueryStore.getState().sessionAudit).toEqual([]);
+      expect(values.has("queryx:session-audit")).toBe(false);
+    } finally {
+      if (previousWindow) {
+        Object.defineProperty(globalThis, "window", {
+          configurable: true,
+          value: previousWindow,
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "window");
+      }
+    }
   });
 
   it("keeps the original SQL in history when execution uses a page wrapper", async () => {

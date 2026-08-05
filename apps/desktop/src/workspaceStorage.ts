@@ -5,6 +5,7 @@ import type {
   QueryHistoryEntry,
   QueryTab,
 } from "./store";
+import type { SessionAuditEntry } from "@queryx/shared";
 
 export interface WorkspaceSnapshot {
   version: 1;
@@ -13,6 +14,8 @@ export interface WorkspaceSnapshot {
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
   migrationHistory: MigrationHistoryEntry[];
+  sessionAudit: SessionAuditEntry[];
+  sessionAuditRetentionDays: number;
 }
 
 export interface WorkspaceLoadResult {
@@ -25,7 +28,10 @@ const workspaceTabsStorageKey = "queryx:workspace-tabs";
 const historyStorageKey = "queryx:query-history";
 const favoritesStorageKey = "queryx:query-favorites";
 const migrationHistoryStorageKey = "queryx:migration-history";
+const sessionAuditStorageKey = "queryx:session-audit";
+const sessionAuditRetentionStorageKey = "queryx:session-audit-retention-days";
 const nativeWorkspacePath = "queryx/workspace.json";
+const supportedRetentionDays = [0, 1, 7, 30];
 
 function normalizeTabs(value: unknown, fallback: QueryTab[]): QueryTab[] {
   if (!Array.isArray(value)) return fallback;
@@ -109,6 +115,42 @@ function normalizeMigrationHistory(value: unknown): MigrationHistoryEntry[] {
     .slice(0, 30);
 }
 
+function normalizeSessionAudit(value: unknown): SessionAuditEntry[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (entry): entry is SessionAuditEntry =>
+        Boolean(entry) &&
+        typeof entry === "object" &&
+        typeof entry.id === "string" &&
+        (entry.driver === "sqlite" ||
+          entry.driver === "postgres" ||
+          entry.driver === "mysql") &&
+        typeof entry.connectionName === "string" &&
+        typeof entry.sessionId === "string" &&
+        (typeof entry.database === "string" || entry.database === null) &&
+        typeof entry.observedAt === "string" &&
+        (entry.state === "active" ||
+          entry.state === "idle" ||
+          entry.state === "idleInTransaction" ||
+          entry.state === "waiting" ||
+          entry.state === "unknown") &&
+        (typeof entry.durationMs === "number" || entry.durationMs === null) &&
+        (typeof entry.waitEvent === "string" || entry.waitEvent === null) &&
+        (typeof entry.queryPreview === "string" ||
+          entry.queryPreview === null) &&
+        (typeof entry.queryFingerprint === "string" ||
+          entry.queryFingerprint === null),
+    )
+    .slice(0, 500);
+}
+
+function normalizeRetentionDays(value: unknown): number {
+  return typeof value === "number" && supportedRetentionDays.includes(value)
+    ? value
+    : 7;
+}
+
 function fallbackSnapshot(fallbackTabs: QueryTab[]): WorkspaceSnapshot {
   return {
     version: 1,
@@ -117,6 +159,8 @@ function fallbackSnapshot(fallbackTabs: QueryTab[]): WorkspaceSnapshot {
     history: [],
     favorites: [],
     migrationHistory: [],
+    sessionAudit: [],
+    sessionAuditRetentionDays: 7,
   };
 }
 
@@ -138,6 +182,10 @@ function normalizeSnapshot(
     history: normalizeHistory(candidate.history),
     favorites: normalizeFavorites(candidate.favorites),
     migrationHistory: normalizeMigrationHistory(candidate.migrationHistory),
+    sessionAudit: normalizeSessionAudit(candidate.sessionAudit),
+    sessionAuditRetentionDays: normalizeRetentionDays(
+      candidate.sessionAuditRetentionDays,
+    ),
   };
 }
 
@@ -159,11 +207,20 @@ function readBrowserSnapshot(
     const migrationHistory = JSON.parse(
       window.localStorage.getItem(migrationHistoryStorageKey) ?? "[]",
     );
+    const sessionAudit = JSON.parse(
+      window.localStorage.getItem(sessionAuditStorageKey) ?? "[]",
+    );
+    const storedRetentionDays = window.localStorage.getItem(
+      sessionAuditRetentionStorageKey,
+    );
+    const sessionAuditRetentionDays =
+      storedRetentionDays === null ? undefined : Number(storedRetentionDays);
     if (
       (!tabsSnapshot || tabsSnapshot.version !== 1) &&
       (!Array.isArray(history) || history.length === 0) &&
       (!Array.isArray(favorites) || favorites.length === 0) &&
-      (!Array.isArray(migrationHistory) || migrationHistory.length === 0)
+      (!Array.isArray(migrationHistory) || migrationHistory.length === 0) &&
+      (!Array.isArray(sessionAudit) || sessionAudit.length === 0)
     ) {
       return null;
     }
@@ -179,6 +236,8 @@ function readBrowserSnapshot(
         history,
         favorites,
         migrationHistory,
+        sessionAudit,
+        sessionAuditRetentionDays,
       },
       fallback,
     );
@@ -259,6 +318,18 @@ export async function persistWorkspaceSnapshot(
           JSON.stringify(normalized.migrationHistory),
         );
       }
+      if (normalized.sessionAudit.length === 0) {
+        window.localStorage.removeItem(sessionAuditStorageKey);
+      } else {
+        window.localStorage.setItem(
+          sessionAuditStorageKey,
+          JSON.stringify(normalized.sessionAudit),
+        );
+      }
+      window.localStorage.setItem(
+        sessionAuditRetentionStorageKey,
+        String(normalized.sessionAuditRetentionDays),
+      );
     } catch {
       // Local persistence is best-effort and never contains connection secrets.
     }

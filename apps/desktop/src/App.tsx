@@ -99,6 +99,7 @@ import type {
   DatabaseMetadata,
   RelationRef,
   RoutineMetadata,
+  SessionAuditEntry,
   TableMetadata,
   TriggerMetadata,
   ViewMetadata,
@@ -113,6 +114,7 @@ import {
 import { getVirtualRowWindow } from "./resultGrid";
 import {
   useQueryStore,
+  sessionAuditRetentionOptions,
   type ConnectionProfileDraft,
   type MigrationHistoryEntry,
   type RunMode,
@@ -280,6 +282,7 @@ type UiIconName =
   | "sessions"
   | "locks"
   | "diagnostics"
+  | "audit"
   | "help"
   | "refresh"
   | "settings"
@@ -329,6 +332,12 @@ function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
       <>
         <path d="M3 17h3l2-7 4 11 2-7h7" />
         <path d="M3 5h18" />
+      </>
+    ),
+    audit: (
+      <>
+        <circle cx="12" cy="12" r="8" />
+        <path d="M12 8v4l3 2" />
       </>
     ),
     help: (
@@ -518,6 +527,8 @@ function App() {
     history,
     favorites,
     migrationHistory,
+    sessionAudit,
+    sessionAuditRetentionDays,
     connectionProfiles,
     connectionProfilesLoaded,
     driver,
@@ -553,6 +564,9 @@ function App() {
     clearHistory,
     addMigrationHistory,
     clearMigrationHistory,
+    recordSessionAudit,
+    clearSessionAudit,
+    setSessionAuditRetentionDays,
     markMigrationApplied,
     toggleFavorite,
   } = useQueryStore();
@@ -621,6 +635,7 @@ function App() {
   const [locksLoading, setLocksLoading] = useState(false);
   const [locksError, setLocksError] = useState<string | null>(null);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
   const [longQueryThresholdMs, setLongQueryThresholdMs] = useState(
     readLongQueryThresholdMs,
   );
@@ -666,7 +681,9 @@ function App() {
     setSessionsLoading(true);
     setSessionsError(null);
     try {
-      setSessions(await driver.sessions());
+      const nextSessions = await driver.sessions();
+      setSessions(nextSessions);
+      recordSessionAudit(nextSessions);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setSessionsError(message);
@@ -740,6 +757,9 @@ function App() {
     }
     setDiagnosticsOpen(true);
     void loadSessionsPanel();
+  };
+  const openSessionHistory = () => {
+    setSessionHistoryOpen(true);
   };
   const updateLongQueryThreshold = (thresholdMs: number) => {
     if (!longQueryThresholdOptions.includes(thresholdMs)) return;
@@ -2631,6 +2651,12 @@ function App() {
       execute: openDiagnostics,
     },
     {
+      id: "open-session-history",
+      label: "Open session audit history",
+      hint: `${sessionAudit.length} local observations`,
+      execute: openSessionHistory,
+    },
+    {
       id: "create-table",
       label: "Create table from form",
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
@@ -2806,6 +2832,15 @@ function App() {
             disabled={!canInspectSessions}
           >
             <UiIcon name="diagnostics" size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Open session audit history"
+            title="Session audit history"
+            onClick={openSessionHistory}
+          >
+            <UiIcon name="audit" size={16} />
           </button>
           <button
             type="button"
@@ -4143,6 +4178,23 @@ function App() {
           onClose={() => setDiagnosticsOpen(false)}
         />
       )}
+      {sessionHistoryOpen && (
+        <SessionAuditDialog
+          entries={sessionAudit}
+          retentionDays={sessionAuditRetentionDays}
+          onRetentionChange={setSessionAuditRetentionDays}
+          onClear={() => {
+            if (
+              !window.confirm("Clear all saved session audit observations?")
+            ) {
+              return;
+            }
+            clearSessionAudit();
+            notify("Cleared session audit history");
+          }}
+          onClose={() => setSessionHistoryOpen(false)}
+        />
+      )}
       {createTableOpen && metadata && (
         <CreateTableDialog
           driverKind={driverKind}
@@ -4372,6 +4424,135 @@ function App() {
           onClose={() => setQuickOpenOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function SessionAuditDialog({
+  entries,
+  retentionDays,
+  onRetentionChange,
+  onClear,
+  onClose,
+}: {
+  entries: SessionAuditEntry[];
+  retentionDays: number;
+  onRetentionChange: (days: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="audit-modal"
+        aria-modal="true"
+        aria-labelledby="session-audit-title"
+      >
+        <div className="session-modal-heading">
+          <div>
+            <p className="modal-kicker">LOCAL AUDIT</p>
+            <h2 id="session-audit-title">Session audit history</h2>
+            <p className="session-modal-subtitle">
+              {entries.length} redacted observation
+              {entries.length === 1 ? "" : "s"}
+            </p>
+          </div>
+          <div className="session-modal-actions">
+            <label className="diagnostic-threshold">
+              <span>Keep for</span>
+              <select
+                value={retentionDays}
+                onChange={(event) =>
+                  onRetentionChange(Number(event.target.value))
+                }
+              >
+                {sessionAuditRetentionOptions.map((days) => (
+                  <option value={days} key={days}>
+                    {days === 0 ? "Off" : `${days} day${days === 1 ? "" : "s"}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="mini-button"
+              onClick={onClear}
+              disabled={entries.length === 0}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Close session audit history"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        {entries.length === 0 ? (
+          <div className="session-empty">
+            No session observations are stored locally.
+          </div>
+        ) : (
+          <table
+            className="session-table audit-table"
+            aria-label="Session audit history"
+          >
+            <thead>
+              <tr className="session-table-row session-table-header">
+                <th scope="col">Observed</th>
+                <th scope="col">Connection</th>
+                <th scope="col">Session</th>
+                <th scope="col">State / wait</th>
+                <th scope="col">Query shape</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr className="session-table-row" key={entry.id}>
+                  <td className="session-duration">
+                    {formatSessionStartedAt(entry.observedAt)}
+                    <small>{entry.observedAt}</small>
+                  </td>
+                  <td className="session-identity">
+                    <strong>{entry.connectionName}</strong>
+                    <small>{driverDisplayName(entry.driver)}</small>
+                  </td>
+                  <td className="session-identity">
+                    <strong>{entry.sessionId}</strong>
+                    <small>{entry.database ?? "—"}</small>
+                  </td>
+                  <td>
+                    <strong className={`session-state ${entry.state}`}>
+                      {entry.state === "idleInTransaction"
+                        ? "idle in tx"
+                        : entry.state}
+                    </strong>
+                    <small className="session-wait">
+                      {entry.waitEvent ?? "—"}
+                    </small>
+                    <small className="session-duration">
+                      {formatSessionDuration(entry.durationMs)}
+                    </small>
+                  </td>
+                  <td className="session-query audit-query">
+                    <code>{entry.queryPreview ?? "(query unavailable)"}</code>
+                    <small>fingerprint {entry.queryFingerprint ?? "—"}</small>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="session-safety-note">
+          Only redacted query shapes and metadata are stored. Literal values,
+          comments, credentials, and raw SQL are never written to this audit
+          trail.
+        </p>
+      </dialog>
     </div>
   );
 }

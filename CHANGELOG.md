@@ -46,6 +46,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Native PostgreSQL/MySQL/MariaDB session explorer with activity state, wait-event visibility, refresh, and protected query cancellation.
 - Native point-in-time lock graph for PostgreSQL `pg_locks` and MySQL/MariaDB Performance Schema/InnoDB lock waits, with blocker routing and protected query cancellation.
 - Threshold-based long-running query diagnostics with local alert thresholds, active/waiting filtering, severity ordering, and protected query cancellation.
+- Redacted local session audit history with literal/comment removal, query-shape fingerprints, configurable 0/1/7/30-day retention, workspace restore, 500-entry bound, and explicit clear.
 - Open-source release and OTA operations guide covering updater secrets, key rotation, platform signing boundaries, and rollback.
 - QueryX visual identity refresh with a reusable vector icon system, branded query mark, and regenerated desktop/mobile platform icon assets.
 - Refined the app mark into a quieter neon Q-lens with a single orbit accent for clearer recognition at small sizes.

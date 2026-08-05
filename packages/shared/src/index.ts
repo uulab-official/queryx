@@ -45,6 +45,20 @@ export interface DatabaseSession {
   canCancel: boolean;
 }
 
+export interface SessionAuditEntry {
+  id: string;
+  driver: DriverKind;
+  connectionName: string;
+  sessionId: string;
+  database: string | null;
+  observedAt: string;
+  state: DatabaseSessionState;
+  durationMs: number | null;
+  waitEvent: string | null;
+  queryPreview: string | null;
+  queryFingerprint: string | null;
+}
+
 export interface DatabaseLock {
   id: string;
   blockedSessionId: string;

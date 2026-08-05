@@ -40,6 +40,12 @@ Database privileges and server configuration control which lock rows and query t
 
 The query diagnostics panel reuses the session snapshot and shows only `active` or `waiting` sessions whose observed duration is at least the selected local threshold: 5 seconds, 30 seconds, 1 minute, or 5 minutes. Results are ordered by duration and marked `elevated` or `critical` when they reach six times the threshold. The threshold is stored in local browser/app state; QueryX does not send telemetry or poll in the background. Refresh is explicit, and **Cancel query** uses the same query-only cancellation boundary as the session explorer.
 
+## Redacted audit history
+
+Every explicit session refresh can append a local observation to **Session audit history**. An observation stores the driver, local connection label, database/session identifiers, state, duration, wait event, a redacted query preview, and an eight-character query-shape fingerprint. Single/double-quoted, backtick-delimited, and dollar-quoted values, numeric literals, and SQL comment contents are replaced before persistence; raw query text is never copied into this audit trail.
+
+Retention is configurable to **Off**, 1 day, 7 days, or 30 days. The history is capped at 500 observations, persists through the versioned native workspace snapshot or browser local storage, and has an explicit **Clear** action. This history is local-only and is not a replacement for a server-side audit log.
+
 ## Limitations
 
-The current slice does not retain a historical session audit trail or show server wait statistics. SQLite and browser preview intentionally do not claim session, lock, or query-diagnostics inspection.
+The current slice does not show server wait statistics. SQLite and browser preview intentionally do not claim session, lock, or query-diagnostics inspection.

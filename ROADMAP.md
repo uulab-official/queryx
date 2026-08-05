@@ -36,7 +36,7 @@ Available and tested:
 
 Known alpha limitations:
 
-- Native desktop now restores tabs, history, favorites, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
+- Native desktop now restores tabs, history, favorites, redacted session audit observations, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
 - Native desktop passwords can be saved in the platform OS keychain; profile files retain only a `passwordStored` marker. Browser preview remains session-only.
 - Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages single SELECT/WITH queries, and all native drivers can stream 256-row chunks. Disk spill/backpressure and arbitrary-query server-side filtering remain pending.
 - Safety analysis is lexical, not yet parser/plan backed.
@@ -95,7 +95,7 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [x] Table data editor with filters, ordering, pagination, keyed cell updates, default-aware row insertion, guarded selected-row deletion, and optimistic conflict detection; arbitrary-query table identity remains planned
 - [x] Table creation, add-column, type/nullability/non-PK-drop, ordered UNIQUE/non-unique index-create, regular index-drop, named foreign-key add/drop, and view create/alter/drop forms with validation, SQL preview, explicit transaction apply, driver-aware manual review, dependency warnings, and metadata refresh; rename/index-alter/CHECK/unique constraint forms remain planned
 - [x] Schema compare applied-migration confirmation and native durable migration history on top of the metadata dependency graph, privilege preflight, and forward/rollback preview; object-specific DDL forms remain planned
-- [ ] Session audit trail stored locally with configurable retention and redaction
+- [x] Session audit trail stored locally with 0/1/7/30-day retention, 500-observation bound, literal/comment redaction, query-shape fingerprinting, workspace restore, and explicit clear
 - [ ] Backup/export warning flows before high-risk schema operations
 
 Release gates:
@@ -115,7 +115,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [ ] Data compare and controlled synchronization scripts
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned
 - [ ] Excel and Markdown export
-- [x] PostgreSQL/MySQL/MariaDB session explorer, point-in-time lock graph, and threshold-based long-running query diagnostics with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; session history remains planned
+- [x] PostgreSQL/MySQL/MariaDB session explorer, point-in-time lock graph, threshold-based long-running query diagnostics, and redacted local session audit history with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; server wait statistics remain planned
 - [ ] Driver SDK, compatibility matrix, and community driver certification tests
 - [ ] Theme tokens and stable commands/menus/panels extension points
 

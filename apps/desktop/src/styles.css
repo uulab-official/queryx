@@ -2628,6 +2628,34 @@ button:disabled {
 .diagnostic-modal {
   width: min(1060px, calc(100vw - 40px));
 }
+.audit-modal {
+  width: min(1120px, calc(100vw - 40px));
+}
+.audit-table th:nth-child(1),
+.audit-table td:nth-child(1) {
+  width: 145px;
+}
+.audit-table th:nth-child(2),
+.audit-table td:nth-child(2) {
+  width: 150px;
+}
+.audit-table th:nth-child(3),
+.audit-table td:nth-child(3) {
+  width: 105px;
+}
+.audit-table th:nth-child(4),
+.audit-table td:nth-child(4) {
+  width: 135px;
+}
+.audit-query small {
+  display: block;
+  overflow: hidden;
+  margin-top: 5px;
+  color: #788e94;
+  font: 8px var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .diagnostic-threshold {
   display: grid;
   align-items: center;

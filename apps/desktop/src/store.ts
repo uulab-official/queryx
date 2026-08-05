@@ -1,14 +1,20 @@
 import { create } from "zustand";
 import type {
   ConnectionProfile,
+  DatabaseSession,
   DatabaseDriver,
   DatabaseMetadata,
   DriverConfig,
   DriverKind,
   QueryResult,
+  SessionAuditEntry,
 } from "@queryx/shared";
 import { createRuntimeDriver } from "./nativeDriver";
 import { appendQueryChunk } from "@queryx/core";
+import {
+  buildSessionAuditEntry,
+  retainSessionAuditHistory,
+} from "@queryx/core";
 import {
   loadConnectionProfiles,
   persistConnectionProfiles,
@@ -26,6 +32,9 @@ export type ExecutionStatus =
   | "success"
   | "cancelled"
   | "error";
+
+export const sessionAuditRetentionOptions = [0, 1, 7, 30] as const;
+export const defaultSessionAuditRetentionDays = 7;
 
 export interface QueryHistoryEntry {
   id: string;
@@ -100,6 +109,8 @@ interface QueryState {
   history: QueryHistoryEntry[];
   favorites: QueryFavorite[];
   migrationHistory: MigrationHistoryEntry[];
+  sessionAudit: SessionAuditEntry[];
+  sessionAuditRetentionDays: number;
   connectionProfiles: ConnectionProfile[];
   connectionProfilesLoaded: boolean;
   workspaceLoaded: boolean;
@@ -153,6 +164,9 @@ interface QueryState {
   clearHistory: () => void;
   addMigrationHistory: (entry: MigrationHistoryEntry) => void;
   clearMigrationHistory: () => void;
+  recordSessionAudit: (sessions: readonly DatabaseSession[]) => void;
+  clearSessionAudit: () => void;
+  setSessionAuditRetentionDays: (days: number) => void;
   markMigrationApplied: (id: string) => void;
   toggleFavorite: (sql: string) => boolean;
 }
@@ -171,7 +185,13 @@ interface QueryWorkspaceSnapshot {
 function persistWorkspaceState(
   state: Pick<
     QueryState,
-    "tabs" | "activeTabId" | "history" | "favorites" | "migrationHistory"
+    | "tabs"
+    | "activeTabId"
+    | "history"
+    | "favorites"
+    | "migrationHistory"
+    | "sessionAudit"
+    | "sessionAuditRetentionDays"
   >,
 ): void {
   void persistWorkspaceSnapshot({
@@ -181,6 +201,8 @@ function persistWorkspaceState(
     history: state.history,
     favorites: state.favorites,
     migrationHistory: state.migrationHistory,
+    sessionAudit: state.sessionAudit,
+    sessionAuditRetentionDays: state.sessionAuditRetentionDays,
   }).catch(() => undefined);
 }
 
@@ -481,6 +503,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
     history: readHistory(),
     favorites: readFavorites(),
     migrationHistory: readMigrationHistory(),
+    sessionAudit: [],
+    sessionAuditRetentionDays: defaultSessionAuditRetentionDays,
     connectionProfiles: [],
     connectionProfilesLoaded: false,
     workspaceLoaded: false,
@@ -714,6 +738,8 @@ export const useQueryStore = create<QueryState>((set, get) => {
         history: result.snapshot.history,
         favorites: result.snapshot.favorites,
         migrationHistory: result.snapshot.migrationHistory,
+        sessionAudit: result.snapshot.sessionAudit,
+        sessionAuditRetentionDays: result.snapshot.sessionAuditRetentionDays,
         workspaceRestored: result.restored,
         workspaceLoaded: true,
       });
@@ -932,6 +958,45 @@ export const useQueryStore = create<QueryState>((set, get) => {
       clearStoredMigrationHistory();
       set({ migrationHistory: [] });
       persistWorkspaceState({ ...get(), migrationHistory: [] });
+    },
+    recordSessionAudit: (sessions) => {
+      const observedAt = new Date().toISOString();
+      const entries = sessions.map((session) =>
+        buildSessionAuditEntry(
+          session,
+          get().driverKind,
+          get().connectionName,
+          observedAt,
+        ),
+      );
+      const sessionAudit = retainSessionAuditHistory(
+        get().sessionAudit,
+        entries,
+        get().sessionAuditRetentionDays,
+        new Date(observedAt),
+      );
+      set({ sessionAudit });
+      persistWorkspaceState({ ...get(), sessionAudit });
+    },
+    clearSessionAudit: () => {
+      set({ sessionAudit: [] });
+      persistWorkspaceState({ ...get(), sessionAudit: [] });
+    },
+    setSessionAuditRetentionDays: (days) => {
+      if (!(sessionAuditRetentionOptions as readonly number[]).includes(days)) {
+        return;
+      }
+      const sessionAudit = retainSessionAuditHistory(
+        [],
+        get().sessionAudit,
+        days,
+      );
+      set({ sessionAuditRetentionDays: days, sessionAudit });
+      persistWorkspaceState({
+        ...get(),
+        sessionAuditRetentionDays: days,
+        sessionAudit,
+      });
     },
     markMigrationApplied: (id) => {
       const appliedAt = new Date().toISOString();

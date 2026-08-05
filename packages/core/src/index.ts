@@ -89,6 +89,12 @@ export type {
 export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
 export { findLongRunningSessions } from "./longRunningDiagnostics";
+export {
+  buildSessionAuditEntry,
+  fingerprintSqlForAudit,
+  redactSqlForAudit,
+  retainSessionAuditHistory,
+} from "./sessionAudit";
 export { formatSql } from "./sqlFormatter";
 export {
   buildSchemaMigrationStatements,

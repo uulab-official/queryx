@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { SessionAuditEntry } from "@queryx/shared";
 import type {
   MigrationHistoryEntry,
   QueryFavorite,
@@ -80,6 +81,19 @@ describe("versioned workspace storage", () => {
         status: "applied",
         appliedAt: new Date().toISOString(),
       };
+      const sessionAudit: SessionAuditEntry = {
+        id: "session-audit-1",
+        driver: "postgres",
+        connectionName: "production",
+        sessionId: "42",
+        database: "app",
+        observedAt: new Date().toISOString(),
+        state: "waiting",
+        durationMs: 12_000,
+        waitEvent: "Lock: relation",
+        queryPreview: "SELECT * FROM users WHERE id = ?",
+        queryFingerprint: "deadbeef",
+      };
 
       await persistWorkspaceSnapshot({
         version: 1,
@@ -88,6 +102,8 @@ describe("versioned workspace storage", () => {
         history: [history],
         favorites: [favorite],
         migrationHistory: [migration],
+        sessionAudit: [sessionAudit],
+        sessionAuditRetentionDays: 7,
       });
       const result = await loadWorkspaceSnapshot([fallback]);
 
@@ -98,6 +114,8 @@ describe("versioned workspace storage", () => {
       expect(result.snapshot.history).toEqual([history]);
       expect(result.snapshot.favorites).toEqual([favorite]);
       expect(result.snapshot.migrationHistory).toEqual([migration]);
+      expect(result.snapshot.sessionAudit).toEqual([sessionAudit]);
+      expect(result.snapshot.sessionAuditRetentionDays).toBe(7);
       expect(values.has("queryx:workspace-tabs")).toBe(true);
     });
   });
@@ -119,9 +137,37 @@ describe("versioned workspace storage", () => {
         history: [],
         favorites: [],
         migrationHistory: [],
+        sessionAudit: [],
+        sessionAuditRetentionDays: 7,
       });
 
       expect(values.has("queryx:query-history")).toBe(false);
+    });
+  });
+
+  it("keeps the default audit retention when migrating an older workspace", async () => {
+    await withLocalStorage(async (values) => {
+      values.set(
+        "queryx:workspace-tabs",
+        JSON.stringify({
+          version: 1,
+          tabs: [
+            {
+              id: "query-1",
+              title: "Query 1",
+              sql: "SELECT 1",
+              isDirty: false,
+            },
+          ],
+          activeTabId: "query-1",
+        }),
+      );
+
+      const result = await loadWorkspaceSnapshot([
+        { id: "fallback", title: "Fallback", sql: "SELECT 0", isDirty: false },
+      ]);
+
+      expect(result.snapshot.sessionAuditRetentionDays).toBe(7);
     });
   });
 });
