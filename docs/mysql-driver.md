@@ -4,7 +4,7 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 
 ## Supported now
 
-- MySQL and MariaDB TCP connections with host, port, database, username, password, and `Prefer`/`Require`/`Disable` SSL modes;
+- MySQL and MariaDB TCP connections with host, port, database, username, password, `Prefer`/`Require`/`Verify CA`/`Verify Full`/`Disable` SSL modes, and optional CA/client certificate/key file paths;
 - direct query execution, one-shot document transactions, and reusable explicit transaction sessions;
 - SELECT/SHOW/DESCRIBE/EXPLAIN result normalization, including common numeric, date/time, JSON, and binary values;
 - information_schema metadata for tables, views, columns, approximate table row counts, indexes, foreign keys, routines, triggers, and direct relation dependencies;
@@ -16,7 +16,9 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 
 ## Deliberate limitations
 
-The initial driver does not yet expose MySQL/MariaDB event triggers, SSH tunnels, or certificate-file configuration. SQLite remains the only built-in driver without native cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
+The initial driver does not yet expose MySQL/MariaDB event triggers or SSH tunnels. SQLite remains the only built-in driver without native cancellation. Trigger definitions currently expose the catalog action statement rather than a reconstructed `CREATE TRIGGER` statement. These are tracked as separate roadmap gates. An empty Inspector section means the metadata contract does not claim support; it is not evidence that the database has no such objects.
+
+`Verify CA` maps to SQLx `VerifyCa`; `Verify Full / Identity` maps to `VerifyIdentity`. The CA path is passed to SQLx as `ssl_ca`, while the client certificate and key paths are passed to `ssl_client_cert` and `ssl_client_key`.
 
 MySQL `information_schema.tables.table_rows` is an engine-dependent estimate, not an exact `COUNT(*)`. Use an explicit query when an exact count matters.
 

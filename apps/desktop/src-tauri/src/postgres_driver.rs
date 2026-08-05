@@ -37,6 +37,16 @@ pub struct PostgresDriver {
     read_only: bool,
 }
 
+fn map_ssl_mode(mode: SslMode) -> PgSslMode {
+    match mode {
+        SslMode::Disable => PgSslMode::Disable,
+        SslMode::Prefer => PgSslMode::Prefer,
+        SslMode::Require => PgSslMode::Require,
+        SslMode::VerifyCa => PgSslMode::VerifyCa,
+        SslMode::VerifyFull => PgSslMode::VerifyFull,
+    }
+}
+
 #[derive(Debug)]
 enum ActiveQueryState {
     Pending,
@@ -138,11 +148,7 @@ impl PostgresDriver {
         let database = required_value(&config.database, "database")?;
         let host = config.host.as_deref().unwrap_or("localhost");
         let username = config.username.as_deref().unwrap_or("postgres");
-        let ssl_mode = match config.ssl_mode.unwrap_or(SslMode::Prefer) {
-            SslMode::Disable => PgSslMode::Disable,
-            SslMode::Prefer => PgSslMode::Prefer,
-            SslMode::Require => PgSslMode::Require,
-        };
+        let ssl_mode = map_ssl_mode(config.ssl_mode.unwrap_or(SslMode::Prefer));
         let mut options = PgConnectOptions::new()
             .host(host)
             .port(config.port.unwrap_or(5432))
@@ -152,6 +158,15 @@ impl PostgresDriver {
             .application_name("QueryX");
         if let Some(password) = config.password.as_deref() {
             options = options.password(password);
+        }
+        if let Some(path) = config.ssl_root_cert.as_deref() {
+            options = options.ssl_root_cert(path);
+        }
+        if let Some(path) = config.ssl_client_cert.as_deref() {
+            options = options.ssl_client_cert(path);
+        }
+        if let Some(path) = config.ssl_client_key.as_deref() {
+            options = options.ssl_client_key(path);
         }
         if config.read_only {
             options = options.options([("default_transaction_read_only", "on")]);
@@ -1294,8 +1309,26 @@ mod tests {
             username: Some("queryx".into()),
             password: None,
             ssl_mode: Some(SslMode::Disable),
+            ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
             read_only: false,
         }
+    }
+
+    #[test]
+    fn maps_all_postgres_ssl_modes() {
+        assert!(matches!(map_ssl_mode(SslMode::Disable), PgSslMode::Disable));
+        assert!(matches!(map_ssl_mode(SslMode::Prefer), PgSslMode::Prefer));
+        assert!(matches!(map_ssl_mode(SslMode::Require), PgSslMode::Require));
+        assert!(matches!(
+            map_ssl_mode(SslMode::VerifyCa),
+            PgSslMode::VerifyCa
+        ));
+        assert!(matches!(
+            map_ssl_mode(SslMode::VerifyFull),
+            PgSslMode::VerifyFull
+        ));
     }
 
     #[test]

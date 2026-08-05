@@ -56,7 +56,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Connection test and duplicate/delete profile actions with active-connection preservation
 - [ ] Profile color, timeout, and keepalive controls
 - [x] Read-only connection enforcement in native SQLite/PostgreSQL pools and the result-editor UI; PostgreSQL live integration coverage remains part of the external driver matrix
-- [ ] SSH tunnel and PostgreSQL SSL certificate configuration
+- [x] PostgreSQL/MySQL/MariaDB SSL modes with CA, client certificate, and client key file paths; SSH tunnels remain planned
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
 - [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls

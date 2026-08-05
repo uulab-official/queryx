@@ -7069,6 +7069,9 @@ function SchemaTargetDialog({
             username: selected.username,
             password: password || undefined,
             sslMode: selected.sslMode,
+            sslRootCert: selected.sslRootCert,
+            sslClientCert: selected.sslClientCert,
+            sslClientKey: selected.sslClientKey,
           };
     setLoading(true);
     setError(null);
@@ -7266,9 +7269,12 @@ function ConnectionDialog({
   const [password, setPassword] = useState("");
   const [savePassword, setSavePassword] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
-  const [sslMode, setSslMode] = useState<"disable" | "prefer" | "require">(
-    "prefer",
-  );
+  const [sslMode, setSslMode] = useState<
+    "disable" | "prefer" | "require" | "verifyCa" | "verifyFull"
+  >("prefer");
+  const [sslRootCert, setSslRootCert] = useState("");
+  const [sslClientCert, setSslClientCert] = useState("");
+  const [sslClientKey, setSslClientKey] = useState("");
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<
     "idle" | "testing" | "success" | "error"
@@ -7302,6 +7308,9 @@ function ConnectionDialog({
         : "",
     );
     setSslMode(profile.sslMode ?? "prefer");
+    setSslRootCert(profile.sslRootCert ?? "");
+    setSslClientCert(profile.sslClientCert ?? "");
+    setSslClientKey(profile.sslClientKey ?? "");
     setTestStatus("idle");
     setTestError(null);
   };
@@ -7318,6 +7327,9 @@ function ConnectionDialog({
     setPassword("");
     setSavePassword(false);
     setSslMode("prefer");
+    setSslRootCert("");
+    setSslClientCert("");
+    setSslClientKey("");
     setTestStatus("idle");
     setTestError(null);
   };
@@ -7335,6 +7347,11 @@ function ConnectionDialog({
           username,
           password: password || undefined,
           sslMode,
+          ...(sslRootCert.trim() ? { sslRootCert: sslRootCert.trim() } : {}),
+          ...(sslClientCert.trim()
+            ? { sslClientCert: sslClientCert.trim() }
+            : {}),
+          ...(sslClientKey.trim() ? { sslClientKey: sslClientKey.trim() } : {}),
         };
 
   const profileDraft = (): ConnectionProfileDraft => {
@@ -7349,6 +7366,9 @@ function ConnectionDialog({
       ...(config.port ? { port: config.port } : {}),
       ...(config.username ? { username: config.username } : {}),
       ...(config.sslMode ? { sslMode: config.sslMode } : {}),
+      ...(config.sslRootCert ? { sslRootCert: config.sslRootCert } : {}),
+      ...(config.sslClientCert ? { sslClientCert: config.sslClientCert } : {}),
+      ...(config.sslClientKey ? { sslClientKey: config.sslClientKey } : {}),
     };
   };
 
@@ -7507,6 +7527,10 @@ function ConnectionDialog({
                       );
                       setUsername(nextKind === "mysql" ? "root" : "postgres");
                       setSavePassword(false);
+                      setSslMode("prefer");
+                      setSslRootCert("");
+                      setSslClientCert("");
+                      setSslClientKey("");
                       setName(
                         nextKind === "sqlite"
                           ? "Local SQLite"
@@ -7616,8 +7640,43 @@ function ConnectionDialog({
                       >
                         <option value="prefer">Prefer</option>
                         <option value="require">Require</option>
+                        <option value="verifyCa">Verify CA</option>
+                        <option value="verifyFull">
+                          Verify Full / Identity
+                        </option>
                         <option value="disable">Disable</option>
                       </select>
+                    </label>
+                    <label>
+                      <span>CA certificate path</span>
+                      <input
+                        value={sslRootCert}
+                        onChange={(event) => setSslRootCert(event.target.value)}
+                        placeholder="/path/to/ca.pem"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label>
+                      <span>Client certificate path</span>
+                      <input
+                        value={sslClientCert}
+                        onChange={(event) =>
+                          setSslClientCert(event.target.value)
+                        }
+                        placeholder="/path/to/client.crt"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label>
+                      <span>Client key path</span>
+                      <input
+                        value={sslClientKey}
+                        onChange={(event) =>
+                          setSslClientKey(event.target.value)
+                        }
+                        placeholder="/path/to/client.key"
+                        autoComplete="off"
+                      />
                     </label>
                   </>
                 )}

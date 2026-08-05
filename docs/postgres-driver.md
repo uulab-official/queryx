@@ -26,7 +26,7 @@ One batched `pg_event_trigger` query loads database-scoped event names, activati
 
 ## Connection behavior
 
-The connection dialog maps host, port, database, username, optional password, and SSL mode to `PgConnectOptions`. The pool uses the `QueryX` application name, at most five connections, and a ten-second acquisition timeout. Passwords are never returned in `ConnectionSummary`.
+The connection dialog maps host, port, database, username, optional password, SSL mode, and optional CA/client certificate/key file paths to `PgConnectOptions`. `Verify CA` maps to `verify-ca`; `Verify Full / Identity` maps to `verify-full`. The pool uses the `QueryX` application name, at most five connections, and a ten-second acquisition timeout. Passwords are never returned in `ConnectionSummary`.
 
 ## Query cancellation
 

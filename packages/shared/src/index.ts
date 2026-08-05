@@ -208,7 +208,10 @@ export interface DriverConfig {
   port?: number;
   username?: string;
   password?: string;
-  sslMode?: "disable" | "prefer" | "require";
+  sslMode?: "disable" | "prefer" | "require" | "verifyCa" | "verifyFull";
+  sslRootCert?: string;
+  sslClientCert?: string;
+  sslClientKey?: string;
 }
 
 /**
@@ -224,7 +227,10 @@ export interface ConnectionProfile {
   host?: string;
   port?: number;
   username?: string;
-  sslMode?: "disable" | "prefer" | "require";
+  sslMode?: "disable" | "prefer" | "require" | "verifyCa" | "verifyFull";
+  sslRootCert?: string;
+  sslClientCert?: string;
+  sslClientKey?: string;
   /** Indicates an OS-keychain entry exists; the secret itself is never serialized. */
   passwordStored?: boolean;
 }

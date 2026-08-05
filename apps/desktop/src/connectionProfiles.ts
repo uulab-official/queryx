@@ -12,7 +12,13 @@ function isDriverKind(value: unknown): value is DriverKind {
 function isSslMode(
   value: unknown,
 ): value is NonNullable<ConnectionProfile["sslMode"]> {
-  return value === "disable" || value === "prefer" || value === "require";
+  return (
+    value === "disable" ||
+    value === "prefer" ||
+    value === "require" ||
+    value === "verifyCa" ||
+    value === "verifyFull"
+  );
 }
 
 export function normalizeConnectionProfiles(
@@ -48,6 +54,15 @@ export function normalizeConnectionProfiles(
         ? { username: item.username.trim() }
         : {}),
       ...(isSslMode(item.sslMode) ? { sslMode: item.sslMode } : {}),
+      ...(typeof item.sslRootCert === "string" && item.sslRootCert.trim()
+        ? { sslRootCert: item.sslRootCert.trim() }
+        : {}),
+      ...(typeof item.sslClientCert === "string" && item.sslClientCert.trim()
+        ? { sslClientCert: item.sslClientCert.trim() }
+        : {}),
+      ...(typeof item.sslClientKey === "string" && item.sslClientKey.trim()
+        ? { sslClientKey: item.sslClientKey.trim() }
+        : {}),
       ...(item.passwordStored === true ? { passwordStored: true } : {}),
     }))
     .slice(0, maxProfiles);

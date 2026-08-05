@@ -23,11 +23,13 @@ impl std::fmt::Display for DriverKind {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "camelCase")]
 pub enum SslMode {
     Disable,
     Prefer,
     Require,
+    VerifyCa,
+    VerifyFull,
 }
 
 #[derive(Deserialize)]
@@ -43,6 +45,12 @@ pub struct ConnectionConfig {
     pub username: Option<String>,
     pub password: Option<String>,
     pub ssl_mode: Option<SslMode>,
+    #[serde(default)]
+    pub ssl_root_cert: Option<String>,
+    #[serde(default)]
+    pub ssl_client_cert: Option<String>,
+    #[serde(default)]
+    pub ssl_client_key: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

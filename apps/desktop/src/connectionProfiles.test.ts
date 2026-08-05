@@ -17,7 +17,7 @@ describe("connection profile persistence boundary", () => {
         port: 5432,
         username: "readonly",
         password: "must-not-persist",
-        sslMode: "require",
+        sslMode: "verifyFull",
       },
       { id: "broken", name: "", kind: "postgres", database: "" },
     ]);
@@ -32,7 +32,7 @@ describe("connection profile persistence boundary", () => {
         host: "db.internal",
         port: 5432,
         username: "readonly",
-        sslMode: "require",
+        sslMode: "verifyFull",
       },
     ]);
     expect(JSON.stringify(profiles)).not.toContain("must-not-persist");
@@ -97,5 +97,27 @@ describe("connection profile persistence boundary", () => {
     expect(profile?.passwordStored).toBe(true);
     expect(profile).not.toHaveProperty("password");
     expect(JSON.stringify(profile)).not.toContain("must-not-persist");
+  });
+
+  it("preserves certificate file paths without treating them as secrets", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "tls-1",
+        name: "mTLS production",
+        kind: "postgres",
+        database: "analytics",
+        sslMode: "require",
+        sslRootCert: "/certs/ca.pem",
+        sslClientCert: "/certs/client.crt",
+        sslClientKey: "/certs/client.key",
+      },
+    ]);
+
+    expect(profile).toMatchObject({
+      sslMode: "require",
+      sslRootCert: "/certs/ca.pem",
+      sslClientCert: "/certs/client.crt",
+      sslClientKey: "/certs/client.key",
+    });
   });
 });

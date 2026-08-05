@@ -41,6 +41,16 @@ pub struct MysqlDriver {
     read_only: bool,
 }
 
+fn map_ssl_mode(mode: SslMode) -> MySqlSslMode {
+    match mode {
+        SslMode::Disable => MySqlSslMode::Disabled,
+        SslMode::Prefer => MySqlSslMode::Preferred,
+        SslMode::Require => MySqlSslMode::Required,
+        SslMode::VerifyCa => MySqlSslMode::VerifyCa,
+        SslMode::VerifyFull => MySqlSslMode::VerifyIdentity,
+    }
+}
+
 #[derive(Debug)]
 enum ActiveQueryState {
     Pending,
@@ -142,11 +152,7 @@ impl MysqlDriver {
         let database = required_value(&config.database, "database")?;
         let host = config.host.as_deref().unwrap_or("localhost");
         let username = config.username.as_deref().unwrap_or("root");
-        let ssl_mode = match config.ssl_mode.unwrap_or(SslMode::Prefer) {
-            SslMode::Disable => MySqlSslMode::Disabled,
-            SslMode::Prefer => MySqlSslMode::Preferred,
-            SslMode::Require => MySqlSslMode::Required,
-        };
+        let ssl_mode = map_ssl_mode(config.ssl_mode.unwrap_or(SslMode::Prefer));
         let mut options = MySqlConnectOptions::new()
             .host(host)
             .port(config.port.unwrap_or(3306))
@@ -155,6 +161,15 @@ impl MysqlDriver {
             .ssl_mode(ssl_mode);
         if let Some(password) = config.password.as_deref() {
             options = options.password(password);
+        }
+        if let Some(path) = config.ssl_root_cert.as_deref() {
+            options = options.ssl_ca(path);
+        }
+        if let Some(path) = config.ssl_client_cert.as_deref() {
+            options = options.ssl_client_cert(path);
+        }
+        if let Some(path) = config.ssl_client_key.as_deref() {
+            options = options.ssl_client_key(path);
         }
 
         let read_only = config.read_only;
@@ -1070,6 +1085,30 @@ mod tests {
     }
 
     #[test]
+    fn maps_all_mysql_ssl_modes() {
+        assert!(matches!(
+            map_ssl_mode(SslMode::Disable),
+            MySqlSslMode::Disabled
+        ));
+        assert!(matches!(
+            map_ssl_mode(SslMode::Prefer),
+            MySqlSslMode::Preferred
+        ));
+        assert!(matches!(
+            map_ssl_mode(SslMode::Require),
+            MySqlSslMode::Required
+        ));
+        assert!(matches!(
+            map_ssl_mode(SslMode::VerifyCa),
+            MySqlSslMode::VerifyCa
+        ));
+        assert!(matches!(
+            map_ssl_mode(SslMode::VerifyFull),
+            MySqlSslMode::VerifyIdentity
+        ));
+    }
+
+    #[test]
     fn read_only_guard_rejects_mutations_and_allows_inspection() {
         assert!(is_read_only_statement("-- comment\nSELECT 1"));
         assert!(is_read_only_statement("SHOW TABLES"));
@@ -1121,6 +1160,9 @@ mod tests {
             username: std::env::var("QUERYX_TEST_MYSQL_USER").ok(),
             password: std::env::var("QUERYX_TEST_MYSQL_PASSWORD").ok(),
             ssl_mode: None,
+            ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
         };
         let driver = MysqlDriver::connect(&config)
             .await
@@ -1161,6 +1203,9 @@ mod tests {
             username: std::env::var("QUERYX_TEST_MYSQL_USER").ok(),
             password: std::env::var("QUERYX_TEST_MYSQL_PASSWORD").ok(),
             ssl_mode: None,
+            ssl_root_cert: None,
+            ssl_client_cert: None,
+            ssl_client_key: None,
         };
         let driver = Arc::new(
             MysqlDriver::connect(&config)
