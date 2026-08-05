@@ -215,7 +215,8 @@ git commit -m "docs: add database ide parity gates"
 - [x] Keep arbitrary-query results honest: virtualization reduces DOM work, loaded pages remain in memory, and non-pageable SQL falls back to the normal driver path.
 - [x] Add deterministic boundary tests for small sets, large-set windows, and end-of-list clamping.
 - [x] Add conservative dialect-aware server paging for single SELECT/WITH queries, original-SQL history preservation, and incremental result-grid loading.
-- [ ] Add streamed driver cursors, progress/cancellation telemetry, and server-side filtering in the next large-data slices.
+- [x] Add metadata-safe table-browser server filtering/sorting with deterministic primary-key tie-breakers and literal wildcard escaping.
+- [ ] Add streamed driver cursors, progress/cancellation telemetry, and server-side filtering for arbitrary queries in the next large-data slices.
 
 ### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix
 

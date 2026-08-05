@@ -38,6 +38,7 @@ import {
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
+  buildTableBrowsePlan,
   compareSchemaSnapshots,
   defaultCsvImportMappings,
   formatSql,
@@ -77,6 +78,7 @@ import type {
   QuerySafetyReport,
   SqlRowUpdate,
   SchemaDiff,
+  TableBrowseSortDirection,
 } from "@queryx/core";
 import type {
   ConnectionProfile,
@@ -153,6 +155,10 @@ interface TableBrowseState {
   name: string;
   offset: number;
   hasMore: boolean;
+  filter: string;
+  sortBy: string | null;
+  sortDirection: TableBrowseSortDirection;
+  warnings: string[];
 }
 
 interface ServerQueryPageState {
@@ -558,6 +564,12 @@ function App() {
   const pendingEditCount = Object.values(stagedEdits).reduce(
     (count, edit) => count + Object.keys(edit.changes).length,
     0,
+  );
+  const tableBrowseDirty = Boolean(
+    tableBrowse &&
+      (tableBrowse.filter !== filter ||
+        tableBrowse.sortBy !== sortBy ||
+        tableBrowse.sortDirection !== sortDirection),
   );
   const schemaDiff = useMemo<SchemaDiff | null>(
     () =>
@@ -1694,24 +1706,93 @@ function App() {
         ? current.filter((item) => item !== key)
         : [...current, key],
     );
+  const applyTableBrowse = async () => {
+    if (!tableBrowse || !currentTable || isRunning) return;
+    if (
+      tableBrowse.schema !== currentTable.schema ||
+      tableBrowse.name !== currentTable.name
+    ) {
+      return;
+    }
+    const plan = buildTableBrowsePlan(
+      currentTable,
+      driverKind,
+      tableBrowsePageSize,
+      0,
+      filter,
+      sortBy,
+      sortDirection,
+    );
+    if (plan.errors.length > 0) {
+      notify(plan.errors[0] ?? "Unable to build table browse query");
+      return;
+    }
+    setGridSelection(null);
+    setEditingCell(null);
+    setResultPage(0);
+    setGridScrollTop(0);
+    setServerQueryPage(null);
+    setFilter(plan.filter);
+    setSortBy(plan.sortBy);
+    setSql(plan.sql);
+    setTableBrowse({
+      schema: currentTable.schema,
+      name: currentTable.name,
+      offset: 0,
+      hasMore: true,
+      filter: plan.filter,
+      sortBy: plan.sortBy,
+      sortDirection: plan.sortDirection,
+      warnings: plan.warnings,
+    });
+    const nextResult = await runQuery("normal", plan.sql);
+    if (!nextResult) {
+      setTableBrowse(null);
+      return;
+    }
+    setTableBrowse((current) =>
+      current
+        ? {
+            ...current,
+            hasMore: nextResult.rows.length === tableBrowsePageSize,
+          }
+        : current,
+    );
+    notify("Applied server-side table filter and sort");
+  };
   const browseCurrentTable = () => {
     if (!currentTable) return;
     if (pendingEditCount > 0) {
       notify("Review or discard staged row edits before opening another table");
       return;
     }
-    const browseSql = buildTableBrowseQuery(currentTable, driverKind, 0);
+    const plan = buildTableBrowsePlan(
+      currentTable,
+      driverKind,
+      tableBrowsePageSize,
+      0,
+    );
+    if (plan.errors.length > 0) {
+      notify(plan.errors[0] ?? "Unable to build table browse query");
+      return;
+    }
+    const browseSql = plan.sql;
     newQuery();
     setSql(browseSql);
     setResultView("table");
     setFilter("");
     setSortBy(null);
+    setSortDirection("asc");
     setResultPage(0);
     setTableBrowse({
       schema: currentTable.schema,
       name: currentTable.name,
       offset: 0,
       hasMore: true,
+      filter: plan.filter,
+      sortBy: plan.sortBy,
+      sortDirection: plan.sortDirection,
+      warnings: plan.warnings,
     });
     setServerQueryPage(null);
     void runQuery("normal", browseSql).then((nextResult) => {
@@ -1731,7 +1812,7 @@ function App() {
     notify(`Opened ${currentTable.schema}.${currentTable.name} data`);
   };
   const loadNextTablePage = async () => {
-    if (!tableBrowse || !currentTable || isRunning) return;
+    if (!tableBrowse || !currentTable || isRunning || tableBrowseDirty) return;
     if (
       tableBrowse.schema !== currentTable.schema ||
       tableBrowse.name !== currentTable.name ||
@@ -1740,8 +1821,20 @@ function App() {
       return;
     }
     const nextOffset = tableBrowse.offset + tableBrowsePageSize;
-    const nextSql = buildTableBrowseQuery(currentTable, driverKind, nextOffset);
-    const nextResult = await runQuery("normal", nextSql, {
+    const plan = buildTableBrowsePlan(
+      currentTable,
+      driverKind,
+      tableBrowsePageSize,
+      nextOffset,
+      tableBrowse.filter,
+      tableBrowse.sortBy,
+      tableBrowse.sortDirection,
+    );
+    if (plan.errors.length > 0) {
+      notify(plan.errors[0] ?? "Unable to build the next table page");
+      return;
+    }
+    const nextResult = await runQuery("normal", plan.sql, {
       preserveResult: true,
     });
     if (!nextResult) return;
@@ -2931,6 +3024,11 @@ function App() {
                     ⚠ {warning}
                   </span>
                 ))}
+                {tableBrowse?.warnings.map((warning) => (
+                  <span className="result-warning" key={warning}>
+                    ⚠ {warning}
+                  </span>
+                ))}
               </span>
               <label className="filter-box">
                 ⌕
@@ -2938,10 +3036,25 @@ function App() {
                   id="result-filter"
                   value={filter}
                   onChange={(event) => updateFilter(event.target.value)}
-                  placeholder="Filter results..."
+                  placeholder={
+                    tableBrowse
+                      ? "Filter loaded rows or apply to table..."
+                      : "Filter results..."
+                  }
                 />
                 <kbd>⌘F</kbd>
               </label>
+              {tableBrowse && (
+                <button
+                  type="button"
+                  className="table-filter-apply"
+                  onClick={() => void applyTableBrowse()}
+                  disabled={isRunning || !tableBrowseDirty}
+                  title="Run the current filter and sort on the database"
+                >
+                  {isRunning ? "Applying…" : "Apply to table"}
+                </button>
+              )}
             </div>
             {resultView === "table" ? (
               <div
@@ -3178,19 +3291,27 @@ function App() {
                 <div className="table-browse-actions">
                   <span>
                     Table browser · {result?.rows.length.toLocaleString() ?? 0}{" "}
-                    loaded
+                    loaded{tableBrowseDirty ? " · unapplied filter/order" : ""}
                   </span>
                   <button
                     type="button"
                     onClick={() => void loadNextTablePage()}
-                    disabled={isRunning || !tableBrowse.hasMore}
-                    title="Fetch the next 100 rows from the selected table"
+                    disabled={
+                      isRunning || !tableBrowse.hasMore || tableBrowseDirty
+                    }
+                    title={
+                      tableBrowseDirty
+                        ? "Apply the current filter and sort before loading another page"
+                        : "Fetch the next 100 rows from the selected table"
+                    }
                   >
                     {isRunning
                       ? "Loading…"
-                      : tableBrowse.hasMore
-                        ? "Load next 100"
-                        : "All loaded"}
+                      : tableBrowseDirty
+                        ? "Apply filter/order"
+                        : tableBrowse.hasMore
+                          ? "Load next 100"
+                          : "All loaded"}
                   </button>
                 </div>
               )}
@@ -3923,25 +4044,6 @@ function parseEditedCellValue(
     }
   }
   return rawValue;
-}
-
-function quoteBrowseIdentifier(value: string, driverKind: DriverKind): string {
-  const quote = driverKind === "mysql" ? "`" : '"';
-  return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
-}
-
-function buildTableBrowseQuery(
-  table: TableMetadata,
-  driverKind: DriverKind,
-  offset: number,
-): string {
-  const tableName = `${quoteBrowseIdentifier(table.schema, driverKind)}.${quoteBrowseIdentifier(table.name, driverKind)}`;
-  const primaryKeyOrder = table.columns
-    .filter((column) => column.primaryKey)
-    .map((column) => quoteBrowseIdentifier(column.name, driverKind))
-    .join(", ");
-  const orderBy = primaryKeyOrder ? ` ORDER BY ${primaryKeyOrder}` : "";
-  return `SELECT * FROM ${tableName}${orderBy} LIMIT ${tableBrowsePageSize} OFFSET ${offset};`;
 }
 
 function EditPreviewDialog({

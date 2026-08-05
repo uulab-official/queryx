@@ -9,9 +9,9 @@ QueryX normalizes driver output into ordered columns, rows, execution time, affe
 - Drag the divider at the right edge of a column header to resize it. Arrow keys adjust the focused divider; Shift+Arrow changes it faster, and Home/End set the minimum/maximum width.
 - Select a table in Explorer and choose **Browse data** to open its first 100 rows in a new query tab. When the result includes the table's primary-key columns, choose **Edit**, double-click a non-key cell, and stage a local change.
 - The filter matches a case-insensitive string representation across each row.
-- Selecting a column header toggles local ascending/descending sorting.
+- Selecting a column header toggles ascending/descending sorting for the loaded rows.
 
-Filtering and sorting do not run another database query. They affect only the loaded result in the desktop UI, reset to the first page, and keep page navigation local.
+For ordinary query results, filtering and sorting remain local to the loaded result. For **Table browser** results, edit the filter or click a column header and choose **Apply to table** to run the filter and order in the database before loading another page. QueryX searches every mapped column with a literal, case-insensitive substring match, orders by the selected column, and adds primary-key columns as deterministic tie-breakers. A table without a primary key shows a pagination-order warning.
 
 ## Copy and NULL display
 
@@ -50,9 +50,9 @@ Edits stay local until **Review & Apply**. QueryX shows the generated `UPDATE` s
 
 ## Large results
 
-The table browser and ordinary pageable queries can fetch another 100 rows with **Load next 100**. Table browsing uses a deterministic primary-key `ORDER BY` when available. Ordinary single-statement `SELECT`/`WITH` queries are wrapped as a derived table with dialect-aware quoting and `LIMIT/OFFSET`; the original SQL remains in the editor and query history. Newly loaded rows stay in the local result. Once the loaded set grows beyond 200 rows, the grid switches to bounded row rendering with overscan and scroll spacers; the footer marks this mode as **virtualized**. Selection and copy continue to use logical row positions, while export still operates on all loaded, filtered, and sorted rows.
+The table browser and ordinary pageable queries can fetch another 100 rows with **Load next 100**. Table browsing applies a dialect-aware server filter and sort when requested, uses a deterministic primary-key `ORDER BY` when available, and blocks the next-page action until changed filter/order settings are applied. Ordinary single-statement `SELECT`/`WITH` queries are wrapped as a derived table with dialect-aware quoting and `LIMIT/OFFSET`; the original SQL remains in the editor and query history. Newly loaded rows stay in the local result. Once the loaded set grows beyond 200 rows, the grid switches to bounded row rendering with overscan and scroll spacers; the footer marks this mode as **virtualized**. Selection and copy continue to use logical row positions, while export still operates on all loaded, filtered, and sorted rows.
 
-Virtualization reduces DOM work but does not reduce memory use: loaded pages remain available for filtering and export. QueryX deliberately falls back to normal execution for DML, multiple statements, locking clauses, and queries with unterminated SQL syntax. Streaming cursors, progress telemetry, and server-side filtering remain roadmap items.
+Virtualization reduces DOM work but does not reduce memory use: loaded pages remain available for local filtering and export. QueryX deliberately falls back to normal execution for DML, multiple statements, locking clauses, and queries with unterminated SQL syntax. Streaming cursors, progress telemetry, and server-side filtering for arbitrary queries remain roadmap items.
 
 ## Recovery
 

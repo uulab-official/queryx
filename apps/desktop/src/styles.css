@@ -875,6 +875,21 @@ button:disabled {
   color: var(--dim);
   font: 9px var(--mono);
 }
+.table-filter-apply {
+  width: auto;
+  min-width: 98px;
+  height: 27px;
+  padding: 0 9px;
+  border: 1px solid #3c523d;
+  border-radius: 4px;
+  background: #1b281d;
+  color: #b4d48c;
+  font-size: 9px;
+}
+.table-filter-apply:hover:not(:disabled) {
+  border-color: var(--lime);
+  color: var(--lime);
+}
 .grid-wrap {
   flex: 1;
   overflow: auto;

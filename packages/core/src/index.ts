@@ -99,6 +99,8 @@ export type {
 } from "./schemaDiff";
 export { buildQueryPagePlan } from "./queryPaging";
 export type { QueryPagePlan } from "./queryPaging";
+export { buildTableBrowsePlan } from "./tableBrowse";
+export type { TableBrowsePlan, TableBrowseSortDirection } from "./tableBrowse";
 export { buildExplainQuery } from "./explain";
 export type {
   ExplainQuery,
