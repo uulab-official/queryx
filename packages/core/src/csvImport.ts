@@ -271,9 +271,12 @@ export function buildCsvImportPlan(
       );
     }
   }
-  if (driver === "sqlserver" && conflictPolicy !== "error") {
+  if (
+    (driver === "sqlserver" || driver === "oracle") &&
+    conflictPolicy !== "error"
+  ) {
     errors.push(
-      "SQL Server CSV conflict modes require a MERGE strategy and are not generated automatically yet; use error mode for an atomic import",
+      `${driver === "oracle" ? "Oracle" : "SQL Server"} CSV conflict modes require a vendor-specific MERGE strategy and are not generated automatically yet; use error mode for an atomic import`,
     );
   }
 

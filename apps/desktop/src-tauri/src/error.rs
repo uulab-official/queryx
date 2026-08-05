@@ -12,6 +12,8 @@ pub enum AppError {
     InvalidMysqlConfig(String),
     #[error("invalid SQL Server configuration: {0}")]
     InvalidSqlServerConfig(String),
+    #[error("invalid Oracle configuration: {0}")]
+    InvalidOracleConfig(String),
     #[error("driver is not implemented yet: {0}")]
     UnsupportedDriver(String),
     #[error("invalid query id: {0}")]
@@ -38,6 +40,8 @@ pub enum AppError {
     SessionOperation(String),
     #[error("SQL Server driver error: {0}")]
     SqlServer(String),
+    #[error("Oracle driver error: {0}")]
+    Oracle(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

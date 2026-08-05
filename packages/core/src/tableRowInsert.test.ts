@@ -55,6 +55,15 @@ describe("buildTableRowInsertPlan", () => {
     );
   });
 
+  it("requires explicit Oracle values when no column is selected", () => {
+    const plan = buildTableRowInsertPlan(table, [], "oracle");
+
+    expect(plan.statement).toBe("");
+    expect(plan.errors).toEqual([
+      "Oracle default-only inserts require an explicit column default expression",
+    ]);
+  });
+
   it("rejects duplicate, unknown, and non-nullable NULL values", () => {
     const plan = buildTableRowInsertPlan(
       table,

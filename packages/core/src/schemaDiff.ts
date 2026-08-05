@@ -240,7 +240,8 @@ function addColumnSql(
   column: ColumnMetadata,
   driver: DriverKind,
 ): string {
-  const addKeyword = driver === "sqlserver" ? "ADD" : "ADD COLUMN";
+  const addKeyword =
+    driver === "sqlserver" || driver === "oracle" ? "ADD" : "ADD COLUMN";
   return `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${addKeyword} ${columnDefinition(column, driver)};`;
 }
 
@@ -267,6 +268,9 @@ function alterColumnSql(
   if (driver === "sqlserver") {
     const nullability = column.nullable ? "NULL" : "NOT NULL";
     return `ALTER TABLE ${tableName} ALTER COLUMN ${columnName} ${column.type} ${nullability};`;
+  }
+  if (driver === "oracle") {
+    return `ALTER TABLE ${tableName} MODIFY (${columnName} ${column.type}${column.nullable ? " NULL" : " NOT NULL"});`;
   }
   const statements = [
     `ALTER TABLE ${tableName} ALTER COLUMN ${columnName} TYPE ${column.type};`,
@@ -835,6 +839,15 @@ export function buildSchemaPrivilegePreflightSql(
       "-- QueryX privilege preflight · SQL Server read-only checks",
       "SELECT SUSER_SNAME() AS account, DB_NAME() AS database_name;",
       "SELECT HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE') AS can_create_table;",
+      `-- Affected schemas: ${schemas.join(", ") || "not available"}`,
+      `-- Affected relations: ${relations.join(", ") || "new relations or metadata unavailable"}`,
+    ].join("\n");
+  }
+  if (driver === "oracle") {
+    return [
+      "-- QueryX privilege preflight · Oracle read-only checks",
+      "SELECT SYS_CONTEXT('USERENV', 'SESSION_USER') AS account, SYS_CONTEXT('USERENV', 'DB_NAME') AS database_name FROM dual;",
+      "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS current_schema FROM dual;",
       `-- Affected schemas: ${schemas.join(", ") || "not available"}`,
       `-- Affected relations: ${relations.join(", ") || "new relations or metadata unavailable"}`,
     ].join("\n");

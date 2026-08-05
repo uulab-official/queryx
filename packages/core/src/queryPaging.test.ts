@@ -50,6 +50,20 @@ describe("buildQueryPagePlan", () => {
     expect(plan.sql).toMatch(/OFFSET 50 ROWS FETCH NEXT 25 ROWS ONLY;$/);
   });
 
+  it("uses Oracle OFFSET/FETCH pagination without AS table aliases", () => {
+    const plan = buildQueryPagePlan(
+      "SELECT id FROM app.users",
+      "oracle",
+      25,
+      50,
+    );
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toContain(") " + '"__queryx_page" ORDER BY 1');
+    expect(plan.sql).not.toContain('AS "__queryx_page"');
+    expect(plan.sql).toMatch(/OFFSET 50 ROWS FETCH NEXT 25 ROWS ONLY;$/);
+  });
+
   it("does not page mutations, locks, or multiple statements", () => {
     const plan = buildQueryPagePlan(
       "SELECT id FROM users FOR UPDATE; DELETE FROM audit",

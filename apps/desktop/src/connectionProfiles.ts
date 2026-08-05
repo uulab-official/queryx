@@ -10,6 +10,7 @@ function isDriverKind(value: unknown): value is DriverKind {
     value === "postgres" ||
     value === "mysql" ||
     value === "sqlserver" ||
+    value === "oracle" ||
     value === "sqlite"
   );
 }

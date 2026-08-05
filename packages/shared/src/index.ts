@@ -1,4 +1,9 @@
-export type DriverKind = "postgres" | "mysql" | "sqlserver" | "sqlite";
+export type DriverKind =
+  | "postgres"
+  | "mysql"
+  | "sqlserver"
+  | "oracle"
+  | "sqlite";
 
 export type DriverCapability =
   | "transactions"

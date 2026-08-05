@@ -11,6 +11,7 @@ pub enum DriverKind {
     Mysql,
     #[serde(rename = "sqlserver")]
     SqlServer,
+    Oracle,
 }
 
 impl std::fmt::Display for DriverKind {
@@ -20,6 +21,7 @@ impl std::fmt::Display for DriverKind {
             Self::Postgres => "postgres",
             Self::Mysql => "mysql",
             Self::SqlServer => "sqlserver",
+            Self::Oracle => "oracle",
         };
         formatter.write_str(value)
     }

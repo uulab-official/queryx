@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native QueryX desktop app can connect directly to SQLite files, PostgreSQL servers, MySQL/MariaDB servers, and SQL Server instances. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
+The native QueryX desktop app can connect directly to SQLite files, PostgreSQL servers, MySQL/MariaDB servers, SQL Server instances, and Oracle services. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
 
 ## Before you start
 
@@ -18,11 +18,14 @@ For MySQL or MariaDB, select **MySQL / MariaDB** and enter the host, port (defau
 
 For SQL Server, select **SQL Server** and enter the host, port (default `1433`), database (default `master`), SQL login (default `sa`), and password. QueryX uses SQL authentication over encrypted TDS by default, validates the server certificate against the platform trust store, and accepts an optional CA certificate path for a private authority. The initial SQL Server slice includes query execution, 256-row result streaming, explicit transactions, atomic edit batches, read-only sessions, SQL Server paging, and tables/views/columns/database/schema metadata. Windows integrated authentication, AAD tokens, session explorer, lock graph, routines, triggers, and full index/foreign-key metadata are separate roadmap gates.
 
+For Oracle, select **Oracle** and enter the host, port (default `1521`), service name in the **Database** field (for example `FREEPDB1`), username (default `system`), and password. QueryX uses the pure-Rust Tokio-based `oracle-rs` thin client; the initial slice includes query execution, 256-row result streaming, explicit transactions, atomic edit batches, read-only sessions, Oracle `OFFSET … FETCH` paging, and users/tables/views/columns/database metadata. SID/connect descriptors, wallets, proxy authentication, session/lock explorers, routines, triggers, indexes, foreign keys, and Oracle-specific MERGE import modes are separate roadmap gates.
+
 For SQLite, select SQLite and enter `:memory:` for a temporary database or an absolute database file path.
 
 ## Options and behavior
 
 - `Prefer` and `Require` use encrypted connections for SQL Server; SQL Server does not silently downgrade the TDS connection.
+- For Oracle, every mode except `Disable` enables TLS with the configured host name; the initial driver accepts CA and client certificate/key paths. Fine-grained `Prefer`/`Require` behavior and wallet-based trust are planned.
 - `Verify CA` requires TLS and verifies the server certificate against the configured CA file.
 - `Verify Full / Identity` also verifies that the certificate identity matches the host name. PostgreSQL calls this `verify-full`; MySQL/MariaDB maps it to `VERIFY_IDENTITY`.
 - `Disable` is intended for trusted local development servers.
@@ -57,4 +60,5 @@ Saved profiles never contain passwords. On native desktop, enable **Store in OS 
 - [SQLite Driver](sqlite-driver.md)
 - [MySQL/MariaDB Driver](mysql-driver.md)
 - [SQL Server Driver](sqlserver-driver.md)
+- [Oracle Driver](oracle-driver.md)
 - [Driver API](driver-api.md)

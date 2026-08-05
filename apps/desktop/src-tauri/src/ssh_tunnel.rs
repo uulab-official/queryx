@@ -52,6 +52,7 @@ impl SshTunnel {
             DriverKind::Postgres => 5432,
             DriverKind::Mysql => 3306,
             DriverKind::SqlServer => 1433,
+            DriverKind::Oracle => 1521,
             DriverKind::Sqlite => unreachable!(),
         });
         if remote_port == 0 {

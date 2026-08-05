@@ -153,6 +153,7 @@ function driverDisplayName(kind: DriverKind): string {
   if (kind === "sqlite") return "SQLite";
   if (kind === "mysql") return "MySQL / MariaDB";
   if (kind === "sqlserver") return "SQL Server";
+  if (kind === "oracle") return "Oracle";
   return "PostgreSQL";
 }
 
@@ -160,6 +161,7 @@ function driverShortName(kind: DriverKind): string {
   if (kind === "sqlite") return "SQ";
   if (kind === "mysql") return "MY";
   if (kind === "sqlserver") return "MS";
+  if (kind === "oracle") return "OR";
   return "PG";
 }
 
@@ -8208,7 +8210,9 @@ function ConnectionDialog({
               ? 3306
               : profile.kind === "sqlserver"
                 ? 1433
-                : ""),
+                : profile.kind === "oracle"
+                  ? 1521
+                  : ""),
       ),
     );
     setDatabase(profile.database);
@@ -8219,7 +8223,9 @@ function ConnectionDialog({
           ? "root"
           : profile.kind === "sqlserver"
             ? "sa"
-            : "postgres"),
+            : profile.kind === "oracle"
+              ? "system"
+              : "postgres"),
     );
     setSavePassword(canUseKeychain && profile.passwordStored === true);
     setPassword(
@@ -8473,7 +8479,9 @@ function ConnectionDialog({
                             ? "mysql"
                             : nextKind === "sqlserver"
                               ? "master"
-                              : "postgres",
+                              : nextKind === "oracle"
+                                ? "FREEPDB1"
+                                : "postgres",
                       );
                       setPort(
                         nextKind === "sqlite"
@@ -8482,14 +8490,18 @@ function ConnectionDialog({
                             ? "3306"
                             : nextKind === "sqlserver"
                               ? "1433"
-                              : "5432",
+                              : nextKind === "oracle"
+                                ? "1521"
+                                : "5432",
                       );
                       setUsername(
                         nextKind === "mysql"
                           ? "root"
                           : nextKind === "sqlserver"
                             ? "sa"
-                            : "postgres",
+                            : nextKind === "oracle"
+                              ? "system"
+                              : "postgres",
                       );
                       setSavePassword(false);
                       setSslMode("prefer");
@@ -8510,13 +8522,16 @@ function ConnectionDialog({
                             ? "Local MySQL"
                             : nextKind === "sqlserver"
                               ? "Local SQL Server"
-                              : "Local PostgreSQL",
+                              : nextKind === "oracle"
+                                ? "Local Oracle"
+                                : "Local PostgreSQL",
                       );
                     }}
                   >
                     <option value="postgres">PostgreSQL</option>
                     <option value="mysql">MySQL / MariaDB</option>
                     <option value="sqlserver">SQL Server</option>
+                    <option value="oracle">Oracle</option>
                     <option value="sqlite">SQLite</option>
                   </select>
                 </label>
@@ -8564,7 +8579,9 @@ function ConnectionDialog({
                           ? "mysql"
                           : kind === "sqlserver"
                             ? "master"
-                            : "postgres"
+                            : kind === "oracle"
+                              ? "FREEPDB1"
+                              : "postgres"
                     }
                   />
                 </label>

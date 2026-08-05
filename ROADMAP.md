@@ -110,7 +110,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 
 - [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and tables/views/columns/index/foreign-key/routine/trigger metadata, cursor-backed streaming, and active-query cancellation; event triggers and broader integration matrix remain planned
 - [x] Initial SQL Server driver with SQL authentication, encrypted TDS/TLS connections, native 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, tables/views/columns/database/schema metadata, SQL Server paging, bracket quoting, and SSH-tunnel support; sessions, lock graph, routines, triggers, richer index/FK metadata, and Windows/AAD authentication remain planned
-- [ ] Oracle driver and Oracle-specific object metadata
+- [x] Initial Oracle driver with service-name connections, TLS/CA/client-certificate paths, native 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, Oracle paging, and users/tables/views/columns/database metadata; SID/connect descriptors, wallet authentication, cancellation, sessions, locks, routines, triggers, indexes, foreign keys, and MERGE import modes remain planned
 - [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
 - [ ] Data compare and controlled synchronization scripts
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned

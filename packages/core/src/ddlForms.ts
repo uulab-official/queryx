@@ -318,7 +318,7 @@ export function buildAddColumnPlan(
   if (columnTypeError) errors.push(columnTypeError);
   if (errors.length > 0) return { sql: "", errors };
   return {
-    sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${driver === "sqlserver" ? "ADD" : "ADD COLUMN"} ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
+    sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${driver === "sqlserver" || driver === "oracle" ? "ADD" : "ADD COLUMN"} ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
     errors: [],
   };
 }
@@ -388,6 +388,12 @@ export function buildEditTableColumnsPlan(
     if (driver === "sqlserver") {
       statements.push(
         `ALTER TABLE ${qualified} ALTER COLUMN ${identifier} ${type}${column.nullable ? " NULL" : " NOT NULL"};`,
+      );
+      continue;
+    }
+    if (driver === "oracle") {
+      statements.push(
+        `ALTER TABLE ${qualified} MODIFY (${identifier} ${type}${column.nullable ? " NULL" : " NOT NULL"});`,
       );
       continue;
     }

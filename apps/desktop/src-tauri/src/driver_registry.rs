@@ -8,6 +8,7 @@ use crate::{
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, DriverKind, QueryResult},
     mysql_driver::MysqlDriver,
+    oracle_driver::OracleDriver,
     postgres_driver::PostgresDriver,
     sqlite_driver::SqliteDriver,
     sqlserver_driver::SqlServerDriver,
@@ -44,6 +45,7 @@ impl DriverRegistry {
             DriverKind::Postgres => Ok(Arc::new(PostgresDriver::connect(&native_config).await?)),
             DriverKind::Mysql => Ok(Arc::new(MysqlDriver::connect(&native_config).await?)),
             DriverKind::SqlServer => Ok(Arc::new(SqlServerDriver::connect(&native_config).await?)),
+            DriverKind::Oracle => Ok(Arc::new(OracleDriver::connect(&native_config).await?)),
         };
         let driver = match driver_result {
             Ok(driver) => driver,

@@ -5,7 +5,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 ## Use QueryX
 
 - [Getting Started](getting-started.md) — prerequisites, native startup, first connection, first query
-- [Connections](connections.md) — SQLite/PostgreSQL/MySQL/SQL Server fields, TLS, credential behavior
+- [Connections](connections.md) — SQLite/PostgreSQL/MySQL/SQL Server/Oracle fields, TLS, credential behavior
 - [SSH Tunnels](ssh-tunnels.md) — bastion forwarding, authentication boundary, host-key verification, and troubleshooting
 - [Session Explorer](session-explorer.md) — native activity/process inspection, lock graph, long-running diagnostics, redacted audit history, wait events, cancellation, and safety boundaries
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
@@ -26,7 +26,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 
 - [Architecture](architecture.md) — trust boundaries and package responsibilities
 - [Driver API](driver-api.md) — shared contracts and capabilities
-- [SQLite Driver](sqlite-driver.md), [PostgreSQL Driver](postgres-driver.md), [MySQL/MariaDB Driver](mysql-driver.md), and [SQL Server Driver](sqlserver-driver.md)
+- [SQLite Driver](sqlite-driver.md), [PostgreSQL Driver](postgres-driver.md), [MySQL/MariaDB Driver](mysql-driver.md), [SQL Server Driver](sqlserver-driver.md), and [Oracle Driver](oracle-driver.md)
 - [Database IDE Capability Matrix](parity-matrix.md) — evidence-gated comparison and release gates
 - [Architecture decisions](decisions/) — rationale for foundational choices
 

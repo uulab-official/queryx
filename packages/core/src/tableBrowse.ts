@@ -38,7 +38,7 @@ function escapeLikePattern(value: string): string {
 }
 
 function castAsText(identifier: string, driver: DriverKind): string {
-  return `CAST(${identifier} AS ${driver === "mysql" ? "CHAR" : driver === "sqlserver" ? "NVARCHAR(MAX)" : "TEXT"})`;
+  return `CAST(${identifier} AS ${driver === "mysql" ? "CHAR" : driver === "sqlserver" ? "NVARCHAR(MAX)" : driver === "oracle" ? "VARCHAR2(4000)" : "TEXT"})`;
 }
 
 export function buildTableBrowsePlan(
@@ -132,8 +132,13 @@ export function buildTableBrowsePlan(
     sql: [
       `SELECT * FROM ${tableName}`,
       where,
-      orderBy || (driver === "sqlserver" ? "ORDER BY (SELECT 1)" : ""),
-      driver === "sqlserver"
+      orderBy ||
+        (driver === "sqlserver"
+          ? "ORDER BY (SELECT 1)"
+          : driver === "oracle"
+            ? "ORDER BY 1"
+            : ""),
+      driver === "sqlserver" || driver === "oracle"
         ? `OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
         : `LIMIT ${limit} OFFSET ${offset};`,
     ]

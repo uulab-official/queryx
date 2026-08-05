@@ -12,7 +12,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 
 - **Local first:** the desktop process connects directly to your database. There is no QueryX relay service.
 - **Safe by default:** UPDATE and DELETE without a WHERE clause are intercepted before execution.
-- **Driver neutral:** SQLite, PostgreSQL, MySQL/MariaDB, and the initial SQL Server driver share typed query, metadata, transaction, and capability contracts.
+- **Driver neutral:** SQLite, PostgreSQL, MySQL/MariaDB, and initial SQL Server/Oracle drivers share typed query, metadata, transaction, and capability contracts.
 - **Editor centered:** Monaco provides SQL syntax highlighting, metadata completion, selections, tabs, and independent undo history.
 - **Open and testable:** TypeScript and Rust quality gates run on Linux, macOS, and Windows in GitHub Actions.
 
@@ -20,7 +20,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 
 | Area | Available now | Next production gate |
 | --- | --- | --- |
-| Connections | Native SQLite, PostgreSQL, MySQL/MariaDB, and SQL Server basics, TLS modes, CA/client certificate paths, OpenSSH local tunnels, saved profiles with optional OS-keychain passwords, read-only sessions, connection testing | Advanced vendor metadata |
+| Connections | Native SQLite, PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle basics, TLS modes, CA/client certificate paths, OpenSSH local tunnels, saved profiles with optional OS-keychain passwords, read-only sessions, connection testing | Advanced vendor metadata |
 | SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
 | Results | Dynamic table/JSON view, virtualized loaded results, copy/export, 100-row server paging, table-browser filter/sort, all native drivers chunked streaming | Spill-to-disk, arbitrary-query server filtering |
 | Safety | Destructive-query warning, native read-only sessions, explicit transaction sessions, transaction execution path | Parser-backed analysis, affected-row estimate |
@@ -43,7 +43,7 @@ pnpm install
 pnpm --filter @queryx/desktop tauri:dev
 ```
 
-QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file, PostgreSQL, MySQL/MariaDB, or SQL Server instance. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
+QueryX starts with a seeded in-memory SQLite database. Open the connection dialog to choose a SQLite file, PostgreSQL, MySQL/MariaDB, SQL Server, or Oracle instance. For frontend-only development, run `pnpm dev` and use the deterministic in-memory driver.
 
 See [Getting Started](docs/getting-started.md) for platform setup and the first-query walkthrough.
 

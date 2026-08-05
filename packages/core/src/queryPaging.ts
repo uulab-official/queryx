@@ -153,11 +153,12 @@ export function buildQueryPagePlan(
   }
 
   const alias = quoteIdentifier("__queryx_page", driver);
+  const aliasClause = driver === "oracle" ? alias : `AS ${alias}`;
   return {
     sql:
-      driver === "sqlserver"
-        ? `SELECT * FROM (\n${analysis.statement}\n) AS ${alias} ORDER BY (SELECT 1) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
-        : `SELECT * FROM (\n${analysis.statement}\n) AS ${alias} LIMIT ${limit} OFFSET ${offset};`,
+      driver === "sqlserver" || driver === "oracle"
+        ? `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} ORDER BY ${driver === "oracle" ? "1" : "(SELECT 1)"} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
+        : `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} LIMIT ${limit} OFFSET ${offset};`,
     limit,
     offset,
     errors: [],

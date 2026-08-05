@@ -6,6 +6,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 
 ### Added
 
+- Added the initial native Oracle driver using `oracle-rs`: service-name SQL authentication, TLS with CA/client certificate paths, Oracle paging, 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, SSH-tunnel compatibility, and users/tables/views/columns/database metadata. SID/connect descriptors, wallets, cancellation, sessions, locks, routines, triggers, indexes, foreign keys, and MERGE import modes remain explicitly planned.
 - Added the initial native SQL Server driver using Tiberius: SQL authentication, encrypted TDS/TLS, SQL Server paging, 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, SSH-tunnel compatibility, and database/schema/table/view/column metadata.
 - Added SQL Server-aware bracket identifier quoting, OFFSET/FETCH paging, browse casting, DDL generation, SQL export bit literals, and capability-matrix documentation. SQL Server session cancellation, lock graph, routines, triggers, and richer index/FK metadata remain explicitly planned.
 

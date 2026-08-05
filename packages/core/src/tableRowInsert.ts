@@ -66,6 +66,14 @@ export function buildTableRowInsertPlan(
 
   const tableName = `${table.schema}.${table.name}`;
   if (selected.size === 0) {
+    if (driver === "oracle") {
+      return {
+        ...emptyPlan,
+        errors: [
+          "Oracle default-only inserts require an explicit column default expression",
+        ],
+      };
+    }
     const quotedTable = `${quoteIdentifier(table.schema, driver)}.${quoteIdentifier(table.name, driver)}`;
     const statement =
       driver === "mysql"

@@ -312,7 +312,7 @@ function serializeSqlValue(
 ): string {
   if (value === null || value === undefined) return "NULL";
   if (typeof value === "boolean") {
-    return dialect === "sqlserver"
+    return dialect === "sqlserver" || dialect === "oracle"
       ? value
         ? "1"
         : "0"

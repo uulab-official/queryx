@@ -4,6 +4,7 @@ mod driver_registry;
 mod error;
 mod models;
 mod mysql_driver;
+mod oracle_driver;
 mod postgres_driver;
 mod secret_store;
 mod sqlite_driver;

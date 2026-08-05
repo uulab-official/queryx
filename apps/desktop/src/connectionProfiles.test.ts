@@ -110,6 +110,34 @@ describe("connection profile persistence boundary", () => {
     expect(profile).not.toHaveProperty("password");
   });
 
+  it("accepts Oracle service profiles for reusable connections", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "oracle-1",
+        name: "Finance Oracle",
+        kind: "oracle",
+        database: "FREEPDB1",
+        host: "oracle.internal",
+        port: 1521,
+        username: "app_reader",
+        readOnly: true,
+        sslMode: "require",
+        password: "session-only",
+      },
+    ]);
+
+    expect(profile).toMatchObject({
+      kind: "oracle",
+      database: "FREEPDB1",
+      host: "oracle.internal",
+      port: 1521,
+      username: "app_reader",
+      readOnly: true,
+      sslMode: "require",
+    });
+    expect(profile).not.toHaveProperty("password");
+  });
+
   it("preserves only the keychain presence marker, never the password", () => {
     const [profile] = normalizeConnectionProfiles([
       {

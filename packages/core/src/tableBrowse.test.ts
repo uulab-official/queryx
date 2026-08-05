@@ -61,6 +61,17 @@ describe("buildTableBrowsePlan", () => {
     );
   });
 
+  it("builds Oracle browse pages with VARCHAR2 casts and OFFSET/FETCH", () => {
+    const plan = buildTableBrowsePlan(table, "oracle", 50, 10, "ada");
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toContain('FROM "public"."users"');
+    expect(plan.sql).toContain('CAST("id" AS VARCHAR2(4000))');
+    expect(plan.sql).toMatch(
+      /ORDER BY "id" ASC\nOFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY;$/,
+    );
+  });
+
   it("rejects unknown sort columns and warns when pagination has no primary key", () => {
     const plan = buildTableBrowsePlan(
       {

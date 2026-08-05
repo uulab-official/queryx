@@ -1,0 +1,33 @@
+# Oracle Driver
+
+QueryX includes an initial native Oracle driver for the connect → query → inspect → edit workflow. It runs in the local Tauri process and uses the pure-Rust async thin client [`oracle-rs`](https://crates.io/crates/oracle-rs); credentials, SQL text, and result rows do not pass through a QueryX service.
+
+## Supported now
+
+- SQL authentication with host, port, Oracle service name, username, password, and OpenSSH local-forward tunnels;
+- port `1521` by default, with the profile **Database** field interpreted as a service name such as `FREEPDB1`;
+- encrypted TLS for every SSL mode except `Disable`, with optional CA and client certificate/key file paths;
+- common Oracle scalar normalization: strings, integers, floating-point values, precision-preserving `NUMBER` strings, JSON, dates, timestamps, booleans, and binary values as base64;
+- native 256-row result streaming and Oracle `OFFSET … FETCH` paging for single `SELECT`/`WITH` statements;
+- explicit begin/commit/rollback sessions on one held connection;
+- atomic edit batches with exact affected-row conflict checks and rollback on mismatch or failure;
+- read-only session enforcement at the native driver boundary;
+- users, database name, tables, approximate row counts, views, and table/view columns from Oracle catalog views;
+- Oracle-safe identifier quoting, `VARCHAR2(4000)` browse casts, `ADD`/`MODIFY` DDL previews, and numeric boolean literals in SQL export.
+
+## Deliberate limitations
+
+The first Oracle slice does not advertise cancellation, sessions, lock graphs, routines, triggers, indexes, foreign keys, or dependency metadata until each has an authoritative catalog query and a contract test. SID/connect-descriptor profiles, wallet authentication, proxy authentication, fine-grained SSL mode semantics, and Oracle-specific `MERGE` conflict import modes are planned. CSV/JSON imports in `error` conflict mode are supported through transactional batches; `ignore` and `upsert` return an actionable error rather than emitting unreviewed Oracle-specific SQL.
+
+The profile currently models one service name, not a full Oracle Net connect descriptor. For RAC, wallets, TCPS aliases, or SID-based installations, use an SSH/local listener endpoint that exposes a service name or wait for the dedicated connection-profile work.
+
+## Verification
+
+The repository checks the driver through Rust compilation, Clippy with warnings denied, shared TypeScript contracts, Oracle-specific browse/paging/export tests, and the native build gate. A live contract test should use a disposable Oracle XE/Free container or instance; production credentials must never be placed in fixtures or CI logs.
+
+## Related
+
+- [Connections](connections.md)
+- [Driver API](driver-api.md)
+- [Database IDE Capability Matrix](parity-matrix.md)
+- [Roadmap](../ROADMAP.md)

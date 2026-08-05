@@ -121,6 +121,22 @@ describe("serializeRowsToSqlInsert", () => {
       "INSERT INTO [dbo].[users] ([id], [active]) VALUES (1, 1);",
     );
   });
+
+  it("exports Oracle-safe quoted identifiers and numeric booleans", () => {
+    const sql = serializeRowsToSqlInsert(
+      [{ name: "id" }, { name: "active" }],
+      [{ id: 1, active: true }],
+      {
+        tableName: "app.users",
+        dialect: "oracle",
+        includeTransaction: false,
+      },
+    );
+
+    expect(sql).toBe(
+      'INSERT INTO "app"."users" ("id", "active") VALUES (1, 1);',
+    );
+  });
 });
 
 describe("serializeRowsToSqlUpdate", () => {
