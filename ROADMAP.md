@@ -37,7 +37,7 @@ Available and tested:
 Known alpha limitations:
 
 - Native desktop now restores tabs, history, favorites, and secret-free connection profiles from versioned app-local snapshots; browser preview remains localStorage-backed. Native SQLite migration, settings, and cross-profile workspaces remain pending.
-- Passwords are intentionally session-only until OS keychain support lands.
+- Native desktop passwords can be saved in the platform OS keychain; profile files retain only a `passwordStored` marker. Browser preview remains session-only.
 - Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages single SELECT/WITH queries, and all native drivers can stream 256-row chunks. Disk spill/backpressure and arbitrary-query server-side filtering remain pending.
 - Safety analysis is lexical, not yet parser/plan backed.
 - GitHub Release packaging and signed OTA verification are wired; the first production release still requires repository updater secrets and platform signing/notarization credentials.
@@ -52,7 +52,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Browser-local query history and favorites with deduplication, recall, and command-palette actions; native SQLite migration remains planned
 - [x] Confirmed local-history clearing with truthful empty-state behavior; favorites and tabs remain intact
 - [x] Browser-local query-tab recovery with active-tab, dirty-state, and SQL restoration; native SQLite migration remains planned
-- [ ] OS keychain integration with migration and deletion tests
+- [x] OS keychain integration for macOS Keychain, Windows Credential Manager, and Linux Secret Service with profile marker, delete, duplicate, and browser-boundary tests
 - [x] Connection test and duplicate/delete profile actions with active-connection preservation
 - [ ] Profile color, timeout, and keepalive controls
 - [x] Read-only connection enforcement in native SQLite/PostgreSQL pools and the result-editor UI; PostgreSQL live integration coverage remains part of the external driver matrix

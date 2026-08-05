@@ -5,6 +5,7 @@ mod error;
 mod models;
 mod mysql_driver;
 mod postgres_driver;
+mod secret_store;
 mod sqlite_driver;
 
 use driver_registry::DriverRegistry;
@@ -26,6 +27,9 @@ pub fn run() {
             commands::begin_transaction,
             commands::commit_transaction,
             commands::rollback_transaction,
+            commands::load_connection_password,
+            commands::save_connection_password,
+            commands::delete_connection_password,
             commands::execute_edit_batch,
             commands::cancel_query,
             commands::database_metadata,

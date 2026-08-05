@@ -387,15 +387,17 @@ describe("query tabs", () => {
         port: 5432,
         username: "readonly",
         sslMode: "require",
+        passwordStored: true,
       });
       const duplicate = await useQueryStore
         .getState()
         .duplicateConnectionProfile(saved.id);
 
       expect(duplicate?.name).toBe("Analytics copy");
+      expect(duplicate?.passwordStored).toBe(false);
       expect(useQueryStore.getState().connectionProfiles).toHaveLength(2);
       expect(values.get("queryx:connection-profiles")).not.toContain(
-        "password",
+        '"password"',
       );
 
       await useQueryStore.getState().deleteConnectionProfile(saved.id);

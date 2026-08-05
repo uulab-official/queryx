@@ -102,6 +102,11 @@ import type {
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
 import { saveTextFile } from "./exportCsv";
+import {
+  deleteConnectionPassword,
+  loadConnectionPassword,
+  saveConnectionPassword,
+} from "./connectionSecrets";
 import { getVirtualRowWindow } from "./resultGrid";
 import {
   useQueryStore,
@@ -4042,11 +4047,18 @@ function App() {
           isConnecting={connectionStatus === "connecting"}
           profiles={connectionProfiles}
           profilesLoaded={connectionProfilesLoaded}
+          canUseKeychain={isTauri()}
           onClose={() => setConnectionOpen(false)}
           onConnect={connectDatabase}
-          onDeleteProfile={deleteConnectionProfile}
+          onDeleteProfile={async (id) => {
+            await deleteConnectionPassword(id);
+            await deleteConnectionProfile(id);
+          }}
           onDuplicateProfile={duplicateConnectionProfile}
           onSaveProfile={saveConnectionProfile}
+          onLoadPassword={loadConnectionPassword}
+          onSavePassword={saveConnectionPassword}
+          onDeletePassword={deleteConnectionPassword}
           onTestConnection={testDatabaseConnection}
         />
       )}
@@ -7217,22 +7229,30 @@ function ConnectionDialog({
   isConnecting,
   profiles,
   profilesLoaded,
+  canUseKeychain,
   onClose,
   onConnect,
   onDeleteProfile,
   onDuplicateProfile,
   onSaveProfile,
+  onLoadPassword,
+  onSavePassword,
+  onDeletePassword,
   onTestConnection,
 }: {
   error: string | null;
   isConnecting: boolean;
   profiles: ConnectionProfile[];
   profilesLoaded: boolean;
+  canUseKeychain: boolean;
   onClose: () => void;
   onConnect: (config: DriverConfig) => Promise<boolean>;
   onDeleteProfile: (id: string) => Promise<void>;
   onDuplicateProfile: (id: string) => Promise<ConnectionProfile | null>;
   onSaveProfile: (draft: ConnectionProfileDraft) => Promise<ConnectionProfile>;
+  onLoadPassword: (profileId: string) => Promise<string | null>;
+  onSavePassword: (profileId: string, password: string) => Promise<boolean>;
+  onDeletePassword: (profileId: string) => Promise<boolean>;
   onTestConnection: (
     config: DriverConfig,
   ) => Promise<{ ok: boolean; error?: string }>;
@@ -7244,6 +7264,7 @@ function ConnectionDialog({
   const [database, setDatabase] = useState("postgres");
   const [username, setUsername] = useState("postgres");
   const [password, setPassword] = useState("");
+  const [savePassword, setSavePassword] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
   const [sslMode, setSslMode] = useState<"disable" | "prefer" | "require">(
     "prefer",
@@ -7254,7 +7275,7 @@ function ConnectionDialog({
   >("idle");
   const [testError, setTestError] = useState<string | null>(null);
 
-  const applyProfile = (profile: ConnectionProfile) => {
+  const applyProfile = async (profile: ConnectionProfile) => {
     setActiveProfileId(profile.id);
     setKind(profile.kind);
     setName(profile.name);
@@ -7274,7 +7295,12 @@ function ConnectionDialog({
     setUsername(
       profile.username ?? (profile.kind === "mysql" ? "root" : "postgres"),
     );
-    setPassword("");
+    setSavePassword(canUseKeychain && profile.passwordStored === true);
+    setPassword(
+      canUseKeychain && profile.passwordStored
+        ? ((await onLoadPassword(profile.id)) ?? "")
+        : "",
+    );
     setSslMode(profile.sslMode ?? "prefer");
     setTestStatus("idle");
     setTestError(null);
@@ -7290,6 +7316,7 @@ function ConnectionDialog({
     setReadOnly(false);
     setUsername("postgres");
     setPassword("");
+    setSavePassword(false);
     setSslMode("prefer");
     setTestStatus("idle");
     setTestError(null);
@@ -7327,7 +7354,19 @@ function ConnectionDialog({
 
   const handleSaveProfile = async () => {
     try {
-      const saved = await onSaveProfile(profileDraft());
+      const saved = await onSaveProfile({
+        ...profileDraft(),
+        passwordStored: false,
+      });
+      if (canUseKeychain && savePassword && password) {
+        await onSavePassword(saved.id, password);
+        await onSaveProfile({
+          ...saved,
+          passwordStored: true,
+        });
+      } else if (canUseKeychain) {
+        await onDeletePassword(saved.id);
+      }
       setActiveProfileId(saved.id);
       setTestStatus("idle");
       setTestError(null);
@@ -7347,7 +7386,7 @@ function ConnectionDialog({
 
   const handleDuplicateProfile = async (profile: ConnectionProfile) => {
     const duplicate = await onDuplicateProfile(profile.id);
-    if (duplicate) applyProfile(duplicate);
+    if (duplicate) await applyProfile(duplicate);
   };
 
   const handleTestConnection = async () => {
@@ -7411,7 +7450,7 @@ function ConnectionDialog({
                     <button
                       type="button"
                       className={`profile-select ${activeProfileId === profile.id ? "active" : ""}`}
-                      onClick={() => applyProfile(profile)}
+                      onClick={() => void applyProfile(profile)}
                     >
                       <span className="profile-kind">
                         {driverShortName(profile.kind)}
@@ -7467,6 +7506,7 @@ function ConnectionDialog({
                             : "5432",
                       );
                       setUsername(nextKind === "mysql" ? "root" : "postgres");
+                      setSavePassword(false);
                       setName(
                         nextKind === "sqlite"
                           ? "Local SQLite"
@@ -7548,6 +7588,24 @@ function ConnectionDialog({
                         placeholder="Enter for this session"
                       />
                     </label>
+                    <label className="connection-readonly">
+                      <input
+                        type="checkbox"
+                        checked={savePassword}
+                        disabled={!canUseKeychain}
+                        onChange={(event) =>
+                          setSavePassword(event.target.checked)
+                        }
+                      />
+                      <span>
+                        <strong>Store in OS keychain</strong>
+                        <small>
+                          {canUseKeychain
+                            ? "Encrypted by the platform credential store; never written to profiles."
+                            : "Available in the native desktop app only."}
+                        </small>
+                      </span>
+                    </label>
                     <label>
                       <span>SSL mode</span>
                       <select
@@ -7592,8 +7650,9 @@ function ConnectionDialog({
             <p>
               <strong>Credentials stay local</strong>
               <small>
-                The password is held in memory for this session and is never
-                written to QueryX storage.
+                {savePassword && canUseKeychain
+                  ? "The password is stored only in the OS keychain and is never written to QueryX storage."
+                  : "The password is held in memory for this session and is never written to QueryX storage."}
               </small>
             </p>
           </div>

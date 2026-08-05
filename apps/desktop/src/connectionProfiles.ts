@@ -48,6 +48,7 @@ export function normalizeConnectionProfiles(
         ? { username: item.username.trim() }
         : {}),
       ...(isSslMode(item.sslMode) ? { sslMode: item.sslMode } : {}),
+      ...(item.passwordStored === true ? { passwordStored: true } : {}),
     }))
     .slice(0, maxProfiles);
 }

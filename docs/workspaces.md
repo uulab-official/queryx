@@ -36,7 +36,7 @@ Favorites are deduplicated by normalized SQL text and capped at 50 entries. Labe
 
 Saving, recalling, or clearing local history never connects to a database. Recalling a favorite never executes SQL. Query text is edited in the local renderer and persisted only through the documented workspace boundary. Passwords and connection secrets are not included in favorites, history, localStorage, workspace files, or logs.
 
-The browser-local query persistence is best-effort and can be cleared by the host profile. Native SQLite storage for settings, migrations, cross-profile workspaces, and OS-keychain integration remain planned for v0.2. The current native snapshot is JSON by design so the storage schema can stabilize before the SQLite migration.
+The browser-local query persistence is best-effort and can be cleared by the host profile. Native SQLite storage for settings, migrations, and cross-profile workspaces remains planned for v0.2. OS-keychain storage is separate from the workspace snapshot and is available for native connection passwords. The current native snapshot is JSON by design so the storage schema can stabilize before the SQLite migration.
 
 ## Troubleshooting
 

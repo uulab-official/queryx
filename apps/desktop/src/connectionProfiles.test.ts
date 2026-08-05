@@ -81,4 +81,21 @@ describe("connection profile persistence boundary", () => {
     });
     expect(profile).not.toHaveProperty("password");
   });
+
+  it("preserves only the keychain presence marker, never the password", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "secure-1",
+        name: "Secure profile",
+        kind: "postgres",
+        database: "analytics",
+        passwordStored: true,
+        password: "must-not-persist",
+      },
+    ]);
+
+    expect(profile?.passwordStored).toBe(true);
+    expect(profile).not.toHaveProperty("password");
+    expect(JSON.stringify(profile)).not.toContain("must-not-persist");
+  });
 });

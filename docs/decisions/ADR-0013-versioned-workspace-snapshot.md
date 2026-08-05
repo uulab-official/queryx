@@ -8,7 +8,7 @@ Accepted for the current alpha; SQLite migration remains planned.
 
 The desktop shell already restores query tabs, history, and favorites in the browser preview, but a native restart previously rebuilt that state from renderer `localStorage`. That made the primary IDE workflow depend on a webview storage implementation and left the native connection profile boundary inconsistent with the rest of the workspace.
 
-The workspace schema is still changing while settings, cross-profile workspaces, and OS-keychain integration are not implemented. Moving directly to SQLite would add migrations before the data contract has stabilized.
+The workspace schema is still changing while settings and cross-profile workspaces are not implemented. Moving directly to SQLite would add migrations before the data contract has stabilized. OS-keychain storage is intentionally separate from this workspace decision.
 
 ## Decision
 
@@ -20,7 +20,7 @@ Store one versioned, secret-free `workspace.json` snapshot in the Tauri app-loca
 
 The browser preview uses the same logical snapshot through localStorage. When the native file is absent, QueryX reads a valid browser snapshot once and writes it to the native boundary. A corrupt or incompatible snapshot is ignored and the default tab is recreated. Restoring a snapshot never executes SQL.
 
-Passwords and connection secrets are excluded by type and are not migrated. Connection profiles continue to use their separate secret-free app-local file until OS-keychain support is available.
+Passwords and connection secrets are excluded by type and are not migrated. Connection profiles continue to use their app-local metadata file; native password values are stored separately in the OS keychain when enabled.
 
 ## Consequences
 

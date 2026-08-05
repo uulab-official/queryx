@@ -213,7 +213,7 @@ export interface DriverConfig {
 
 /**
  * A reusable connection profile. Secrets are intentionally not part of this
- * contract; passwords remain session-only until the OS keychain lands.
+ * contract; `passwordStored` is only a presence marker for a native keychain entry.
  */
 export interface ConnectionProfile {
   id: string;
@@ -225,6 +225,8 @@ export interface ConnectionProfile {
   port?: number;
   username?: string;
   sslMode?: "disable" | "prefer" | "require";
+  /** Indicates an OS-keychain entry exists; the secret itself is never serialized. */
+  passwordStored?: boolean;
 }
 
 export interface DatabaseDriver {

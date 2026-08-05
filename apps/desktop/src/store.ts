@@ -778,6 +778,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
         ...source,
         id: undefined,
         name: `${source.name} copy`,
+        passwordStored: false,
       });
     },
     testDatabaseConnection: async (config) => {

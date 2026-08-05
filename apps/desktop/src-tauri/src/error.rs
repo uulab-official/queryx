@@ -28,6 +28,8 @@ pub enum AppError {
     TransactionAlreadyActive,
     #[error("no active transaction")]
     TransactionNotActive,
+    #[error("OS keychain error: {0}")]
+    Keychain(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

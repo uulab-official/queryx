@@ -34,7 +34,7 @@ The UI must never branch on database vendor details to render a result. Driver-s
 
 - UI state: tabs, editor text, selected database object, result view, filters, running status, toasts.
 - Driver state: connection lifecycle, query execution, metadata, transactions, capabilities.
-- Local persistence: the native desktop stores secret-free connection profiles and a versioned workspace snapshot in app-local data; the browser preview stores the same workspace schema in localStorage. Native settings, migrations, cross-profile workspaces, and OS-keychain integration remain future storage boundaries.
+- Local persistence: the native desktop stores connection profiles and a versioned workspace snapshot in app-local data; the browser preview stores the same workspace schema in localStorage. Password values are kept in the native OS keychain and never enter either profile storage boundary.
 - Secrets: OS keychain only; passwords are not written to SQLite or workspace files.
 - Safety policy: read-only sessions are enforced in the native database connection and reflected through `DatabaseDriver.isReadOnly()`; disabling the React editor is only a secondary guard.
 
@@ -50,12 +50,12 @@ The browser preview keeps `InMemoryDriver`; Tauri creates `TauriDatabaseDriver` 
 
 Each execution receives an opaque UUID. The frontend maps `AbortSignal` to generic prepare, execute, stream, and cancel commands. PostgreSQL and MySQL/MariaDB keep per-connection active-query state machines and use separate one-connection control pools (`pg_cancel_backend` and `KILL QUERY`) for cancellation. The execution connection is retained until an in-flight cancellation request completes, preventing a late signal from cancelling a later query on a reused backend. All native drivers stream results from SQLx row streams and emit query-scoped Tauri events in 256-row chunks; SQLite advertises streaming without cancellation.
 
-PostgreSQL passwords cross only the local Tauri IPC boundary and remain in process memory for the current session. They are not placed in Zustand, localStorage, SQLite, logs, or connection summaries.
+Database passwords cross only the local Tauri IPC boundary and remain in process memory for the current pool. When explicitly enabled on native desktop, the same secret is stored separately through the platform OS keychain; it is not placed in Zustand, localStorage, SQLite, workspace files, logs, or connection summaries.
 
 The next integration steps are:
 
 1. Migrate the versioned native workspace snapshot to SQLite after the schema has stabilized, adding settings and cross-profile workspaces.
-2. Store saved profile secrets in the OS keychain, with migration and deletion tests.
+2. Add keychain migration UX for legacy session-only profiles and platform-specific diagnostics.
 3. Add long-query progress telemetry, backpressure/spill policies, and timeout policies on top of the current PostgreSQL chunk stream.
 4. Expand the initial MySQL/MariaDB driver with event triggers, SSH/certificate configuration, and hosted integration coverage; streaming and cancellation are now implemented through capability-gated native paths.
 5. Expand the metadata contract from current indexes, views, foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and dependency edges to object-specific DDL forms and applied migration state. The current generic schema-aware DDL diff, dependency ordering, rollback/preflight preview, and local preview ledger are documented in [Schema Compare](schema-compare.md) and [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md).

@@ -15,7 +15,7 @@ This matrix is the source of truth for QueryX parity claims. It compares workflo
 | DDL inspect → edit → transaction | Partial — safe handoff plus table/column/index/foreign-key create/drop forms, view create/alter/drop, and type-nullability editing; rename/index-alter/CHECK/unique constraint forms pending | Available | Available | Available | Available | [DDL workflow](ddl-workflow.md), [object forms](object-forms.md) |
 | Schema diff and migration history | Partial — same-dialect dependency-ordered table/column/index/FK/view forward, rollback, privilege-preflight, explicit transactional apply, and native applied ledger; object forms and vendor breadth pending | Available | Partial | Partial | Available | [schema compare](schema-compare.md), [roadmap](../ROADMAP.md) |
 | Import wizard and type mapping | Partial — CSV/JSON mapping, validation, preview, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches pending | Available | Partial | Available | Available | [CSV import](import.md), [roadmap](../ROADMAP.md) |
-| SSH tunnels, keychain, certificate files | Planned | Available | Partial | Partial | Available | [connections](connections.md) |
+| SSH tunnels, keychain, certificate files | Partial — native OS-keychain password storage; SSH tunnels and certificate files remain planned | Available | Partial | Partial | Available | [connections](connections.md), [architecture](architecture.md) |
 | Signed release and OTA update path | Available — repository workflow and signed updater contract | Varies by distribution | Varies by distribution | Varies by distribution | Varies by distribution | [updates](updates.md), GitHub Actions workflows |
 
 ## Release gates

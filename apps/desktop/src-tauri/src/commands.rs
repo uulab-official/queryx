@@ -7,6 +7,7 @@ use crate::{
     driver_registry::DriverRegistry,
     error::AppError,
     models::{ConnectionConfig, ConnectionSummary, DatabaseMetadata, QueryResult},
+    secret_store,
 };
 
 #[tauri::command]
@@ -89,6 +90,21 @@ pub async fn rollback_transaction(
     connection_id: String,
 ) -> Result<(), AppError> {
     state.rollback_transaction(&connection_id).await
+}
+
+#[tauri::command]
+pub fn load_connection_password(profile_id: String) -> Result<Option<String>, AppError> {
+    secret_store::load_password(&profile_id)
+}
+
+#[tauri::command]
+pub fn save_connection_password(profile_id: String, password: String) -> Result<(), AppError> {
+    secret_store::save_password(&profile_id, &password)
+}
+
+#[tauri::command]
+pub fn delete_connection_password(profile_id: String) -> Result<(), AppError> {
+    secret_store::delete_password(&profile_id)
 }
 
 #[tauri::command]

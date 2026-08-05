@@ -26,14 +26,14 @@ For SQLite, select SQLite and enter `:memory:` for a temporary database or an ab
 - The prior connection stays active until the replacement connection and its metadata both load successfully.
 - **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
 - **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only`, PostgreSQL enables `default_transaction_read_only`, and MySQL sets a read-only transaction session plus rejects non-read statements at the native driver boundary.
-- On native desktop, profiles are stored in the QueryX app-local data directory. The browser preview uses localStorage as a development fallback.
+- On native desktop, profiles are stored in the QueryX app-local data directory. The optional password is stored separately in the platform OS keychain; only a `passwordStored` marker is persisted with the profile. The browser preview uses localStorage as a development fallback and never stores passwords.
 - All three drivers return the same result and metadata shapes to the UI; unsupported vendor-specific metadata is represented as an empty capability area until implemented.
 
 ## Safety and privacy
 
-Connections go directly from the local Tauri process to the selected database. QueryX has no relay server and does not send connection data to a QueryX service. Passwords are held only long enough to create the current in-memory SQLx pool; they are not written to localStorage, SQLite, workspace files, history, logs, or connection summaries.
+Connections go directly from the local Tauri process to the selected database. QueryX has no relay server and does not send connection data to a QueryX service. Native passwords are held in memory for the current pool and, only when explicitly enabled, in the platform OS keychain; they are not written to localStorage, SQLite, workspace files, history, logs, or connection summaries.
 
-Saved profiles never contain passwords. Re-enter the password when connecting after restarting QueryX; OS keychain integration is still a v0.2 security milestone.
+Saved profiles never contain passwords. On native desktop, enable **Store in OS keychain** to load the password when selecting the profile after restart. Disable it or delete the profile to remove the keychain entry. Browser preview always asks for the password for the current session.
 
 ## Troubleshooting
 

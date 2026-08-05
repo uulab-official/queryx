@@ -68,7 +68,7 @@ Only `QUERYX_TEST_POSTGRES_DATABASE` enables the live connection. Host, port, us
 - Explicit transaction sessions reserve one pooled PostgreSQL connection until commit or rollback. Queries, streams, and edit batches reuse that connection; disconnect rolls back an unfinished session.
 - Object-specific DDL diff and applied-migration state are not yet part of the shared metadata model. The generic Schema Compare workflow provides dependency-aware diffing, rollback preview, and PostgreSQL privilege-preflight SQL. Inspector definitions for ordinary functions/procedures, relation triggers, and event triggers can be handed off to a normal SQL tab; aggregate/window entries remain inspection-only because PostgreSQL does not expose the same executable routine definition contract for those catalog kinds.
 - PostgreSQL extension and geometric types currently use an unsupported-type marker.
-- Saved credentials must wait for OS keychain integration.
+- Saved credentials use the native OS keychain when explicitly enabled; the profile file stores only whether a keychain entry exists.
 
 ## Related
 

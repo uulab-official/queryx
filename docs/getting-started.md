@@ -31,7 +31,7 @@ Inspect the result as a table or JSON, filter locally, sort a column, and choose
 
 Open the connection dialog from the Explorer plus button or the current connection name. SQLite accepts `:memory:` or an absolute file path. PostgreSQL requires host, port, database, username, optional password, and an SSL mode.
 
-Use a dedicated, least-privilege account. QueryX holds the password in memory for the session and asks again after restart because saved profiles and OS keychain integration are not yet implemented.
+Use a dedicated, least-privilege account. QueryX holds the password in memory for the session; the native desktop can optionally store it in the platform OS keychain, while browser preview always asks again after restart.
 
 ## Frontend-only development
 
