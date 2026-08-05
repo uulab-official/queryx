@@ -1,4 +1,4 @@
-import type { QueryColumn } from "@queryx/shared";
+import type { DriverKind, QueryColumn } from "@queryx/shared";
 
 export interface CsvExportOptions {
   includeBom?: boolean;
@@ -8,7 +8,7 @@ export interface CsvExportOptions {
 
 export interface SqlInsertExportOptions {
   tableName: string;
-  dialect?: "mysql" | "postgres" | "sqlite";
+  dialect?: DriverKind;
   lineEnding?: "\n" | "\r\n";
   includeTransaction?: boolean;
 }
@@ -16,7 +16,7 @@ export interface SqlInsertExportOptions {
 export interface SqlUpdateExportOptions {
   tableName: string;
   keyColumns: readonly string[];
-  dialect?: "mysql" | "postgres" | "sqlite";
+  dialect?: DriverKind;
   lineEnding?: "\n" | "\r\n";
   includeTransaction?: boolean;
   includeOriginalValues?: boolean;
@@ -34,7 +34,7 @@ export interface SqlRowDelete {
 export interface SqlDeleteExportOptions {
   tableName: string;
   keyColumns: readonly string[];
-  dialect?: "mysql" | "postgres" | "sqlite";
+  dialect?: DriverKind;
   lineEnding?: "\n" | "\r\n";
   includeTransaction?: boolean;
   includeOriginalValues?: boolean;
@@ -100,7 +100,7 @@ export function serializeRowsToSqlInsert(
   const statements = rows.map(
     (row) =>
       `INSERT INTO ${quotedTable} (${quotedColumns}) VALUES (${columns
-        .map((column) => serializeSqlValue(row[column.name]))
+        .map((column) => serializeSqlValue(row[column.name], dialect))
         .join(", ")});`,
   );
   const body = statements.join(lineEnding);
@@ -167,7 +167,7 @@ export function buildRowsToSqlUpdateStatements(
             `Row ${index + 1} has a NULL key value for ${columnName}`,
           );
         }
-        return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value)}`;
+        return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value, dialect)}`;
       });
       const originalValueConditions =
         options.includeOriginalValues === false
@@ -188,7 +188,7 @@ export function buildRowsToSqlUpdateStatements(
       const assignments = changedColumns
         .map(
           (column) =>
-            `${quoteIdentifier(column.name, dialect)} = ${serializeSqlValue(changes[column.name])}`,
+            `${quoteIdentifier(column.name, dialect)} = ${serializeSqlValue(changes[column.name], dialect)}`,
         )
         .join(", ");
       return `UPDATE ${quotedTable} SET ${assignments} WHERE ${[...keyValues, ...originalValueConditions].join(" AND ")};`;
@@ -245,7 +245,7 @@ export function buildRowsToSqlDeleteStatements(
           `Row ${index + 1} has a NULL key value for ${columnName}`,
         );
       }
-      return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value)}`;
+      return `${quoteIdentifier(columnName, dialect)} = ${serializeSqlValue(value, dialect)}`;
     });
     const originalValueConditions =
       options.includeOriginalValues === false
@@ -301,13 +301,25 @@ function quoteIdentifier(
   value: string,
   dialect: SqlInsertExportOptions["dialect"],
 ): string {
+  if (dialect === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = dialect === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
 
-function serializeSqlValue(value: unknown): string {
+function serializeSqlValue(
+  value: unknown,
+  dialect: SqlInsertExportOptions["dialect"],
+): string {
   if (value === null || value === undefined) return "NULL";
-  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
+  if (typeof value === "boolean") {
+    return dialect === "sqlserver"
+      ? value
+        ? "1"
+        : "0"
+      : value
+        ? "TRUE"
+        : "FALSE";
+  }
   if (typeof value === "number")
     return Number.isFinite(value) ? String(value) : "NULL";
   if (typeof value === "bigint") return String(value);
@@ -325,7 +337,7 @@ function serializeSqlPredicate(
 ): string {
   const identifier = quoteIdentifier(columnName, dialect);
   if (value === null || value === undefined) return `${identifier} IS NULL`;
-  return `${identifier} = ${serializeSqlValue(value)}`;
+  return `${identifier} = ${serializeSqlValue(value, dialect)}`;
 }
 
 function quoteSqlString(value: string): string {

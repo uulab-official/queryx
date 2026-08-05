@@ -51,6 +51,7 @@ impl SshTunnel {
         let remote_port = config.port.unwrap_or(match config.kind {
             DriverKind::Postgres => 5432,
             DriverKind::Mysql => 3306,
+            DriverKind::SqlServer => 1433,
             DriverKind::Sqlite => unreachable!(),
         });
         if remote_port == 0 {

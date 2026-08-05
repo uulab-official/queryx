@@ -105,6 +105,22 @@ describe("serializeRowsToSqlInsert", () => {
 
     expect(sql).toBe("");
   });
+
+  it("exports SQL Server-safe brackets and bit literals", () => {
+    const sql = serializeRowsToSqlInsert(
+      [{ name: "id" }, { name: "active" }],
+      [{ id: 1, active: true }],
+      {
+        tableName: "dbo.users",
+        dialect: "sqlserver",
+        includeTransaction: false,
+      },
+    );
+
+    expect(sql).toBe(
+      "INSERT INTO [dbo].[users] ([id], [active]) VALUES (1, 1);",
+    );
+  });
 });
 
 describe("serializeRowsToSqlUpdate", () => {

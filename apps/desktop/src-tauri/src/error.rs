@@ -10,6 +10,8 @@ pub enum AppError {
     InvalidPostgresConfig(String),
     #[error("invalid MySQL configuration: {0}")]
     InvalidMysqlConfig(String),
+    #[error("invalid SQL Server configuration: {0}")]
+    InvalidSqlServerConfig(String),
     #[error("driver is not implemented yet: {0}")]
     UnsupportedDriver(String),
     #[error("invalid query id: {0}")]
@@ -34,6 +36,8 @@ pub enum AppError {
     SshTunnel(String),
     #[error("session operation failed: {0}")]
     SessionOperation(String),
+    #[error("SQL Server driver error: {0}")]
+    SqlServer(String),
     #[error(transparent)]
     Sqlx(#[from] sqlx::Error),
 }

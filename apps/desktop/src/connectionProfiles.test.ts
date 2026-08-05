@@ -82,6 +82,34 @@ describe("connection profile persistence boundary", () => {
     expect(profile).not.toHaveProperty("password");
   });
 
+  it("accepts SQL Server profiles for reusable connections", () => {
+    const [profile] = normalizeConnectionProfiles([
+      {
+        id: "sqlserver-1",
+        name: "Operations SQL Server",
+        kind: "sqlserver",
+        database: "master",
+        host: "sql.internal",
+        port: 1433,
+        username: "readonly",
+        readOnly: true,
+        sslMode: "require",
+        password: "session-only",
+      },
+    ]);
+
+    expect(profile).toMatchObject({
+      kind: "sqlserver",
+      database: "master",
+      host: "sql.internal",
+      port: 1433,
+      username: "readonly",
+      readOnly: true,
+      sslMode: "require",
+    });
+    expect(profile).not.toHaveProperty("password");
+  });
+
   it("preserves only the keychain presence marker, never the password", () => {
     const [profile] = normalizeConnectionProfiles([
       {

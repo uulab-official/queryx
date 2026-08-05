@@ -6,7 +6,12 @@ const nativeProfilesPath = "queryx/connection-profiles.json";
 const maxProfiles = 50;
 
 function isDriverKind(value: unknown): value is DriverKind {
-  return value === "postgres" || value === "mysql" || value === "sqlite";
+  return (
+    value === "postgres" ||
+    value === "mysql" ||
+    value === "sqlserver" ||
+    value === "sqlite"
+  );
 }
 
 function isSslMode(

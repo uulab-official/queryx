@@ -9,6 +9,8 @@ pub enum DriverKind {
     Sqlite,
     Postgres,
     Mysql,
+    #[serde(rename = "sqlserver")]
+    SqlServer,
 }
 
 impl std::fmt::Display for DriverKind {
@@ -17,6 +19,7 @@ impl std::fmt::Display for DriverKind {
             Self::Sqlite => "sqlite",
             Self::Postgres => "postgres",
             Self::Mysql => "mysql",
+            Self::SqlServer => "sqlserver",
         };
         formatter.write_str(value)
     }

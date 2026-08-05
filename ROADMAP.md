@@ -109,7 +109,7 @@ Release gates:
 Goal: cover the database families and power workflows expected from a general-purpose IDE.
 
 - [x] MySQL/MariaDB connection, query execution, transactions, read-only guard, and tables/views/columns/index/foreign-key/routine/trigger metadata, cursor-backed streaming, and active-query cancellation; event triggers and broader integration matrix remain planned
-- [ ] SQL Server driver
+- [x] Initial SQL Server driver with SQL authentication, encrypted TDS/TLS connections, native 256-row streaming, explicit transactions, atomic edit batches, read-only enforcement, tables/views/columns/database/schema metadata, SQL Server paging, bracket quoting, and SSH-tunnel support; sessions, lock graph, routines, triggers, richer index/FK metadata, and Windows/AAD authentication remain planned
 - [ ] Oracle driver and Oracle-specific object metadata
 - [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
 - [ ] Data compare and controlled synchronization scripts

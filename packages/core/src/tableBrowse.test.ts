@@ -50,6 +50,17 @@ describe("buildTableBrowsePlan", () => {
     expect(plan.sql).toContain("ORDER BY `id` ASC");
   });
 
+  it("builds SQL Server browse pages with bracket quoting and OFFSET/FETCH", () => {
+    const plan = buildTableBrowsePlan(table, "sqlserver", 50, 10, "ada");
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toContain("FROM [public].[users]");
+    expect(plan.sql).toContain("CAST([id] AS NVARCHAR(MAX))");
+    expect(plan.sql).toMatch(
+      /ORDER BY \[id\] ASC\nOFFSET 10 ROWS FETCH NEXT 50 ROWS ONLY;$/,
+    );
+  });
+
   it("rejects unknown sort columns and warns when pagination has no primary key", () => {
     const plan = buildTableBrowsePlan(
       {

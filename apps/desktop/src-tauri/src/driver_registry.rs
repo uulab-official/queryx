@@ -10,6 +10,7 @@ use crate::{
     mysql_driver::MysqlDriver,
     postgres_driver::PostgresDriver,
     sqlite_driver::SqliteDriver,
+    sqlserver_driver::SqlServerDriver,
     ssh_tunnel::SshTunnel,
 };
 
@@ -42,6 +43,7 @@ impl DriverRegistry {
             )),
             DriverKind::Postgres => Ok(Arc::new(PostgresDriver::connect(&native_config).await?)),
             DriverKind::Mysql => Ok(Arc::new(MysqlDriver::connect(&native_config).await?)),
+            DriverKind::SqlServer => Ok(Arc::new(SqlServerDriver::connect(&native_config).await?)),
         };
         let driver = match driver_result {
             Ok(driver) => driver,

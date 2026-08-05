@@ -14,6 +14,7 @@ export interface TableBrowsePlan {
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
@@ -37,7 +38,7 @@ function escapeLikePattern(value: string): string {
 }
 
 function castAsText(identifier: string, driver: DriverKind): string {
-  return `CAST(${identifier} AS ${driver === "mysql" ? "CHAR" : "TEXT"})`;
+  return `CAST(${identifier} AS ${driver === "mysql" ? "CHAR" : driver === "sqlserver" ? "NVARCHAR(MAX)" : "TEXT"})`;
 }
 
 export function buildTableBrowsePlan(
@@ -131,8 +132,10 @@ export function buildTableBrowsePlan(
     sql: [
       `SELECT * FROM ${tableName}`,
       where,
-      orderBy,
-      `LIMIT ${limit} OFFSET ${offset};`,
+      orderBy || (driver === "sqlserver" ? "ORDER BY (SELECT 1)" : ""),
+      driver === "sqlserver"
+        ? `OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
+        : `LIMIT ${limit} OFFSET ${offset};`,
     ]
       .filter(Boolean)
       .join("\n"),

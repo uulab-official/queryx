@@ -15,6 +15,7 @@ interface StatementAnalysis {
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
@@ -153,7 +154,10 @@ export function buildQueryPagePlan(
 
   const alias = quoteIdentifier("__queryx_page", driver);
   return {
-    sql: `SELECT * FROM (\n${analysis.statement}\n) AS ${alias} LIMIT ${limit} OFFSET ${offset};`,
+    sql:
+      driver === "sqlserver"
+        ? `SELECT * FROM (\n${analysis.statement}\n) AS ${alias} ORDER BY (SELECT 1) OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
+        : `SELECT * FROM (\n${analysis.statement}\n) AS ${alias} LIMIT ${limit} OFFSET ${offset};`,
     limit,
     offset,
     errors: [],

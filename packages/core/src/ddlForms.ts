@@ -118,6 +118,7 @@ export interface DropViewPlan {
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
@@ -317,7 +318,7 @@ export function buildAddColumnPlan(
   if (columnTypeError) errors.push(columnTypeError);
   if (errors.length > 0) return { sql: "", errors };
   return {
-    sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ADD COLUMN ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
+    sql: `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${driver === "sqlserver" ? "ADD" : "ADD COLUMN"} ${quoteIdentifier(name, driver)} ${type}${input.nullable ? "" : " NOT NULL"};`,
     errors: [],
   };
 }
@@ -381,6 +382,12 @@ export function buildEditTableColumnsPlan(
     if (driver === "mysql") {
       statements.push(
         `ALTER TABLE ${qualified} MODIFY COLUMN ${identifier} ${type}${column.nullable ? "" : " NOT NULL"};`,
+      );
+      continue;
+    }
+    if (driver === "sqlserver") {
+      statements.push(
+        `ALTER TABLE ${qualified} ALTER COLUMN ${identifier} ${type}${column.nullable ? " NULL" : " NOT NULL"};`,
       );
       continue;
     }
@@ -451,7 +458,7 @@ export function buildCreateIndexPlan(
     ? ["An index with the same column order already exists"]
     : [];
   const indexName =
-    driver === "mysql"
+    driver === "mysql" || driver === "sqlserver"
       ? quoteIdentifier(name, driver)
       : qualifiedName(table.schema, name, driver);
   const tableName = qualifiedName(table.schema, table.name, driver);
@@ -486,7 +493,7 @@ export function buildDropIndexPlan(
   }
   const qualifiedTable = qualifiedName(table.schema, table.name, driver);
   const sql =
-    driver === "mysql"
+    driver === "mysql" || driver === "sqlserver"
       ? `DROP INDEX ${quoteIdentifier(name, driver)} ON ${qualifiedTable};`
       : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
   return { sql, errors: [], manual: [] };

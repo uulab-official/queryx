@@ -15,6 +15,7 @@ export interface TableRowInsertPlan {
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }

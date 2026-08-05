@@ -2,7 +2,7 @@
 
 ## What it does
 
-The native QueryX desktop app can connect directly to SQLite files, PostgreSQL servers, and MySQL/MariaDB servers. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
+The native QueryX desktop app can connect directly to SQLite files, PostgreSQL servers, MySQL/MariaDB servers, and SQL Server instances. Open the connection dialog from the **+** button in Explorer, the current connection selector, or the connection status in the editor tabs.
 
 ## Before you start
 
@@ -16,12 +16,13 @@ For PostgreSQL, select the driver and enter a connection name, host, port, datab
 
 For MySQL or MariaDB, select **MySQL / MariaDB** and enter the host, port (default `3306`), database, username (default `root`), optional password, SSL mode, and optional CA/client certificate paths. QueryX loads tables, views, columns, row-count estimates, and indexes through `information_schema`.
 
+For SQL Server, select **SQL Server** and enter the host, port (default `1433`), database (default `master`), SQL login (default `sa`), and password. QueryX uses SQL authentication over encrypted TDS by default, validates the server certificate against the platform trust store, and accepts an optional CA certificate path for a private authority. The initial SQL Server slice includes query execution, 256-row result streaming, explicit transactions, atomic edit batches, read-only sessions, SQL Server paging, and tables/views/columns/database/schema metadata. Windows integrated authentication, AAD tokens, session explorer, lock graph, routines, triggers, and full index/foreign-key metadata are separate roadmap gates.
+
 For SQLite, select SQLite and enter `:memory:` for a temporary database or an absolute database file path.
 
 ## Options and behavior
 
-- `Prefer` tries TLS first and can fall back when the server does not support it.
-- `Require` requires an encrypted PostgreSQL or MySQL connection.
+- `Prefer` and `Require` use encrypted connections for SQL Server; SQL Server does not silently downgrade the TDS connection.
 - `Verify CA` requires TLS and verifies the server certificate against the configured CA file.
 - `Verify Full / Identity` also verifies that the certificate identity matches the host name. PostgreSQL calls this `verify-full`; MySQL/MariaDB maps it to `VERIFY_IDENTITY`.
 - `Disable` is intended for trusted local development servers.
@@ -32,7 +33,7 @@ For SQLite, select SQLite and enter `:memory:` for a temporary database or an ab
 - **Save profile** stores reusable non-secret fields. **Duplicate** creates a safe copy for environment variants, and **Delete** removes a saved profile.
 - **Read-only session** is a connection policy, not just a UI preference. SQLite enables `PRAGMA query_only`, PostgreSQL enables `default_transaction_read_only`, and MySQL sets a read-only transaction session plus rejects non-read statements at the native driver boundary.
 - On native desktop, profiles are stored in the QueryX app-local data directory. The optional password is stored separately in the platform OS keychain; only a `passwordStored` marker is persisted with the profile. The browser preview uses localStorage as a development fallback and never stores passwords.
-- All three drivers return the same result and metadata shapes to the UI; unsupported vendor-specific metadata is represented as an empty capability area until implemented.
+- All built-in drivers return the same result and metadata shapes to the UI; unsupported vendor-specific metadata is represented as an empty capability area until implemented.
 
 ## Safety and privacy
 
@@ -44,7 +45,7 @@ Saved profiles never contain passwords. On native desktop, enable **Store in OS 
 
 - A timeout usually means the host or port is unreachable or blocked by a firewall.
 - Authentication failures should be resolved by checking the username, password, database access rule, and server authentication configuration.
-- If TLS negotiation fails on a local test server, use `Disable`; keep `Require` or a verify mode for production networks where encryption and server identity are mandatory.
+- If TLS negotiation fails on a local SQL Server test server using a self-signed certificate, install the issuing CA or provide its CA path; use `Disable` only for a trusted local development server. Keep encrypted verification for production networks.
 - A verify mode without a readable CA file will fail during connection creation. Check the path and file permissions in the native desktop process.
 - If an SSH tunnel fails, check that the native `ssh` command is installed, the SSH user can authenticate non-interactively, the bastion's `known_hosts` entry is trusted, and the destination host/port is reachable from the bastion.
 - QueryX keeps the current connection when a replacement connection fails, so you can correct the fields and retry.
@@ -55,4 +56,5 @@ Saved profiles never contain passwords. On native desktop, enable **Store in OS 
 - [PostgreSQL Driver](postgres-driver.md)
 - [SQLite Driver](sqlite-driver.md)
 - [MySQL/MariaDB Driver](mysql-driver.md)
+- [SQL Server Driver](sqlserver-driver.md)
 - [Driver API](driver-api.md)

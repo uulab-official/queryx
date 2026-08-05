@@ -43,6 +43,7 @@ export interface SchemaDiff {
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
@@ -154,7 +155,7 @@ function dropIndexSql(
   index: IndexMetadata,
   driver: DriverKind,
 ): string {
-  if (driver === "mysql") {
+  if (driver === "mysql" || driver === "sqlserver") {
     return `DROP INDEX ${quoteIdentifier(index.name, driver)} ON ${qualifiedName(table.schema, table.name, driver)};`;
   }
   return `DROP INDEX ${qualifiedName(table.schema, index.name, driver)};`;
@@ -239,7 +240,8 @@ function addColumnSql(
   column: ColumnMetadata,
   driver: DriverKind,
 ): string {
-  return `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ADD COLUMN ${columnDefinition(column, driver)};`;
+  const addKeyword = driver === "sqlserver" ? "ADD" : "ADD COLUMN";
+  return `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} ${addKeyword} ${columnDefinition(column, driver)};`;
 }
 
 function dropColumnSql(
@@ -262,6 +264,10 @@ function alterColumnSql(
   }
   const tableName = qualifiedName(table.schema, table.name, driver);
   const columnName = quoteIdentifier(column.name, driver);
+  if (driver === "sqlserver") {
+    const nullability = column.nullable ? "NULL" : "NOT NULL";
+    return `ALTER TABLE ${tableName} ALTER COLUMN ${columnName} ${column.type} ${nullability};`;
+  }
   const statements = [
     `ALTER TABLE ${tableName} ALTER COLUMN ${columnName} TYPE ${column.type};`,
   ];
@@ -822,6 +828,15 @@ export function buildSchemaPrivilegePreflightSql(
       "-- QueryX privilege preflight · SQLite delegates DDL permission to the database file/runtime",
       "PRAGMA database_list;",
       "SELECT 1 AS queryx_runtime_preflight, 'Confirm the SQLite file is writable before applying DDL' AS note;",
+    ].join("\n");
+  }
+  if (driver === "sqlserver") {
+    return [
+      "-- QueryX privilege preflight · SQL Server read-only checks",
+      "SELECT SUSER_SNAME() AS account, DB_NAME() AS database_name;",
+      "SELECT HAS_PERMS_BY_NAME(DB_NAME(), 'DATABASE', 'CREATE TABLE') AS can_create_table;",
+      `-- Affected schemas: ${schemas.join(", ") || "not available"}`,
+      `-- Affected relations: ${relations.join(", ") || "new relations or metadata unavailable"}`,
     ].join("\n");
   }
   const schemaValues = schemas.length

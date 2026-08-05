@@ -271,6 +271,11 @@ export function buildCsvImportPlan(
       );
     }
   }
+  if (driver === "sqlserver" && conflictPolicy !== "error") {
+    errors.push(
+      "SQL Server CSV conflict modes require a MERGE strategy and are not generated automatically yet; use error mode for an atomic import",
+    );
+  }
 
   const statements: string[] = [];
   const multiRowValues: string[] = [];
@@ -401,6 +406,7 @@ function importValueSql(
 }
 
 function quoteIdentifier(value: string, driver: DriverKind): string {
+  if (driver === "sqlserver") return `[${value.replaceAll("]", "]]")}]`;
   const quote = driver === "mysql" ? "`" : '"';
   return `${quote}${value.replaceAll(quote, `${quote}${quote}`)}${quote}`;
 }
