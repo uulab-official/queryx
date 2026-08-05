@@ -15,17 +15,19 @@ QueryX includes an initial native SQL Server driver for the common connect → q
 - inspection-only session snapshots from `sys.dm_exec_sessions`/`sys.dm_exec_requests` and blocked-to-blocking wait relationships from `sys.dm_os_waiting_tasks`;
 - `sys.indexes`/`sys.index_columns` metadata with ordered key columns, uniqueness, primary status, and access type;
 - composite foreign-key metadata from `sys.foreign_keys`/`sys.foreign_key_columns`, including referential actions and dependency edges;
+- overload-safe stored procedure/function metadata from `sys.objects`/`sys.parameters`, including T-SQL definitions, parameter signatures, and return types;
+- relation trigger metadata from `sys.triggers`/`sys.trigger_events`, including owner relation, DML events, status, timing, and database-rendered definitions;
 - SQL Server-safe bracket identifier quoting in table browsing, SQL export, DDL previews, schema compare, and insert generation.
 
 ## Deliberate limitations
 
-The first SQL Server slice does not advertise query cancellation, routines, triggers, or view/trigger dependency metadata until each has an authoritative catalog query and a contract test. Session and lock explorers are inspection-only because SQL Server's `KILL` terminates a session rather than cancelling only its current query. Windows integrated authentication and AAD token authentication are also planned. CSV imports in `error` conflict mode are supported through transactional batches; `ignore` and `upsert` are rejected with an actionable message rather than generating PostgreSQL/MySQL syntax.
+The first SQL Server slice does not advertise query cancellation or view dependency metadata until each has an authoritative catalog query and a contract test. Session and lock explorers are inspection-only because SQL Server's `KILL` terminates a session rather than cancelling only its current query. Routine and trigger entries are inspection/read-only DDL surfaces; object-specific routine/trigger editing forms remain planned. Windows integrated authentication and AAD token authentication are also planned. CSV imports in `error` conflict mode are supported through transactional batches; `ignore` and `upsert` are rejected with an actionable message rather than generating PostgreSQL/MySQL syntax.
 
 `Prefer` and `Require` both use encrypted TDS for SQL Server. `Disable` is available only for trusted local development. A self-signed server should be configured with its issuing CA path rather than bypassing certificate validation in production.
 
 ## Verification
 
-The repository checks the driver through Rust compilation, Clippy with warnings denied, shared TypeScript contracts, SQL Server-specific browse/paging/export tests, and the native build gate. A live contract test should use a disposable SQL Server container or instance; production credentials must never be placed in fixtures or CI logs.
+The repository checks the driver through Rust compilation, Clippy with warnings denied, shared TypeScript contracts, SQL Server-specific browse/paging/export/object-kind tests, and the native build gate. A live contract test should use a disposable SQL Server container or instance; production credentials must never be placed in fixtures or CI logs.
 
 ## Related
 

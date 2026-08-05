@@ -1,6 +1,6 @@
 # Metadata Explorer
 
-QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, functions, procedures, aggregates, window functions, relation triggers, and direct object dependencies. SQLite and PostgreSQL currently provide the broadest metadata snapshot; the MySQL/MariaDB driver provides tables, views, columns, approximate row counts, indexes, foreign keys, routines, triggers, and relation dependencies; SQL Server and Oracle provide tables/views/columns, PK/index metadata, composite foreign keys, and foreign-key dependencies. Vendor-specific advanced catalog details remain capability-gated.
+QueryX loads a driver-neutral snapshot of accessible schemas, tables, views, columns, primary-key markers, indexes, foreign keys, functions, procedures, aggregates, window functions, relation triggers, and direct object dependencies. SQLite and PostgreSQL currently provide the broadest metadata snapshot; the MySQL/MariaDB driver provides tables, views, columns, approximate row counts, indexes, foreign keys, routines, triggers, and relation dependencies; SQL Server provides tables/views/columns, PK/index metadata, composite foreign keys, stored procedures/functions, relation triggers, and FK/trigger-owner dependencies; Oracle provides tables/views/columns, PK/index metadata, composite foreign keys, and FK dependencies. Vendor-specific advanced catalog details remain capability-gated.
 
 ## Browse relations
 

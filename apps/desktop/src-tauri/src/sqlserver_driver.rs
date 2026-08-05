@@ -18,7 +18,9 @@ use crate::{
         ColumnMetadata, DatabaseLock, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef,
         DatabaseSession, DatabaseSessionState, DependencyKind, DependencyMetadata,
         DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata, IndexMetadata,
-        QueryChunk, QueryColumn, QueryResult, RelationRef, TableMetadata, ViewMetadata,
+        QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata,
+        TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation, TriggerRelationKind,
+        TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
@@ -664,6 +666,134 @@ impl DatabaseDriver for SqlServerDriver {
                 });
             }
         }
+        let routine_rows = self
+            .metadata_query(
+                "SELECT s.name AS schema_name, o.object_id AS routine_id, o.name AS routine_name,
+                        o.type AS routine_type, m.definition, p.parameter_id,
+                        p.name AS parameter_name, TYPE_NAME(p.user_type_id) AS parameter_type,
+                        p.is_output, CASE WHEN p.parameter_id = 0 THEN TYPE_NAME(p.user_type_id)
+                                          ELSE NULL END AS return_type
+                 FROM sys.objects o
+                 JOIN sys.schemas s ON s.schema_id = o.schema_id
+                 LEFT JOIN sys.sql_modules m ON m.object_id = o.object_id
+                 LEFT JOIN sys.parameters p ON p.object_id = o.object_id
+                 WHERE o.type IN ('P', 'FN', 'IF', 'TF', 'FS', 'FT')
+                 ORDER BY s.name, o.name, o.object_id, p.parameter_id",
+            )
+            .await?
+            .rows;
+        let mut routine_map: BTreeMap<String, RoutineMetadata> = BTreeMap::new();
+        for row in routine_rows {
+            let (Some(schema), Some(raw_id), Some(name)) = (
+                string_value(&row, "schema_name"),
+                string_value(&row, "routine_id"),
+                string_value(&row, "routine_name"),
+            ) else {
+                continue;
+            };
+            let id = format!("sqlserver:routine:{schema}:{raw_id}");
+            let routine_type = string_value(&row, "routine_type").unwrap_or_default();
+            let entry = routine_map
+                .entry(id.clone())
+                .or_insert_with(|| RoutineMetadata {
+                    id,
+                    schema,
+                    name,
+                    kind: sql_server_routine_kind(&routine_type),
+                    identity_arguments: String::new(),
+                    return_type: None,
+                    language: "T-SQL".into(),
+                    definition: string_value(&row, "definition"),
+                    aggregate: None,
+                });
+            let parameter_id = u64_value(&row, "parameter_id");
+            if parameter_id == 0 {
+                entry.return_type = string_value(&row, "return_type");
+                continue;
+            }
+            let parameter_type =
+                string_value(&row, "parameter_type").unwrap_or_else(|| "sql_variant".into());
+            let parameter_name = string_value(&row, "parameter_name")
+                .unwrap_or_else(|| format!("@arg{parameter_id}"));
+            let mut argument = format!("{parameter_name} {parameter_type}");
+            if bool_value(&row, "is_output").unwrap_or_default() {
+                argument.push_str(" OUTPUT");
+            }
+            if !entry.identity_arguments.is_empty() {
+                entry.identity_arguments.push_str(", ");
+            }
+            entry.identity_arguments.push_str(&argument);
+        }
+        let routines = routine_map.into_values().collect::<Vec<_>>();
+        let trigger_rows = self
+            .metadata_query(
+                "SELECT s.name AS schema_name, tr.object_id AS trigger_id, tr.name AS trigger_name,
+                        parent.name AS relation_name, parent.type AS relation_type,
+                        tr.is_disabled, tr.is_instead_of_trigger, m.definition,
+                        te.type_desc AS event_type
+                 FROM sys.triggers tr
+                 JOIN sys.objects parent ON parent.object_id = tr.parent_id
+                 JOIN sys.schemas s ON s.schema_id = parent.schema_id
+                 LEFT JOIN sys.sql_modules m ON m.object_id = tr.object_id
+                 LEFT JOIN sys.trigger_events te ON te.object_id = tr.object_id
+                 WHERE tr.parent_class = 1 AND parent.type IN ('U', 'V')
+                 ORDER BY s.name, parent.name, tr.name, te.type_desc",
+            )
+            .await?
+            .rows;
+        let mut trigger_map: BTreeMap<String, TriggerMetadata> = BTreeMap::new();
+        for row in trigger_rows {
+            let (Some(schema), Some(raw_id), Some(name), Some(relation_name)) = (
+                string_value(&row, "schema_name"),
+                string_value(&row, "trigger_id"),
+                string_value(&row, "trigger_name"),
+                string_value(&row, "relation_name"),
+            ) else {
+                continue;
+            };
+            let id = format!("sqlserver:trigger:{schema}:{raw_id}");
+            let relation_kind = if string_value(&row, "relation_type").as_deref() == Some("V") {
+                TriggerRelationKind::View
+            } else {
+                TriggerRelationKind::Table
+            };
+            let entry = trigger_map
+                .entry(id.clone())
+                .or_insert_with(|| TriggerMetadata {
+                    id,
+                    schema: schema.clone(),
+                    name,
+                    relation: TriggerRelationRef {
+                        schema: schema.clone(),
+                        name: relation_name,
+                        kind: relation_kind,
+                    },
+                    timing: if bool_value(&row, "is_instead_of_trigger").unwrap_or_default() {
+                        TriggerTiming::InsteadOf
+                    } else {
+                        TriggerTiming::After
+                    },
+                    events: Vec::new(),
+                    update_columns: None,
+                    orientation: TriggerOrientation::Statement,
+                    status: if bool_value(&row, "is_disabled").unwrap_or_default() {
+                        TriggerStatus::Disabled
+                    } else {
+                        TriggerStatus::Enabled
+                    },
+                    condition: None,
+                    definition: string_value(&row, "definition"),
+                });
+            let event = string_value(&row, "event_type")
+                .as_deref()
+                .and_then(map_sql_server_trigger_event);
+            if let Some(event) = event {
+                if !entry.events.contains(&event) {
+                    entry.events.push(event);
+                }
+            }
+        }
+        let triggers = trigger_map.into_values().collect::<Vec<_>>();
         let mut dependencies = Vec::new();
         for table in &tables {
             for foreign_key in &table.foreign_keys {
@@ -683,14 +813,35 @@ impl DatabaseDriver for SqlServerDriver {
                 });
             }
         }
+        for trigger in &triggers {
+            dependencies.push(DependencyMetadata {
+                id: format!("sqlserver:dependency:trigger-owner:{}", trigger.id),
+                kind: DependencyKind::TriggerOwner,
+                dependent: DatabaseObjectRef {
+                    kind: DatabaseObjectKind::Trigger,
+                    id: Some(trigger.id.clone()),
+                    schema: Some(trigger.schema.clone()),
+                    name: trigger.name.clone(),
+                    identity_arguments: None,
+                },
+                referenced: relation_object_ref(
+                    match trigger.relation.kind {
+                        TriggerRelationKind::Table => DatabaseObjectKind::Table,
+                        TriggerRelationKind::View => DatabaseObjectKind::View,
+                    },
+                    &trigger.relation.schema,
+                    &trigger.relation.name,
+                ),
+            });
+        }
         dependencies.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(DatabaseMetadata {
             databases,
             schemas,
             tables,
             views: views.into_values().collect(),
-            routines: Vec::new(),
-            triggers: Vec::new(),
+            routines,
+            triggers,
             event_triggers: Vec::new(),
             dependencies,
         })
@@ -787,6 +938,17 @@ fn bool_value(row: &HashMap<String, Value>, key: &str) -> Option<bool> {
     })
 }
 
+fn u64_value(row: &HashMap<String, Value>, key: &str) -> u64 {
+    row.get(key)
+        .and_then(|value| {
+            value
+                .as_u64()
+                .or_else(|| value.as_i64().and_then(|number| u64::try_from(number).ok()))
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        })
+        .unwrap_or_default()
+}
+
 fn map_sql_server_session_state(state: Option<&str>) -> DatabaseSessionState {
     match state.unwrap_or_default().to_ascii_lowercase().as_str() {
         "running" | "runnable" => DatabaseSessionState::Active,
@@ -809,6 +971,23 @@ fn sql_server_lock_identity(
         blocked_mode.unwrap_or_default(),
         blocking_mode.unwrap_or_default()
     )
+}
+
+fn sql_server_routine_kind(routine_type: &str) -> RoutineKind {
+    match routine_type {
+        "P" => RoutineKind::Procedure,
+        _ => RoutineKind::Function,
+    }
+}
+
+fn map_sql_server_trigger_event(event: &str) -> Option<TriggerEvent> {
+    match event.to_ascii_uppercase().as_str() {
+        "INSERT" => Some(TriggerEvent::Insert),
+        "UPDATE" => Some(TriggerEvent::Update),
+        "DELETE" => Some(TriggerEvent::Delete),
+        "TRUNCATE" => Some(TriggerEvent::Truncate),
+        _ => None,
+    }
 }
 
 fn returns_rows(sql: &str) -> bool {
@@ -843,10 +1022,11 @@ fn is_read_only_statement(sql: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        bool_value, is_read_only_statement, map_sql_server_session_state, returns_rows,
-        sql_server_lock_identity,
+        bool_value, is_read_only_statement, map_sql_server_session_state,
+        map_sql_server_trigger_event, returns_rows, sql_server_lock_identity,
+        sql_server_routine_kind,
     };
-    use crate::models::DatabaseSessionState;
+    use crate::models::{DatabaseSessionState, RoutineKind, TriggerEvent};
     use serde_json::json;
     use std::collections::HashMap;
 
@@ -906,5 +1086,20 @@ mod tests {
         assert_eq!(bool_value(&row, "native_true"), Some(true));
         assert_eq!(bool_value(&row, "numeric_false"), Some(false));
         assert_eq!(bool_value(&row, "text_true"), Some(true));
+    }
+
+    #[test]
+    fn maps_sql_server_object_kinds() {
+        assert_eq!(sql_server_routine_kind("P"), RoutineKind::Procedure);
+        assert_eq!(sql_server_routine_kind("FN"), RoutineKind::Function);
+        assert_eq!(
+            map_sql_server_trigger_event("INSERT"),
+            Some(TriggerEvent::Insert)
+        );
+        assert_eq!(
+            map_sql_server_trigger_event("UPDATE"),
+            Some(TriggerEvent::Update)
+        );
+        assert_eq!(map_sql_server_trigger_event("ALTER_TABLE"), None);
     }
 }
