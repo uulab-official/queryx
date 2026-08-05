@@ -218,7 +218,7 @@ git commit -m "docs: add database ide parity gates"
 - [x] Add metadata-safe table-browser server filtering/sorting with deterministic primary-key tie-breakers and literal wildcard escaping.
 - [x] Add guarded table-browser row deletion with original-value conflict predicates, SQL preview, exact affected-row verification, and rollback tests.
 - [x] Add default-aware table-browser row insertion with typed Value/NULL/Default modes, dialect-specific SQL, exact affected-row verification, and refresh.
-- [x] Add PostgreSQL cursor-backed 256-row driver chunks, Tauri event delivery, incremental result accumulation, capability-gated Stream actions, and cancellation cleanup; SQLite/MySQL streaming, progress telemetry, disk spill/backpressure, and server-side filtering for arbitrary queries remain next large-data slices.
+- [x] Add PostgreSQL/MySQL cursor-backed 256-row driver chunks, Tauri event delivery, incremental result accumulation, capability-gated Stream actions, and cancellation cleanup; SQLite streaming, progress telemetry, disk spill/backpressure, and server-side filtering for arbitrary queries remain next large-data slices.
 
 ### Task 6: Ship the initial MySQL/MariaDB breadth slice and evidence matrix
 
@@ -234,11 +234,11 @@ git commit -m "docs: add database ide parity gates"
 - Modify: `README.md`
 
 - [x] Implement native SQLx MySQL/MariaDB connect, query, transaction, disconnect, and basic information_schema metadata paths.
-- [x] Connect MySQL/MariaDB to the saved profile and connection dialog flow with native read-only enforcement and capability gating.
+- [x] Connect MySQL/MariaDB to the saved profile and connection dialog flow with native read-only enforcement, capability gating, cursor-backed streaming, and active-query cancellation.
 - [x] Add deterministic Rust/TypeScript coverage and an opt-in live MySQL contract test that never embeds credentials.
 - [x] Document supported scope and limitations instead of claiming complete MySQL/MariaDB parity.
 - [x] Add the evidence-gated DBeaver/pgAdmin/phpMyAdmin/SQL Developer capability matrix and ADR.
-- [x] Add MySQL/MariaDB foreign keys, routines, and relation triggers; event triggers, streaming, cancellation, SSH/certificate configuration, and hosted integration coverage remain pending.
+- [x] Add MySQL/MariaDB foreign keys, routines, relation triggers, cursor-backed streaming, and active-query cancellation; event triggers, SSH/certificate configuration, and hosted integration coverage remain pending.
 
 ### Task 7: Ship the first schema-compare slice
 

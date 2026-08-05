@@ -1,36 +1,138 @@
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use bigdecimal::BigDecimal;
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use futures_util::TryStreamExt;
 use serde_json::Value;
 use sqlx::{
-    mysql::{MySqlConnectOptions, MySqlPoolOptions, MySqlRow, MySqlSslMode},
-    Column, MySql, MySqlPool, Row, TypeInfo, ValueRef,
+    mysql::{MySqlConnectOptions, MySqlConnection, MySqlPoolOptions, MySqlRow, MySqlSslMode},
+    Column, Connection, MySql, MySqlPool, Row, TypeInfo, ValueRef,
 };
+use tokio::sync::{Mutex, Notify, RwLock};
 use uuid::Uuid;
 
 use crate::{
-    driver::{DatabaseDriver, ExecutionMode},
+    driver::{DatabaseDriver, ExecutionMode, QueryChunkHandler},
     error::AppError,
     models::{
         ColumnMetadata, DatabaseMetadata, DatabaseObjectKind, DatabaseObjectRef, DependencyKind,
         DependencyMetadata, DriverCapability, DriverKind, ForeignKeyColumnPair, ForeignKeyMetadata,
-        IndexMetadata, QueryColumn, QueryResult, RelationRef, RoutineKind, RoutineMetadata,
-        SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
+        IndexMetadata, QueryChunk, QueryColumn, QueryResult, RelationRef, RoutineKind,
+        RoutineMetadata, SslMode, TableMetadata, TriggerEvent, TriggerMetadata, TriggerOrientation,
         TriggerRelationKind, TriggerRelationRef, TriggerStatus, TriggerTiming, ViewMetadata,
     },
 };
 
 /// MySQL/MariaDB support intentionally starts with the common IDE workflow:
 /// connect, inspect relations, run SQL, browse rows, and edit through SQL.
-/// Vendor-specific events and cancellation are separate capability work and
-/// are not advertised here.
 pub struct MysqlDriver {
     database: String,
     pool: MySqlPool,
+    cancellation_pool: MySqlPool,
+    active_queries: RwLock<HashMap<Uuid, Arc<ActiveQuery>>>,
     read_only: bool,
+}
+
+#[derive(Debug)]
+enum ActiveQueryState {
+    Pending,
+    Running(u64),
+    Cancelling,
+    Cancelled,
+    CancellationComplete(bool),
+    Finished,
+}
+
+#[derive(Debug)]
+struct ActiveQuery {
+    state: Mutex<ActiveQueryState>,
+    cancellation_complete: Notify,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CancelAction {
+    BeforeStart,
+    Send(u64),
+    AlreadyRequested,
+    TooLate,
+}
+
+impl ActiveQuery {
+    fn pending() -> Self {
+        Self {
+            state: Mutex::new(ActiveQueryState::Pending),
+            cancellation_complete: Notify::new(),
+        }
+    }
+
+    async fn activate(&self, connection_id: u64) -> bool {
+        let mut state = self.state.lock().await;
+        match *state {
+            ActiveQueryState::Pending => {
+                *state = ActiveQueryState::Running(connection_id);
+                true
+            }
+            ActiveQueryState::Cancelled => false,
+            _ => false,
+        }
+    }
+
+    async fn request_cancel(&self) -> CancelAction {
+        let mut state = self.state.lock().await;
+        match *state {
+            ActiveQueryState::Pending => {
+                *state = ActiveQueryState::Cancelled;
+                CancelAction::BeforeStart
+            }
+            ActiveQueryState::Running(connection_id) => {
+                *state = ActiveQueryState::Cancelling;
+                CancelAction::Send(connection_id)
+            }
+            ActiveQueryState::Cancelling
+            | ActiveQueryState::Cancelled
+            | ActiveQueryState::CancellationComplete(true) => CancelAction::AlreadyRequested,
+            ActiveQueryState::CancellationComplete(false) | ActiveQueryState::Finished => {
+                CancelAction::TooLate
+            }
+        }
+    }
+
+    async fn complete_cancellation(&self, cancelled: bool) {
+        *self.state.lock().await = ActiveQueryState::CancellationComplete(cancelled);
+        self.cancellation_complete.notify_waiters();
+    }
+
+    async fn finish_execution(&self) -> bool {
+        loop {
+            let notified = self.cancellation_complete.notified();
+            let mut state = self.state.lock().await;
+            match *state {
+                ActiveQueryState::Pending | ActiveQueryState::Running(_) => {
+                    *state = ActiveQueryState::Finished;
+                    return false;
+                }
+                ActiveQueryState::Cancelled => {
+                    *state = ActiveQueryState::Finished;
+                    return true;
+                }
+                ActiveQueryState::CancellationComplete(cancelled) => {
+                    *state = ActiveQueryState::Finished;
+                    return cancelled;
+                }
+                ActiveQueryState::Finished => return false,
+                ActiveQueryState::Cancelling => {
+                    drop(state);
+                    notified.await;
+                }
+            }
+        }
+    }
 }
 
 impl MysqlDriver {
@@ -65,13 +167,107 @@ impl MysqlDriver {
                 })
             });
         }
+        let cancellation_pool = MySqlPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect_lazy_with(options.clone());
         let pool = pool_options.connect_with(options).await?;
 
         Ok(Self {
             database: database.to_string(),
             pool,
+            cancellation_pool,
+            active_queries: RwLock::new(HashMap::new()),
             read_only,
         })
+    }
+
+    async fn execute_active(
+        &self,
+        active: &ActiveQuery,
+        sql: &str,
+        mode: ExecutionMode,
+    ) -> Result<QueryResult, AppError> {
+        let mut connection = match self.pool.acquire().await {
+            Ok(connection) => connection,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        let connection_id = match sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+            .fetch_one(&mut *connection)
+            .await
+        {
+            Ok(connection_id) => connection_id,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        if !active.activate(connection_id).await {
+            active.finish_execution().await;
+            return Err(AppError::QueryCancelled);
+        }
+
+        let result =
+            execute_on_connection(&mut connection, sql, mode == ExecutionMode::Transaction).await;
+        let was_cancelled = active.finish_execution().await;
+        drop(connection);
+
+        if was_cancelled {
+            Err(AppError::QueryCancelled)
+        } else {
+            result
+        }
+    }
+
+    async fn execute_stream_active(
+        &self,
+        active: &ActiveQuery,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        let mut connection = match self.pool.acquire().await {
+            Ok(connection) => connection,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        let connection_id = match sqlx::query_scalar::<_, u64>("SELECT CONNECTION_ID()")
+            .fetch_one(&mut *connection)
+            .await
+        {
+            Ok(connection_id) => connection_id,
+            Err(error) => {
+                active.finish_execution().await;
+                return Err(error.into());
+            }
+        };
+        if !active.activate(connection_id).await {
+            active.finish_execution().await;
+            return Err(AppError::QueryCancelled);
+        }
+
+        let result = execute_stream_on_connection(
+            &mut connection,
+            query_id,
+            sql,
+            mode == ExecutionMode::Transaction,
+            on_chunk,
+        )
+        .await;
+        let was_cancelled = active.finish_execution().await;
+        drop(connection);
+
+        if was_cancelled {
+            Err(AppError::QueryCancelled)
+        } else {
+            result
+        }
     }
 }
 
@@ -90,7 +286,12 @@ impl DatabaseDriver for MysqlDriver {
     }
 
     fn capabilities(&self) -> Vec<DriverCapability> {
-        let mut capabilities = vec![DriverCapability::Transactions, DriverCapability::Explain];
+        let mut capabilities = vec![
+            DriverCapability::Transactions,
+            DriverCapability::Explain,
+            DriverCapability::Cancel,
+            DriverCapability::Streaming,
+        ];
         if !self.read_only {
             capabilities.push(DriverCapability::Editing);
         }
@@ -99,14 +300,56 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn execute(
         &self,
-        _query_id: Uuid,
+        query_id: Uuid,
         sql: &str,
         mode: ExecutionMode,
     ) -> Result<QueryResult, AppError> {
         if self.read_only && !is_read_only_statement(sql) {
             return Err(AppError::ReadOnlyViolation);
         }
-        execute_on_pool(&self.pool, sql, mode == ExecutionMode::Transaction).await
+        let active = self
+            .active_queries
+            .read()
+            .await
+            .get(&query_id)
+            .cloned()
+            .ok_or_else(|| AppError::InvalidQueryId(query_id.to_string()))?;
+        let result = self.execute_active(&active, sql, mode).await;
+        self.active_queries.write().await.remove(&query_id);
+        result
+    }
+
+    async fn prepare(&self, query_id: Uuid) -> Result<(), AppError> {
+        let mut active_queries = self.active_queries.write().await;
+        if active_queries.contains_key(&query_id) {
+            return Err(AppError::DuplicateQueryId(query_id.to_string()));
+        }
+        active_queries.insert(query_id, Arc::new(ActiveQuery::pending()));
+        Ok(())
+    }
+
+    async fn execute_stream(
+        &self,
+        query_id: Uuid,
+        sql: &str,
+        mode: ExecutionMode,
+        on_chunk: QueryChunkHandler,
+    ) -> Result<QueryResult, AppError> {
+        if self.read_only && !is_read_only_statement(sql) {
+            return Err(AppError::ReadOnlyViolation);
+        }
+        let active = self
+            .active_queries
+            .read()
+            .await
+            .get(&query_id)
+            .cloned()
+            .ok_or_else(|| AppError::InvalidQueryId(query_id.to_string()))?;
+        let result = self
+            .execute_stream_active(&active, query_id, sql, mode, on_chunk)
+            .await;
+        self.active_queries.write().await.remove(&query_id);
+        result
     }
 
     async fn execute_batch(
@@ -121,8 +364,34 @@ impl DatabaseDriver for MysqlDriver {
         execute_edit_batch_on_pool(&self.pool, statements, expected_rows).await
     }
 
-    async fn cancel(&self, _query_id: Uuid) -> Result<bool, AppError> {
-        Err(AppError::CancellationUnsupported(self.kind().to_string()))
+    async fn cancel(&self, query_id: Uuid) -> Result<bool, AppError> {
+        let Some(active) = self.active_queries.read().await.get(&query_id).cloned() else {
+            return Ok(false);
+        };
+        match active.request_cancel().await {
+            CancelAction::BeforeStart => {
+                self.active_queries.write().await.remove(&query_id);
+                Ok(true)
+            }
+            CancelAction::Send(connection_id) => {
+                let statement = format!("KILL QUERY {connection_id}");
+                let cancellation = sqlx::raw_sql(&statement)
+                    .execute(&self.cancellation_pool)
+                    .await;
+                match cancellation {
+                    Ok(_) => {
+                        active.complete_cancellation(true).await;
+                        Ok(true)
+                    }
+                    Err(error) => {
+                        active.complete_cancellation(false).await;
+                        Err(error.into())
+                    }
+                }
+            }
+            CancelAction::AlreadyRequested => Ok(true),
+            CancelAction::TooLate => Ok(false),
+        }
     }
 
     async fn metadata(&self) -> Result<DatabaseMetadata, AppError> {
@@ -407,6 +676,7 @@ impl DatabaseDriver for MysqlDriver {
 
     async fn disconnect(&self) -> Result<(), AppError> {
         self.pool.close().await;
+        self.cancellation_pool.close().await;
         Ok(())
     }
 }
@@ -429,20 +699,106 @@ fn required_value<'a>(value: &'a str, field: &str) -> Result<&'a str, AppError> 
     Ok(value)
 }
 
-async fn execute_on_pool(
-    pool: &MySqlPool,
+async fn execute_on_connection(
+    connection: &mut MySqlConnection,
     sql: &str,
     in_transaction: bool,
 ) -> Result<QueryResult, AppError> {
     let started = Instant::now();
     let is_query = is_row_returning_query(sql);
     if in_transaction {
-        let mut transaction = pool.begin().await?;
+        let mut transaction = connection.begin().await?;
         let result = execute_with_executor(&mut *transaction, sql, is_query, started).await?;
         transaction.commit().await?;
         return Ok(result);
     }
-    execute_with_executor(pool, sql, is_query, started).await
+    execute_with_executor(connection, sql, is_query, started).await
+}
+
+async fn execute_stream_on_connection(
+    connection: &mut MySqlConnection,
+    query_id: Uuid,
+    sql: &str,
+    in_transaction: bool,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError> {
+    let started = Instant::now();
+    if !is_row_returning_query(sql) {
+        let result = execute_on_connection(connection, sql, in_transaction).await?;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: 0,
+            columns: result.columns.clone(),
+            rows: Vec::new(),
+            warnings: result.warnings.clone(),
+        });
+        return Ok(result);
+    }
+
+    if in_transaction {
+        let mut transaction = connection.begin().await?;
+        let result =
+            execute_stream_with_executor(&mut *transaction, query_id, sql, started, on_chunk)
+                .await?;
+        transaction.commit().await?;
+        return Ok(result);
+    }
+
+    execute_stream_with_executor(connection, query_id, sql, started, on_chunk).await
+}
+
+async fn execute_stream_with_executor<'e, E>(
+    executor: E,
+    query_id: Uuid,
+    sql: &str,
+    started: Instant,
+    on_chunk: QueryChunkHandler,
+) -> Result<QueryResult, AppError>
+where
+    E: sqlx::Executor<'e, Database = MySql>,
+{
+    let mut rows = sqlx::query(sql).fetch(executor);
+    let mut columns = Vec::new();
+    let warnings = Vec::new();
+    let mut chunk_rows = Vec::with_capacity(256);
+    let mut row_offset = 0_u64;
+
+    while let Some(row) = rows.try_next().await? {
+        if columns.is_empty() {
+            columns = columns_from_row(&row);
+        }
+        chunk_rows.push(row_to_json(&row));
+        if chunk_rows.len() >= 256 {
+            let chunk_offset = row_offset;
+            row_offset += chunk_rows.len() as u64;
+            on_chunk(QueryChunk {
+                query_id: query_id.to_string(),
+                row_offset: chunk_offset,
+                columns: columns.clone(),
+                rows: std::mem::take(&mut chunk_rows),
+                warnings: warnings.clone(),
+            });
+        }
+    }
+    if !chunk_rows.is_empty() {
+        let chunk_offset = row_offset;
+        on_chunk(QueryChunk {
+            query_id: query_id.to_string(),
+            row_offset: chunk_offset,
+            columns: columns.clone(),
+            rows: chunk_rows,
+            warnings: warnings.clone(),
+        });
+    }
+
+    Ok(QueryResult {
+        columns,
+        rows: Vec::new(),
+        execution_time: started.elapsed().as_millis(),
+        affected_rows: 0,
+        warnings,
+        error: None,
+    })
 }
 
 async fn execute_edit_batch_on_pool(
@@ -620,6 +976,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn advertises_streaming_and_cancellation_capabilities() {
+        let driver = MysqlDriver {
+            database: "queryx_test".into(),
+            pool: MySqlPoolOptions::new()
+                .connect_lazy("mysql://queryx:queryx@localhost/queryx_test")
+                .expect("valid lazy MySQL pool"),
+            cancellation_pool: MySqlPoolOptions::new()
+                .connect_lazy("mysql://queryx:queryx@localhost/queryx_test")
+                .expect("valid lazy MySQL cancellation pool"),
+            active_queries: RwLock::new(HashMap::new()),
+            read_only: false,
+        };
+
+        let capabilities = driver.capabilities();
+        assert!(capabilities.contains(&DriverCapability::Streaming));
+        assert!(capabilities.contains(&DriverCapability::Cancel));
+    }
+
+    #[tokio::test]
     async fn mysql_contract_when_test_database_is_available() {
         let Some(database) = std::env::var_os("QUERYX_TEST_MYSQL_DATABASE") else {
             return;
@@ -656,6 +1031,98 @@ mod tests {
             )
             .await
             .is_err());
+        driver.disconnect().await.expect("disconnect MySQL");
+    }
+
+    #[tokio::test]
+    async fn streams_chunks_and_cancels_a_live_mysql_query_when_available() {
+        let Some(database) = std::env::var_os("QUERYX_TEST_MYSQL_DATABASE") else {
+            return;
+        };
+        let config = crate::models::ConnectionConfig {
+            kind: DriverKind::Mysql,
+            name: "mysql-stream-contract".into(),
+            database: database.to_string_lossy().into_owned(),
+            read_only: true,
+            host: std::env::var("QUERYX_TEST_MYSQL_HOST").ok(),
+            port: std::env::var("QUERYX_TEST_MYSQL_PORT")
+                .ok()
+                .and_then(|value| value.parse().ok()),
+            username: std::env::var("QUERYX_TEST_MYSQL_USER").ok(),
+            password: std::env::var("QUERYX_TEST_MYSQL_PASSWORD").ok(),
+            ssl_mode: None,
+        };
+        let driver = Arc::new(
+            MysqlDriver::connect(&config)
+                .await
+                .expect("connect MySQL stream contract database"),
+        );
+        let stream_id = Uuid::new_v4();
+        driver
+            .prepare(stream_id)
+            .await
+            .expect("prepare MySQL stream query");
+        let chunks = Arc::new(std::sync::Mutex::new(Vec::<QueryChunk>::new()));
+        let captured_chunks = Arc::clone(&chunks);
+        let handler: QueryChunkHandler = Arc::new(move |chunk| {
+            captured_chunks
+                .lock()
+                .expect("lock MySQL stream chunks")
+                .push(chunk);
+        });
+        let result = driver
+            .execute_stream(
+                stream_id,
+                "WITH RECURSIVE numbers AS (SELECT 1 AS n UNION ALL SELECT n + 1 FROM numbers WHERE n < 300) SELECT n FROM numbers",
+                ExecutionMode::Direct,
+                handler,
+            )
+            .await
+            .expect("stream MySQL rows");
+        let (total_rows, first_offset, second_offset) = {
+            let chunks = chunks.lock().expect("read MySQL stream chunks");
+            (
+                chunks.iter().map(|chunk| chunk.rows.len()).sum::<usize>(),
+                chunks.first().map(|chunk| chunk.row_offset),
+                chunks.get(1).map(|chunk| chunk.row_offset),
+            )
+        };
+        assert_eq!(result.rows.len(), 0);
+        assert_eq!(total_rows, 300);
+        assert_eq!(first_offset, Some(0));
+        assert_eq!(second_offset, Some(256));
+
+        let cancel_id = Uuid::new_v4();
+        driver
+            .prepare(cancel_id)
+            .await
+            .expect("prepare MySQL cancellable query");
+        let execution_driver = Arc::clone(&driver);
+        let execution = tokio::spawn(async move {
+            execution_driver
+                .execute(cancel_id, "SELECT SLEEP(10)", ExecutionMode::Direct)
+                .await
+        });
+        let active = driver
+            .active_queries
+            .read()
+            .await
+            .get(&cancel_id)
+            .cloned()
+            .expect("prepared MySQL query is tracked");
+        loop {
+            if matches!(*active.state.lock().await, ActiveQueryState::Running(_)) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert!(driver.cancel(cancel_id).await.expect("cancel MySQL query"));
+        let error = tokio::time::timeout(Duration::from_secs(3), execution)
+            .await
+            .expect("cancelled MySQL query should finish quickly")
+            .expect("MySQL query task should not panic")
+            .expect_err("cancelled MySQL query should return an error");
+        assert!(matches!(error, AppError::QueryCancelled));
         driver.disconnect().await.expect("disconnect MySQL");
     }
 }
