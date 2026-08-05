@@ -88,6 +88,7 @@ export type {
 } from "./csvImport";
 export { inspectQuerySafety } from "./querySafety";
 export type { QuerySafetyReport } from "./querySafety";
+export { findLongRunningSessions } from "./longRunningDiagnostics";
 export { formatSql } from "./sqlFormatter";
 export {
   buildSchemaMigrationStatements,

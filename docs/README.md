@@ -7,7 +7,7 @@ Use this index to find the shortest path for your task. Documentation describes 
 - [Getting Started](getting-started.md) — prerequisites, native startup, first connection, first query
 - [Connections](connections.md) — SQLite/PostgreSQL/MySQL fields, TLS, credential behavior
 - [SSH Tunnels](ssh-tunnels.md) — bastion forwarding, authentication boundary, host-key verification, and troubleshooting
-- [Session Explorer](session-explorer.md) — native activity/process inspection, lock graph, wait events, cancellation, and safety boundaries
+- [Session Explorer](session-explorer.md) — native activity/process inspection, lock graph, long-running diagnostics, wait events, cancellation, and safety boundaries
 - [SQL Editor](sql-editor.md) — tabs, completion, shortcuts, cancellation
 - [DDL Workflow](ddl-workflow.md) — inspect, edit, preview, execute, recover, and refresh metadata safely
 - [Object Forms](object-forms.md) — table creation form, validation, SQL preview, and safe apply boundaries

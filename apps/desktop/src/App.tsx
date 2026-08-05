@@ -44,6 +44,7 @@ import {
   compareSchemaSnapshots,
   defaultCsvImportMappings,
   formatSql,
+  findLongRunningSessions,
   inferImportType,
   inspectQuerySafety,
   parseCsv,
@@ -123,6 +124,22 @@ const MonacoSqlEditor = lazy(async () => {
 });
 
 const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
+const longQueryThresholdStorageKey = "queryx:long-query-threshold-ms";
+const longQueryThresholdOptions = [5_000, 30_000, 60_000, 300_000];
+
+function readLongQueryThresholdMs(): number {
+  if (typeof window === "undefined") return longQueryThresholdOptions[0];
+  try {
+    const stored = Number(
+      window.localStorage.getItem(longQueryThresholdStorageKey),
+    );
+    return longQueryThresholdOptions.includes(stored)
+      ? stored
+      : longQueryThresholdOptions[0];
+  } catch {
+    return longQueryThresholdOptions[0];
+  }
+}
 let nextResultRowKey = 0;
 const resultPageSize = 100;
 const minColumnWidth = 88;
@@ -262,6 +279,7 @@ type UiIconName =
   | "connections"
   | "sessions"
   | "locks"
+  | "diagnostics"
   | "help"
   | "refresh"
   | "settings"
@@ -305,6 +323,12 @@ function UiIcon({ name, size = 16 }: { name: UiIconName; size?: number }) {
         <circle cx="5" cy="7" r="2" />
         <circle cx="19" cy="17" r="2" />
         <path d="M7 8.5 17 15.5" />
+      </>
+    ),
+    diagnostics: (
+      <>
+        <path d="M3 17h3l2-7 4 11 2-7h7" />
+        <path d="M3 5h18" />
       </>
     ),
     help: (
@@ -596,6 +620,10 @@ function App() {
   const [locks, setLocks] = useState<DatabaseLock[]>([]);
   const [locksLoading, setLocksLoading] = useState(false);
   const [locksError, setLocksError] = useState<string | null>(null);
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+  const [longQueryThresholdMs, setLongQueryThresholdMs] = useState(
+    readLongQueryThresholdMs,
+  );
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -624,6 +652,10 @@ function App() {
   const connectionIdentity = `${connectionName}:${driverKind}`;
   const canInspectSessions = driver.capabilities().has("sessions");
   const canInspectLocks = driver.capabilities().has("locks");
+  const longRunningSessions = findLongRunningSessions(
+    sessions,
+    longQueryThresholdMs,
+  );
   const loadSessionsPanel = async () => {
     if (!canInspectSessions) {
       notify(
@@ -698,6 +730,28 @@ function App() {
     }
     setLocksOpen(true);
     void loadLocksPanel();
+  };
+  const openDiagnostics = () => {
+    if (!canInspectSessions) {
+      notify(
+        "Long-running query diagnostics are available in native PostgreSQL/MySQL connections",
+      );
+      return;
+    }
+    setDiagnosticsOpen(true);
+    void loadSessionsPanel();
+  };
+  const updateLongQueryThreshold = (thresholdMs: number) => {
+    if (!longQueryThresholdOptions.includes(thresholdMs)) return;
+    setLongQueryThresholdMs(thresholdMs);
+    try {
+      window.localStorage.setItem(
+        longQueryThresholdStorageKey,
+        String(thresholdMs),
+      );
+    } catch {
+      // Local threshold persistence is best-effort.
+    }
   };
   const cancelBlockingSession = async (lock: DatabaseLock) => {
     if (!lock.blockingCanCancel) return;
@@ -2568,6 +2622,15 @@ function App() {
       execute: openLocks,
     },
     {
+      id: "open-long-running-queries",
+      label: "Open long-running query diagnostics",
+      hint: canInspectSessions
+        ? `${longRunningSessions.length} above threshold`
+        : "native driver required",
+      disabled: !canInspectSessions,
+      execute: openDiagnostics,
+    },
+    {
       id: "create-table",
       label: "Create table from form",
       hint: metadata ? driverDisplayName(driverKind) : "metadata required",
@@ -2729,6 +2792,20 @@ function App() {
             disabled={!canInspectLocks}
           >
             <UiIcon name="locks" size={16} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Open long-running query diagnostics"
+            title={
+              canInspectSessions
+                ? "Long-running query diagnostics"
+                : "Diagnostics require a native database connection"
+            }
+            onClick={openDiagnostics}
+            disabled={!canInspectSessions}
+          >
+            <UiIcon name="diagnostics" size={16} />
           </button>
           <button
             type="button"
@@ -4052,6 +4129,20 @@ function App() {
           onClose={() => setLocksOpen(false)}
         />
       )}
+      {diagnosticsOpen && (
+        <LongRunningQueryDialog
+          driverKind={driverKind}
+          sessions={longRunningSessions}
+          totalVisibleSessions={sessions.length}
+          thresholdMs={longQueryThresholdMs}
+          loading={sessionsLoading}
+          error={sessionsError}
+          onRefresh={() => void loadSessionsPanel()}
+          onThresholdChange={updateLongQueryThreshold}
+          onCancel={(session) => void cancelDatabaseSession(session)}
+          onClose={() => setDiagnosticsOpen(false)}
+        />
+      )}
       {createTableOpen && metadata && (
         <CreateTableDialog
           driverKind={driverKind}
@@ -4281,6 +4372,165 @@ function App() {
           onClose={() => setQuickOpenOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+function LongRunningQueryDialog({
+  driverKind,
+  sessions,
+  totalVisibleSessions,
+  thresholdMs,
+  loading,
+  error,
+  onRefresh,
+  onThresholdChange,
+  onCancel,
+  onClose,
+}: {
+  driverKind: DriverKind;
+  sessions: DatabaseSession[];
+  totalVisibleSessions: number;
+  thresholdMs: number;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  onThresholdChange: (thresholdMs: number) => void;
+  onCancel: (session: DatabaseSession) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="diagnostic-modal"
+        aria-modal="true"
+        aria-labelledby="long-running-query-title"
+      >
+        <div className="session-modal-heading">
+          <div>
+            <p className="modal-kicker">QUERY DIAGNOSTICS</p>
+            <h2 id="long-running-query-title">
+              {driverDisplayName(driverKind)} long-running queries
+            </h2>
+            <p className="session-modal-subtitle">
+              {sessions.length} over threshold · {totalVisibleSessions} visible
+              sessions
+            </p>
+          </div>
+          <div className="session-modal-actions">
+            <label className="diagnostic-threshold">
+              <span>Alert after</span>
+              <select
+                value={thresholdMs}
+                onChange={(event) =>
+                  onThresholdChange(Number(event.target.value))
+                }
+              >
+                {longQueryThresholdOptions.map((option) => (
+                  <option value={option} key={option}>
+                    {formatSessionDuration(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Refresh long-running queries"
+              onClick={onRefresh}
+              disabled={loading}
+            >
+              ↻
+            </button>
+            <button
+              type="button"
+              className="mini-button"
+              aria-label="Close query diagnostics"
+              onClick={onClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+        {error && <p className="connection-error">{error}</p>}
+        {loading ? (
+          <div className="session-empty">Loading query diagnostics…</div>
+        ) : sessions.length === 0 ? (
+          <div className="session-empty">
+            No active or waiting query is above the configured threshold.
+          </div>
+        ) : (
+          <table className="session-table" aria-label="Long-running queries">
+            <thead>
+              <tr className="session-table-row session-table-header">
+                <th scope="col">Severity</th>
+                <th scope="col">Session</th>
+                <th scope="col">Query / wait event</th>
+                <th scope="col">Age</th>
+                <th scope="col" aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {sessions.map((session) => {
+                const critical = (session.durationMs ?? 0) >= thresholdMs * 6;
+                return (
+                  <tr className="session-table-row" key={session.id}>
+                    <td>
+                      <strong
+                        className={`diagnostic-severity ${
+                          critical ? "critical" : "elevated"
+                        }`}
+                      >
+                        {critical ? "critical" : "elevated"}
+                      </strong>
+                    </td>
+                    <td className="session-identity">
+                      <strong>{session.user ?? "unknown user"}</strong>
+                      <small>
+                        {session.id} · {session.database ?? "—"}
+                      </small>
+                    </td>
+                    <td className="session-query">
+                      <code>
+                        {session.query?.trim() || "(query unavailable)"}
+                      </code>
+                      {session.waitEvent && (
+                        <small className="session-wait">
+                          {session.waitEvent}
+                        </small>
+                      )}
+                    </td>
+                    <td className="session-duration">
+                      {formatSessionDuration(session.durationMs)}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="mini-button session-cancel"
+                        disabled={!session.canCancel}
+                        onClick={() => onCancel(session)}
+                        title={
+                          session.canCancel
+                            ? "Request cancellation of this running query"
+                            : "The current QueryX session cannot cancel itself"
+                        }
+                      >
+                        Cancel query
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <p className="session-safety-note">
+          This is a point-in-time diagnostic. Threshold changes are stored
+          locally; QueryX never sends telemetry or terminates a database
+          connection here.
+        </p>
+      </dialog>
     </div>
   );
 }

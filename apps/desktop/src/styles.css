@@ -2625,6 +2625,43 @@ button:disabled {
 .lock-modal {
   width: min(980px, calc(100vw - 40px));
 }
+.diagnostic-modal {
+  width: min(1060px, calc(100vw - 40px));
+}
+.diagnostic-threshold {
+  display: grid;
+  align-items: center;
+  gap: 4px;
+  color: #81949a;
+  font: 8px var(--mono);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.diagnostic-threshold select {
+  min-width: 75px;
+  padding: 4px 5px;
+  border: 1px solid #3b5158;
+  border-radius: 4px;
+  background: #10191d;
+  color: #d8e3e2;
+  font: 9px var(--mono);
+}
+.diagnostic-severity {
+  display: inline-block;
+  padding: 4px 5px;
+  border-radius: 4px;
+  font: 9px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.diagnostic-severity.elevated {
+  background: #44361f;
+  color: #f1c477;
+}
+.diagnostic-severity.critical {
+  background: #4a2529;
+  color: #f08b8b;
+}
 .lock-graph-list {
   display: grid;
   gap: 8px;

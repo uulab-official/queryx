@@ -36,6 +36,10 @@ The lock graph shows visible blocked → blocking relationships at refresh time:
 
 Database privileges and server configuration control which lock rows and query text are visible. If neither the Performance Schema nor InnoDB lock views are available, the driver reports the server error rather than presenting an invented empty graph.
 
+## Long-running query diagnostics
+
+The query diagnostics panel reuses the session snapshot and shows only `active` or `waiting` sessions whose observed duration is at least the selected local threshold: 5 seconds, 30 seconds, 1 minute, or 5 minutes. Results are ordered by duration and marked `elevated` or `critical` when they reach six times the threshold. The threshold is stored in local browser/app state; QueryX does not send telemetry or poll in the background. Refresh is explicit, and **Cancel query** uses the same query-only cancellation boundary as the session explorer.
+
 ## Limitations
 
-The current slice does not retain session history, show server wait statistics, or provide configurable long-query alerts. SQLite and browser preview intentionally do not claim session or lock inspection.
+The current slice does not retain a historical session audit trail or show server wait statistics. SQLite and browser preview intentionally do not claim session, lock, or query-diagnostics inspection.

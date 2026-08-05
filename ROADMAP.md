@@ -115,7 +115,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [ ] Data compare and controlled synchronization scripts
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned
 - [ ] Excel and Markdown export
-- [x] PostgreSQL/MySQL/MariaDB session explorer and point-in-time lock graph with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; session history and long-running diagnostics remain planned
+- [x] PostgreSQL/MySQL/MariaDB session explorer, point-in-time lock graph, and threshold-based long-running query diagnostics with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; session history remains planned
 - [ ] Driver SDK, compatibility matrix, and community driver certification tests
 - [ ] Theme tokens and stable commands/menus/panels extension points
 
