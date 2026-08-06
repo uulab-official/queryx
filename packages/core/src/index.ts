@@ -2,13 +2,17 @@ export {
   buildRowsToSqlDeleteStatements,
   buildRowsToSqlUpdateStatements,
   serializeRowsToCsv,
+  serializeRowsToExcelXml,
   serializeRowsToJson,
+  serializeRowsToMarkdown,
   serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
 } from "./csvExport";
 export type {
   CsvExportOptions,
+  ExcelXmlExportOptions,
+  MarkdownExportOptions,
   SqlDeleteExportOptions,
   SqlInsertExportOptions,
   SqlRowDelete,

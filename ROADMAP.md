@@ -114,7 +114,7 @@ Goal: cover the database families and power workflows expected from a general-pu
 - [x] Bounded deterministic ERD for visible tables/views with FK and view-dependency edges, search, zoom, and Inspector navigation; selective lazy loading, layout persistence, export, and editing remain planned
 - [x] Same-driver primary-key table Data Compare with bounded 10,000-row reads, selectable INSERT/UPDATE/DELETE preview, optimistic target-value predicates, read-only target guard, and transactional apply; multi-million-row, LOB-aware, cross-dialect, and multi-table synchronization remain planned
 - [x] CSV/JSON import wizard with header/type mapping, preview, validation errors, transactional batches, ignore-conflict, and key-based upsert; transforms, progress, and resumable batches remain planned
-- [ ] Excel and Markdown export
+- [x] CSV/JSON/SQL/Markdown export plus Excel-compatible typed SpreadsheetML export; true `.xlsx` packaging, workbook styling, and multi-sheet export remain planned
 - [x] PostgreSQL/MySQL/MariaDB session explorer, point-in-time lock graph, threshold-based long-running query diagnostics, and redacted local session audit history with active/idle/waiting state, wait-event visibility, refresh, and safe query cancellation; server wait statistics remain planned
 - [ ] Driver SDK, compatibility matrix, and community driver certification tests
 - [ ] Theme tokens and stable commands/menus/panels extension points

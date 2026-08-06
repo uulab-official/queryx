@@ -57,7 +57,9 @@ import {
   parseCsv,
   parseJsonRows,
   serializeRowsToCsv,
+  serializeRowsToExcelXml,
   serializeRowsToJson,
+  serializeRowsToMarkdown,
   serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
@@ -157,7 +159,7 @@ const resultPageSize = 100;
 const minColumnWidth = 88;
 const maxColumnWidth = 520;
 const tableBrowsePageSize = 100;
-type ExportFormat = "csv" | "json" | "sql";
+type ExportFormat = "csv" | "json" | "sql" | "markdown" | "excel";
 
 function driverDisplayName(kind: DriverKind): string {
   if (kind === "sqlite") return "SQLite";
@@ -2550,6 +2552,18 @@ function App() {
         filterName = "JSON";
         mimeType = "application/json;charset=utf-8";
         suggestedName = `queryx-results-${timestamp}.json`;
+      } else if (format === "markdown") {
+        contents = serializeRowsToMarkdown(result.columns, filteredRows);
+        extension = "md";
+        filterName = "Markdown";
+        mimeType = "text/markdown;charset=utf-8";
+        suggestedName = `queryx-results-${timestamp}.md`;
+      } else if (format === "excel") {
+        contents = serializeRowsToExcelXml(result.columns, filteredRows);
+        extension = "xml";
+        filterName = "Excel XML";
+        mimeType = "application/xml;charset=utf-8";
+        suggestedName = `queryx-results-${timestamp}.xml`;
       } else {
         const tableName = window.prompt(
           "Target table for generated SQL INSERT statements",
@@ -3835,6 +3849,22 @@ function App() {
                       >
                         <strong>SQL INSERT</strong>
                         <small>Replayable transaction</small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void exportResults("markdown")}
+                      >
+                        <strong>Markdown</strong>
+                        <small>Portable table</small>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => void exportResults("excel")}
+                      >
+                        <strong>Excel XML</strong>
+                        <small>Open in Excel</small>
                       </button>
                     </div>
                   )}

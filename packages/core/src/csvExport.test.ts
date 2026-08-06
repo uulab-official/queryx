@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   serializeRowsToCsv,
+  serializeRowsToExcelXml,
   serializeRowsToJson,
+  serializeRowsToMarkdown,
   serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
@@ -80,6 +82,39 @@ describe("serializeRowsToJson", () => {
     expect(json).toBe(
       '[\n  {\n    "id": "9",\n    "created_at": "2026-08-04T00:00:00.000Z",\n    "payload": {\n      "ok": true\n    }\n  }\n]\n',
     );
+  });
+});
+
+describe("serializeRowsToMarkdown", () => {
+  it("emits a portable table and escapes markdown-sensitive cell content", () => {
+    const markdown = serializeRowsToMarkdown(
+      [{ name: "id" }, { name: "notes" }],
+      [{ id: 1, notes: "a | b\n<strong>safe</strong>" }],
+    );
+
+    expect(markdown).toBe(
+      "| id | notes |\n| --- | --- |\n| 1 | a \\| b<br>&lt;strong&gt;safe&lt;/strong&gt; |\n",
+    );
+  });
+
+  it("returns an empty document when there are no result columns", () => {
+    expect(serializeRowsToMarkdown([], [{ value: 1 }])).toBe("");
+  });
+});
+
+describe("serializeRowsToExcelXml", () => {
+  it("emits typed SpreadsheetML cells without formula evaluation", () => {
+    const xml = serializeRowsToExcelXml(
+      [{ name: "id" }, { name: "active" }, { name: "payload" }],
+      [{ id: 7, active: true, payload: "=SUM(1,1) & <review's>" }],
+      { worksheetName: "Orders/2026" },
+    );
+
+    expect(xml).toContain('<Worksheet ss:Name="Orders 2026">');
+    expect(xml).toContain('<Data ss:Type="Number">7</Data>');
+    expect(xml).toContain('<Data ss:Type="Boolean">1</Data>');
+    expect(xml).toContain("=SUM(1,1) &amp; &lt;review&apos;s&gt;");
+    expect(xml).not.toContain('ss:Type="Number">=SUM');
   });
 });
 

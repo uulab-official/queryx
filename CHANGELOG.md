@@ -111,3 +111,6 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Shared `DatabaseDriver`, metadata, and `QueryResult` contracts.
 - Deterministic in-memory PostgreSQL-shaped driver for UI development.
 - React/Vite desktop workflow with Explorer, editor, results, and Inspector panels.
+### Added
+
+- Added Markdown table and typed Excel-compatible SpreadsheetML exports to the result grid, with local save flows, escaping, formula-safe string cells, and serializer regression coverage.

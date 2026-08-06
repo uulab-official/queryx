@@ -1,4 +1,4 @@
-# Results and CSV Export
+# Results and Export
 
 QueryX normalizes driver output into ordered columns, rows, execution time, affected-row count, warnings, and errors. Single-statement `SELECT` and `WITH` queries are server-paged in 100-row batches; non-pageable statements retain the driver's normal result behavior. Smaller loaded results use local pages, while larger loaded results use a virtualized table window so only the rows near the viewport are mounted.
 
@@ -19,15 +19,19 @@ Click a cell and Shift-click another cell to select a rectangular range. Click r
 
 The **NULL** button toggles between a visible `NULL` literal and a blank display. Copy follows that choice; CSV export keeps SQL NULL as an empty field so exported files remain compatible with the existing CSV contract.
 
-## Export CSV, JSON, and SQL INSERT
+## Export CSV, JSON, SQL INSERT, Markdown, and Excel
 
 Choose **Export** after a query returns columns and choose a format. QueryX exports all loaded rows after local filtering and sorting, in the displayed column order; local pagination only limits what is rendered at once.
 
 - **CSV** is spreadsheet-safe and keeps the existing formula-injection protection.
 - **JSON** emits an ordered array of row objects and converts BigInt/date values into portable JSON values.
 - **SQL INSERT** asks for a target table name, quotes identifiers for the active dialect, escapes values, and wraps replayable statements in `BEGIN`/`COMMIT`. It is generated text, never an automatic database write.
+- **Markdown** emits a pipe table with escaped pipes, HTML-sensitive characters, and line breaks, making a filtered result easy to paste into an issue, pull request, or design document.
+- **Excel XML** emits typed SpreadsheetML (`.xml`) with String, Number, Boolean, and DateTime cells. Microsoft Excel opens the file directly; values are serialized as cells rather than formulas, so result text is not evaluated as spreadsheet code.
 
 In the native app, a save dialog asks for an explicit path with the selected extension. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
+
+All formats export the complete loaded result after the current filter and sort, not only the 100-row page currently visible in the grid. Server-paged or streamed rows must be loaded before they can be exported.
 
 CSV behavior:
 
