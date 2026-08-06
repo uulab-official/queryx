@@ -61,6 +61,7 @@ import {
   inferImportType,
   inspectQuerySafety,
   parseCsv,
+  parseExplainPlan,
   parseJsonRows,
   serializeRowsToCsv,
   serializeRowsToXlsx,
@@ -98,11 +99,13 @@ import type {
   DropViewPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
+  ExplainPlanNode,
   ErdNode,
   ForeignKeyRelations,
   ImportConflictPolicy,
   ImportValueType,
   ObjectDependencies,
+  ExplainPlan,
   QuerySafetyReport,
   SqlRowDelete,
   SqlRowUpdate,
@@ -731,6 +734,10 @@ function App() {
         ? compareSchemaSnapshots(schemaBaseline, metadata, driverKind)
         : null,
     [driverKind, metadata, schemaBaseline],
+  );
+  const explainPlan = useMemo(
+    () => (result ? parseExplainPlan(result) : null),
+    [result],
   );
   const connectionIdentity = `${connectionName}:${driverKind}`;
   const canInspectSessions = driver.capabilities().has("sessions");
@@ -1712,7 +1719,9 @@ function App() {
     setGridSelection(null);
     setTableBrowse(null);
     setServerQueryPage(null);
-    void runQuery("explain", explain.query.sql);
+    void runQuery("explain", explain.query.sql).then((nextResult) => {
+      if (nextResult && parseExplainPlan(nextResult)) setResultView("plan");
+    });
   };
   const handleExplainAnalyze = () => {
     if (pendingEditCount > 0) {
@@ -1738,6 +1747,8 @@ function App() {
     setResultView("table");
     void runQuery("normal", analyze.query.sql, {
       historySql: sql.trim(),
+    }).then((nextResult) => {
+      if (nextResult && parseExplainPlan(nextResult)) setResultView("plan");
     });
   };
   const openCommandPalette = () => {
@@ -3970,6 +3981,16 @@ function App() {
                 >
                   {"{ }"} JSON
                 </button>
+                {explainPlan && (
+                  <button
+                    type="button"
+                    className={resultView === "plan" ? "active" : ""}
+                    onClick={() => setResultView("plan")}
+                    title="Show the structured execution plan"
+                  >
+                    ◇ Plan <small>{explainPlan.nodes.length}</small>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => void copyGridSelection()}
@@ -4234,7 +4255,9 @@ function App() {
                 </button>
               )}
             </div>
-            {resultView === "table" ? (
+            {resultView === "plan" && explainPlan ? (
+              <ExplainPlanView plan={explainPlan} />
+            ) : resultView === "table" ? (
               <div
                 className="grid-wrap"
                 onScroll={(event) => {
@@ -11157,3 +11180,126 @@ function DependencyPanel({
 }
 
 export { App };
+function ExplainPlanView({ plan }: { plan: ExplainPlan }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const nodesById = useMemo(
+    () => new Map(plan.nodes.map((node) => [node.id, node])),
+    [plan.nodes],
+  );
+  const childrenById = useMemo(() => {
+    const children = new Map<string, string[]>();
+    for (const node of plan.nodes) {
+      if (!node.parentId) continue;
+      const siblings = children.get(node.parentId) ?? [];
+      siblings.push(node.id);
+      children.set(node.parentId, siblings);
+    }
+    return children;
+  }, [plan.nodes]);
+  const isHidden = (node: ExplainPlanNode): boolean => {
+    let parentId = node.parentId;
+    while (parentId) {
+      if (collapsed.has(parentId)) return true;
+      parentId = nodesById.get(parentId)?.parentId ?? null;
+    }
+    return false;
+  };
+  const toggleNode = (nodeId: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  };
+
+  return (
+    <div className="plan-view" aria-label="Structured execution plan">
+      <div className="plan-summary">
+        <strong>Execution plan</strong>
+        <span>
+          {plan.nodes.length} operator{plan.nodes.length === 1 ? "" : "s"} ·{" "}
+          {plan.column}
+        </span>
+        <button
+          type="button"
+          className="plan-reset"
+          onClick={() => setCollapsed(new Set())}
+          disabled={collapsed.size === 0}
+        >
+          Expand all
+        </button>
+      </div>
+      <div className="plan-tree" role="tree">
+        {plan.nodes
+          .filter((node) => !isHidden(node))
+          .map((node) => {
+            const hasChildren = (childrenById.get(node.id)?.length ?? 0) > 0;
+            const isCollapsed = collapsed.has(node.id);
+            return (
+              <article
+                className="plan-node"
+                key={node.id}
+                role="treeitem"
+                aria-level={node.depth + 1}
+                aria-expanded={hasChildren ? !isCollapsed : undefined}
+                style={{ marginLeft: Math.min(node.depth, 10) * 20 }}
+              >
+                <div className="plan-node-heading">
+                  {hasChildren ? (
+                    <button
+                      type="button"
+                      className="plan-node-toggle"
+                      onClick={() => toggleNode(node.id)}
+                      aria-label={
+                        isCollapsed ? "Expand plan node" : "Collapse plan node"
+                      }
+                    >
+                      {isCollapsed ? "▸" : "▾"}
+                    </button>
+                  ) : (
+                    <span className="plan-node-spacer" aria-hidden="true" />
+                  )}
+                  <strong>{node.label}</strong>
+                  <span className="plan-node-metrics">
+                    {node.estimatedCost && (
+                      <span>
+                        cost {formatPlanMetric(node.estimatedCost.startup)}..
+                        {formatPlanMetric(node.estimatedCost.total)}
+                      </span>
+                    )}
+                    {node.estimatedRows !== undefined && (
+                      <span>
+                        est. {formatPlanMetric(node.estimatedRows)} rows
+                      </span>
+                    )}
+                    {node.actualRows !== undefined && (
+                      <span>
+                        actual {formatPlanMetric(node.actualRows)} rows
+                      </span>
+                    )}
+                    {node.actualTimeMs && (
+                      <span>
+                        {formatPlanMetric(node.actualTimeMs.total)} ms
+                      </span>
+                    )}
+                  </span>
+                </div>
+                {node.details.length > 0 && (
+                  <div className="plan-node-details">
+                    {node.details.map((detail) => (
+                      <code key={detail}>{detail}</code>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+function formatPlanMetric(value: number): string {
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}

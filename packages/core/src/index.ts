@@ -158,6 +158,13 @@ export type {
 } from "./tableRowInsert";
 export { appendQueryChunk } from "./queryStream";
 export { buildExplainAnalyzeQuery, buildExplainQuery } from "./explain";
+export { parseExplainPlan } from "./planTree";
+export type {
+  ExplainPlan,
+  ExplainPlanNode,
+  PlanCost,
+  PlanTime,
+} from "./planTree";
 export type {
   ExplainAnalyzeQuery,
   ExplainAnalyzeQueryResult,

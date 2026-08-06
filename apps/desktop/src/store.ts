@@ -24,7 +24,7 @@ import {
   persistWorkspaceSnapshot,
 } from "./workspaceStorage";
 
-type ResultView = "table" | "json";
+type ResultView = "table" | "json" | "plan";
 export type RunMode = "normal" | "transaction" | "execute-anyway" | "explain";
 export type ExecutionStatus =
   | "idle"

@@ -58,8 +58,8 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Read-only connection enforcement in native SQLite/PostgreSQL pools and the result-editor UI; PostgreSQL live integration coverage remains part of the external driver matrix
 - [x] PostgreSQL/MySQL/MariaDB SSL modes with CA, client certificate, and client key file paths plus native OpenSSH local tunnels
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
-- [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
-- [x] PostgreSQL/MySQL EXPLAIN ANALYZE with explicit execution warning and one-statement validation; database-specific cost controls and SQL Server/Oracle/SQLite contracts remain planned
+- [x] Non-executing EXPLAIN plan result viewer with capability gating, cancellation/history reuse, and a collapsible structured tree for text plans
+- [x] PostgreSQL/MySQL EXPLAIN ANALYZE with explicit execution warning, one-statement validation, and a collapsible structured tree for text plans; database-specific cost controls and SQL Server/Oracle/SQLite analyze contracts remain planned
 - [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, 100-row server paging with database-side filter/sort for safe SELECT/WITH queries and table browsing, and all native drivers' cursor-backed 256-row result streaming; progress telemetry and disk spill/backpressure remain planned
 - [x] Result-grid column resizing with mouse and keyboard controls; incremental fetch, server paging, reorder, and freeze remain planned
 - [x] Keyed table browser incremental fetch in 100-row pages with deterministic primary-key ordering, dialect-aware server filtering/sorting, literal wildcard escaping, and unapplied-order protection; safe arbitrary SELECT/WITH server paging and filter/sort are also available

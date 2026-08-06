@@ -1017,6 +1017,112 @@ button:disabled {
   color: #a9c98e;
   font: 10px / 1.6 var(--mono);
 }
+.plan-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px 22px;
+  background: #0d1014;
+}
+.plan-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: #82939a;
+  font: 9px var(--mono);
+}
+.plan-summary strong {
+  color: #d5e5de;
+  font-size: 11px;
+}
+.plan-reset {
+  height: 24px;
+  margin-left: auto;
+  padding: 0 8px;
+  border: 1px solid #35474a;
+  border-radius: 4px;
+  background: transparent;
+  color: #91b9ab;
+  font: 9px var(--mono);
+}
+.plan-reset:hover:not(:disabled) {
+  border-color: #91c1ad;
+  background: #1b2b2b;
+  color: #d7f0e5;
+}
+.plan-reset:disabled {
+  color: #4a555c;
+  cursor: default;
+}
+.plan-tree {
+  display: grid;
+  gap: 5px;
+  min-width: max-content;
+}
+.plan-node {
+  width: max-content;
+  min-width: min(720px, calc(100vw - 410px));
+  max-width: calc(100vw - 410px);
+  padding: 8px 10px;
+  border: 1px solid #293c40;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #172126, #131b1f);
+  box-shadow: inset 2px 0 0 #4e8477;
+}
+.plan-node:hover {
+  border-color: #5d817b;
+  background: #1a292d;
+}
+.plan-node-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #d6e4df;
+  font: 11px var(--mono);
+}
+.plan-node-heading strong {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.plan-node-toggle {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b7dc91;
+  font: 13px var(--mono);
+}
+.plan-node-toggle:hover {
+  color: #efffcf;
+}
+.plan-node-spacer {
+  width: 18px;
+  flex: 0 0 18px;
+}
+.plan-node-metrics {
+  display: flex;
+  gap: 8px;
+  margin-left: 8px;
+  color: #8bb4a7;
+  font-size: 9px;
+  white-space: nowrap;
+}
+.plan-node-metrics span + span {
+  padding-left: 8px;
+  border-left: 1px solid #34484b;
+}
+.plan-node-details {
+  display: grid;
+  gap: 3px;
+  margin: 7px 0 0 25px;
+  color: #8c9fa5;
+  font: 9px / 1.45 var(--mono);
+}
+.plan-node-details code {
+  white-space: pre-wrap;
+}
 .pagination {
   height: 35px;
   display: flex;

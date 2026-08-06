@@ -16,7 +16,7 @@ Each query tab has an independent Monaco model. Switching tabs preserves its SQL
 
 Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common clauses move to separate lines and keywords are uppercased; quoted strings, quoted identifiers, and SQL comments are preserved. This is intentionally dialect-neutral and does not claim parser-level formatting.
 
-Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
+Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. Text-plan responses expose a **Plan** view beside Table/JSON: operator nodes are indented by parentage, can be collapsed, and show parsed cost, estimated rows, actual rows, and execution time when the database reports them. The raw result remains available in Table/JSON, the query is cancellable where the driver supports cancellation, and it is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
 Choose **Analyze** to run `EXPLAIN ANALYZE` after an explicit confirmation. PostgreSQL uses `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` and MySQL/MariaDB uses `EXPLAIN ANALYZE`; both execute the target statement, so functions, writes, locks, and production resource usage are possible. SQLite, SQL Server, and Oracle remain disabled until their database-specific execution-plan contracts are implemented.
 
@@ -80,12 +80,13 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs, active-tab selection, dirty SQL, history, and favorites are restored from the native workspace snapshot or browser preview fallback; settings, cross-profile recovery, and SQLite migration remain planned.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL/MySQL/MariaDB. SQLite streaming remains available without cancellation.
-- Explain and Analyze currently use the database's text/row plan result in the shared result grid. Visual plan graphs, cost limits, and SQL Server/Oracle/SQLite analyze contracts remain planned.
+- Explain and Analyze normalize common text-plan responses into a collapsible operator tree; raw rows remain available in Table/JSON. Graphical node layout, database-specific cost limits, JSON plan contracts, and SQL Server/Oracle/SQLite analyze contracts remain planned.
 - Result-grid copy operates on the currently visible filtered/sorted page; CSV export includes all loaded filtered/sorted rows. Single safe SELECT/WITH results support **Apply to query** for database-side literal filtering and selected-column ordering before loading another page. Binary viewers and spill-to-disk remain planned.
 
 ## Related
 
 - [Database Connections](connections.md)
+- [Execution Plans](explain-plans.md)
 - [Workspaces](workspaces.md)
 - [Driver API](driver-api.md)
 - [Testing Guide](testing.md)
