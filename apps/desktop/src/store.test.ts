@@ -188,6 +188,30 @@ describe("query tabs", () => {
     expect(useQueryStore.getState().executionStatus).toBe("success");
   });
 
+  it("keeps a bounded streamed result and records a successful limit warning", async () => {
+    const driver = new InMemoryDriver();
+    await driver.connect({
+      kind: "postgres",
+      name: "test",
+      database: "queryx_test",
+    });
+    useQueryStore.setState({ driver, sql: "SELECT * FROM orders" });
+
+    const result = await useQueryStore
+      .getState()
+      .runQuery("normal", "SELECT * FROM orders", {
+        stream: true,
+        streamMaxRows: 3,
+      });
+
+    expect(result?.rows).toHaveLength(3);
+    expect(result?.warnings).toContain(
+      "Stream stopped after 3 rows to keep result memory bounded",
+    );
+    expect(useQueryStore.getState().executionStatus).toBe("success");
+    expect(useQueryStore.getState().history[0]?.status).toBe("success");
+  });
+
   it("preserves each document while switching tabs", () => {
     useQueryStore.getState().setSql("SELECT * FROM orders");
     useQueryStore.getState().newQuery();

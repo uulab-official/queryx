@@ -156,7 +156,8 @@ export type {
   TableRowInsertPlan,
   TableRowInsertValue,
 } from "./tableRowInsert";
-export { appendQueryChunk } from "./queryStream";
+export { appendQueryChunk, limitQueryChunk } from "./queryStream";
+export type { LimitedQueryChunk } from "./queryStream";
 export { buildExplainAnalyzeQuery, buildExplainQuery } from "./explain";
 export { parseExplainPlan } from "./planTree";
 export type {

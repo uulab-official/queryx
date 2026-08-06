@@ -865,6 +865,28 @@ button:disabled {
   margin: 0 3px;
   background: #303740;
 }
+.stream-limit-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #71858d;
+  font: 9px var(--mono);
+  white-space: nowrap;
+}
+.stream-limit-control select {
+  height: 27px;
+  padding: 0 6px;
+  border: 1px solid #2b3f43;
+  border-radius: 4px;
+  background: #151e22;
+  color: #a9c3be;
+  font: 9px var(--mono);
+}
+.stream-limit-control select:focus-visible {
+  border-color: #80b8a6;
+  outline: 0;
+  box-shadow: 0 0 0 2px rgba(128, 184, 166, 0.13);
+}
 .filter-box {
   min-width: 188px;
   height: 27px;

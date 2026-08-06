@@ -10,7 +10,7 @@ import type {
   SessionAuditEntry,
 } from "@queryx/shared";
 import { createRuntimeDriver } from "./nativeDriver";
-import { appendQueryChunk } from "@queryx/core";
+import { appendQueryChunk, limitQueryChunk } from "@queryx/core";
 import {
   buildSessionAuditEntry,
   retainSessionAuditHistory,
@@ -136,6 +136,7 @@ interface QueryState {
       preserveResult?: boolean;
       historySql?: string;
       stream?: boolean;
+      streamMaxRows?: number;
       batch?: { statements: readonly string[]; expectedRows: number };
     },
   ) => Promise<QueryResult | null>;
@@ -592,12 +593,24 @@ export const useQueryStore = create<QueryState>((set, get) => {
         preserveResult?: boolean;
         historySql?: string;
         stream?: boolean;
+        streamMaxRows?: number;
         batch?: { statements: readonly string[]; expectedRows: number };
       },
     ) => {
       if (get().isRunning) return null;
       const controller = new AbortController();
       activeQueryController = controller;
+      let streamTruncated = false;
+      const streamLimit =
+        options?.stream &&
+        options.streamMaxRows !== undefined &&
+        Number.isInteger(options.streamMaxRows) &&
+        options.streamMaxRows > 0
+          ? options.streamMaxRows
+          : null;
+      const streamLimitWarning = streamLimit
+        ? `Stream stopped after ${streamLimit.toLocaleString()} rows to keep result memory bounded`
+        : null;
       set({ isRunning: true, executionStatus: "running" });
       try {
         await driverReady;
@@ -605,6 +618,17 @@ export const useQueryStore = create<QueryState>((set, get) => {
         const historySql = options?.historySql?.trim() || executedSql;
         if (options?.stream && !options.preserveResult) set({ result: null });
         const appendChunk = (chunk: Parameters<typeof appendQueryChunk>[1]) => {
+          const bounded = streamLimit
+            ? limitQueryChunk(
+                chunk,
+                get().result?.rows.length ?? 0,
+                streamLimit,
+              )
+            : { chunk, truncated: false };
+          if (bounded.truncated) {
+            streamTruncated = true;
+            if (get().canCancel) controller.abort();
+          }
           set((state) => {
             const current = state.result ?? {
               columns: [],
@@ -613,7 +637,7 @@ export const useQueryStore = create<QueryState>((set, get) => {
               affectedRows: 0,
               warnings: [],
             };
-            return { result: appendQueryChunk(current, chunk) };
+            return { result: appendQueryChunk(current, bounded.chunk) };
           });
         };
         const execute = () =>
@@ -652,6 +676,15 @@ export const useQueryStore = create<QueryState>((set, get) => {
               error: result.error,
             }
           : result;
+        const boundedResult =
+          streamTruncated && streamLimitWarning
+            ? {
+                ...completedResult,
+                warnings: [
+                  ...new Set([...completedResult.warnings, streamLimitWarning]),
+                ],
+              }
+            : completedResult;
         const historyEntry: QueryHistoryEntry = {
           id: crypto.randomUUID(),
           label: mode === "explain" ? "Explain plan" : queryLabel(historySql),
@@ -661,17 +694,50 @@ export const useQueryStore = create<QueryState>((set, get) => {
         };
         get().addHistory(historyEntry);
         set({
-          ...(options?.preserveResult ? {} : { result: completedResult }),
+          ...(options?.preserveResult ? {} : { result: boundedResult }),
           executionStatus: "success",
           connectionStatus: "connected",
           toast:
             mode === "explain"
               ? "Explain plan completed; the statement was not executed"
-              : "Query completed successfully",
+              : streamTruncated && streamLimitWarning
+                ? streamLimitWarning
+                : "Query completed successfully",
         });
         globalThis.setTimeout(() => set({ toast: null }), 2200);
-        return completedResult;
+        return boundedResult;
       } catch (error) {
+        if (streamTruncated && streamLimitWarning) {
+          const partialResult = get().result ?? {
+            columns: [],
+            rows: [],
+            executionTime: 0,
+            affectedRows: 0,
+            warnings: [],
+          };
+          const boundedResult = {
+            ...partialResult,
+            warnings: [
+              ...new Set([...partialResult.warnings, streamLimitWarning]),
+            ],
+          };
+          get().addHistory({
+            id: crypto.randomUUID(),
+            label: "Stream row limit reached",
+            sql:
+              options?.historySql?.trim() || sqlOverride?.trim() || get().sql,
+            executedAt: new Date().toISOString(),
+            status: "success",
+          });
+          set({
+            result: boundedResult,
+            executionStatus: "success",
+            connectionStatus: "connected",
+            toast: streamLimitWarning,
+          });
+          globalThis.setTimeout(() => set({ toast: null }), 2200);
+          return boundedResult;
+        }
         const wasCancelled =
           error instanceof DOMException && error.name === "AbortError";
         get().addHistory({

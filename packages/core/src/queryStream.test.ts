@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendQueryChunk } from "./queryStream";
+import { appendQueryChunk, limitQueryChunk } from "./queryStream";
 
 describe("appendQueryChunk", () => {
   it("appends rows while retaining columns and de-duplicating warnings", () => {
@@ -45,5 +45,37 @@ describe("appendQueryChunk", () => {
 
     expect(result.columns[0]?.name).toBe("name");
     expect(result.rows).toEqual([{ name: "Ada" }]);
+  });
+
+  it("caps a chunk at the remaining stream budget and reports truncation", () => {
+    const bounded = limitQueryChunk(
+      {
+        rowOffset: 2,
+        columns: [{ name: "id", type: "int4", nullable: false }],
+        rows: [{ id: 3 }, { id: 4 }, { id: 5 }],
+        warnings: [],
+      },
+      2,
+      4,
+    );
+
+    expect(bounded.chunk.rows).toEqual([{ id: 3 }, { id: 4 }]);
+    expect(bounded.truncated).toBe(true);
+  });
+
+  it("does not mark a chunk that exactly fills the stream budget", () => {
+    const bounded = limitQueryChunk(
+      {
+        rowOffset: 0,
+        columns: [{ name: "id", type: "int4", nullable: false }],
+        rows: [{ id: 1 }, { id: 2 }],
+        warnings: [],
+      },
+      0,
+      2,
+    );
+
+    expect(bounded.chunk.rows).toHaveLength(2);
+    expect(bounded.truncated).toBe(false);
   });
 });

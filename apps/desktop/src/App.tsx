@@ -157,6 +157,8 @@ const MonacoSqlEditor = lazy(async () => {
 const resultRowKeys = new WeakMap<Record<string, unknown>, string>();
 const longQueryThresholdStorageKey = "queryx:long-query-threshold-ms";
 const longQueryThresholdOptions = [5_000, 30_000, 60_000, 300_000];
+const streamRowLimitStorageKey = "queryx:stream-row-limit";
+const streamRowLimitOptions = [10_000, 100_000, 1_000_000];
 
 function readLongQueryThresholdMs(): number {
   if (typeof window === "undefined") return longQueryThresholdOptions[0];
@@ -169,6 +171,20 @@ function readLongQueryThresholdMs(): number {
       : longQueryThresholdOptions[0];
   } catch {
     return longQueryThresholdOptions[0];
+  }
+}
+
+function readStreamRowLimit(): number {
+  if (typeof window === "undefined") return streamRowLimitOptions[1];
+  try {
+    const stored = Number(
+      window.localStorage.getItem(streamRowLimitStorageKey),
+    );
+    return streamRowLimitOptions.includes(stored)
+      ? stored
+      : streamRowLimitOptions[1];
+  } catch {
+    return streamRowLimitOptions[1];
   }
 }
 let nextResultRowKey = 0;
@@ -704,6 +720,8 @@ function App() {
   const [longQueryThresholdMs, setLongQueryThresholdMs] = useState(
     readLongQueryThresholdMs,
   );
+  const [streamRowLimit, setStreamRowLimit] = useState(readStreamRowLimit);
+  const [streamActive, setStreamActive] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [cursor, setCursor] = useState({ line: 1, column: 1, selected: 0 });
   const initialized = useRef(false);
@@ -1694,10 +1712,12 @@ function App() {
     setSortBy(null);
     setResultPage(0);
     setResultView("table");
+    setStreamActive(true);
     void runQuery("normal", executableSql, {
       historySql: executableSql,
       stream: true,
-    });
+      streamMaxRows: streamRowLimit,
+    }).finally(() => setStreamActive(false));
   };
   const handleExplain = () => {
     if (pendingEditCount > 0) {
@@ -3820,7 +3840,7 @@ function App() {
                   }
                   title={
                     driver.capabilities().has("streaming")
-                      ? "Stream a single SELECT/WITH result in chunks"
+                      ? `Stream a single SELECT/WITH result in chunks, capped at ${streamRowLimit.toLocaleString()} rows`
                       : "Chunked streaming is currently available for native PostgreSQL, MySQL/MariaDB, and SQLite connections"
                   }
                 >
@@ -4197,7 +4217,9 @@ function App() {
               <span className="result-meta">
                 <i />{" "}
                 {executionStatus === "running"
-                  ? "Query running…"
+                  ? streamActive
+                    ? `Streaming · ${(result?.rows.length ?? 0).toLocaleString()} rows loaded`
+                    : "Query running…"
                   : executionStatus === "cancelled"
                     ? "Query cancelled"
                     : executionStatus === "error"
@@ -4216,6 +4238,35 @@ function App() {
                   </span>
                 ))}
               </span>
+              {driver.capabilities().has("streaming") && (
+                <label className="stream-limit-control">
+                  <span>Stream cap</span>
+                  <select
+                    value={streamRowLimit}
+                    onChange={(event) => {
+                      const value = Number(event.target.value);
+                      if (!streamRowLimitOptions.includes(value)) return;
+                      setStreamRowLimit(value);
+                      try {
+                        window.localStorage.setItem(
+                          streamRowLimitStorageKey,
+                          String(value),
+                        );
+                      } catch {
+                        // Local stream-limit persistence is best-effort.
+                      }
+                    }}
+                    aria-label="Maximum streamed rows"
+                    disabled={isRunning}
+                  >
+                    {streamRowLimitOptions.map((value) => (
+                      <option value={value} key={value}>
+                        {value.toLocaleString()} rows
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label className="filter-box">
                 ⌕
                 <input

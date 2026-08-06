@@ -38,7 +38,7 @@ Known alpha limitations:
 
 - Native desktop now restores tabs, history, favorites, redacted session audit observations, and secret-free connection profiles from versioned SQLite workspace storage; browser preview remains localStorage-backed. Settings namespaces, named workspaces, and crash-recovery journals remain pending.
 - Native desktop passwords can be saved in the platform OS keychain; profile files retain only a `passwordStored` marker. Browser preview remains session-only.
-- Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages safe SELECT/WITH queries with database-side filter/sort, and all native drivers can stream 256-row chunks. Disk spill/backpressure and deterministic tie-breakers for arbitrary projections remain pending.
+- Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages safe SELECT/WITH queries with database-side filter/sort, and all native drivers can stream 256-row chunks. Streaming now has a persisted 10k/100k/1m row cap and live rows-loaded status; true disk spill/backpressure and deterministic tie-breakers for arbitrary projections remain pending.
 - Safety analysis uses a structure-aware lexical scanner that ignores literals, comments, quoted identifiers, nested predicates, CTE names, checks every statement, and warns for high-risk `TRUNCATE`/`DROP`/`ALTER` operations; parser/plan-backed analysis and affected-row estimates remain pending.
 - GitHub Release packaging and signed OTA verification are wired; the first production release still requires repository updater secrets and platform signing/notarization credentials.
 
@@ -60,7 +60,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating, cancellation/history reuse, and a collapsible structured tree for text plans
 - [x] PostgreSQL/MySQL EXPLAIN ANALYZE with explicit execution warning, one-statement validation, and a collapsible structured tree for text plans; database-specific cost controls and SQL Server/Oracle/SQLite analyze contracts remain planned
-- [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, 100-row server paging with database-side filter/sort for safe SELECT/WITH queries and table browsing, and all native drivers' cursor-backed 256-row result streaming; progress telemetry and disk spill/backpressure remain planned
+- [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, 100-row server paging with database-side filter/sort for safe SELECT/WITH queries and table browsing, all native drivers' cursor-backed 256-row result streaming, live rows-loaded telemetry, and persisted 10k/100k/1m stream caps; true disk spill/backpressure remains planned
 - [x] Result-grid column resizing with mouse and keyboard controls; incremental fetch, server paging, reorder, and freeze remain planned
 - [x] Keyed table browser incremental fetch in 100-row pages with deterministic primary-key ordering, dialect-aware server filtering/sorting, literal wildcard escaping, and unapplied-order protection; safe arbitrary SELECT/WITH server paging and filter/sort are also available
 - [x] Cell/row/range copy, NULL display controls, and spreadsheet-safe TSV clipboard output
