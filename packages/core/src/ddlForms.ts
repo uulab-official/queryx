@@ -85,6 +85,21 @@ export interface DropIndexPlan {
   manual: string[];
 }
 
+export type DatabaseDefinitionKind = "routine" | "trigger" | "eventTrigger";
+
+export interface EditDatabaseDefinitionInput {
+  kind: DatabaseDefinitionKind;
+  definition: string;
+}
+
+export interface EditDatabaseDefinitionPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+  warnings: string[];
+}
+
 export interface RenameIndexPlan {
   sql: string;
   statements: string[];
@@ -217,6 +232,7 @@ function inspectViewDefinition(definition: string): {
   hasDelimiterOrComment: boolean;
   hasMutatingKeyword: boolean;
   hasUnterminatedQuote: boolean;
+  executable: string;
 } {
   let quote: "'" | '"' | "`" | null = null;
   let lineComment = false;
@@ -271,6 +287,7 @@ function inspectViewDefinition(definition: string): {
     }
     if (character === ";") {
       hasDelimiterOrComment = true;
+      executable += ";";
       continue;
     }
     executable += character;
@@ -283,6 +300,7 @@ function inspectViewDefinition(definition: string): {
         executable,
       ),
     hasUnterminatedQuote: Boolean(quote) || blockComment,
+    executable,
   };
 }
 
@@ -945,6 +963,54 @@ export function buildAlterViewPlan(
             "SQLite replaces a view by dropping and recreating it; dependent objects may need review",
           ]
         : [],
+  };
+}
+
+export function buildEditDatabaseDefinitionPlan(
+  input: EditDatabaseDefinitionInput,
+  driver: DriverKind,
+): EditDatabaseDefinitionPlan {
+  const definition = input.definition.trim();
+  const errors: string[] = [];
+  if (!definition) errors.push("Definition is required");
+  if (definition && !/^(CREATE|ALTER)\b/i.test(definition)) {
+    errors.push("Definition must start with CREATE or ALTER");
+  }
+  if (definition) {
+    const safety = inspectViewDefinition(definition);
+    if (safety.hasUnterminatedQuote) {
+      errors.push("Definition contains an unterminated quote or comment");
+    }
+    const executable = safety.executable.replace(/;\s*$/, "");
+    if (
+      /;\s*(?:CREATE|ALTER|DROP|GRANT|REVOKE|TRUNCATE|EXEC|CALL)\b/i.test(
+        executable,
+      )
+    ) {
+      errors.push("Definition cannot contain multiple top-level statements");
+    }
+  }
+  if (errors.length > 0) {
+    return { sql: "", statements: [], errors, manual: [], warnings: [] };
+  }
+  if (driver === "sqlite") {
+    const message = `SQLite definition replacement requires manual review: ${input.kind}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors: [],
+      manual: [message],
+      warnings: [],
+    };
+  }
+  return {
+    sql: definition,
+    statements: [definition],
+    errors: [],
+    manual: [],
+    warnings: [
+      "The database validates the edited definition at execution time",
+    ],
   };
 }
 

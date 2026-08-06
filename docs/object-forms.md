@@ -29,6 +29,8 @@ The create-view form accepts one read-only `SELECT` or `WITH` definition, checks
 
 The edit-view form validates the replacement definition against the current view snapshot. PostgreSQL and MySQL/MariaDB use `CREATE OR REPLACE VIEW`; SQLite uses a two-statement drop/create transaction and displays a dependent-object warning because SQLite has no replace form. The drop-view form always previews quoted SQL and warns when the dependency graph reports known objects using the view; the database remains authoritative and may reject the operation.
 
+Routine, relation-trigger, and PostgreSQL event-trigger inspectors provide **Edit form** in addition to **Edit in SQL**. The definition form keeps the catalog-rendered definition editable, rejects missing/non-DDL or multiple top-level definitions, previews the exact vendor definition, and applies it only after confirmation in one transaction. PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle definitions are sent to the selected driver for final validation; SQLite definition replacement remains manual review. **Edit in SQL** remains available for vendor-specific multi-step work.
+
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Broader index alteration, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Broader index alteration and multi-object routine/trigger migration forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

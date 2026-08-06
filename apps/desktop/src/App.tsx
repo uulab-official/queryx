@@ -25,6 +25,7 @@ import {
   buildCreateTablePlan,
   buildCreateIndexPlan,
   buildCreateViewPlan,
+  buildEditDatabaseDefinitionPlan,
   buildDataCountSql,
   buildDataSelectSql,
   buildDataSyncSql,
@@ -84,7 +85,9 @@ import type {
   CreateIndexInput,
   CreateIndexPlan,
   CreateViewPlan,
+  DatabaseDefinitionKind,
   DropIndexPlan,
+  EditDatabaseDefinitionPlan,
   RenameIndexPlan,
   DropForeignKeyPlan,
   DropViewPlan,
@@ -231,6 +234,12 @@ interface ServerQueryPageState {
   filter: string;
   sortBy: string | null;
   sortDirection: "asc" | "desc";
+}
+
+interface DefinitionEditTarget {
+  kind: DatabaseDefinitionKind;
+  definition: string;
+  label: string;
 }
 
 interface PaletteCommand {
@@ -653,6 +662,8 @@ function App() {
     report: QuerySafetyReport;
     sql: string;
   } | null>(null);
+  const [definitionEditTarget, setDefinitionEditTarget] =
+    useState<DefinitionEditTarget | null>(null);
   const [schemaBaseline, setSchemaBaseline] = useState<DatabaseMetadata | null>(
     null,
   );
@@ -920,6 +931,32 @@ function App() {
     await loadMetadata();
     setSchemaDiffOpen(false);
     notify("Schema migration applied and recorded locally");
+  };
+  const applyDatabaseDefinition = async (plan: EditDatabaseDefinitionPlan) => {
+    if (
+      !plan.sql ||
+      plan.errors.length > 0 ||
+      plan.manual.length > 0 ||
+      plan.statements.length === 0
+    )
+      return;
+    if (readOnlyConnection) {
+      notify("Definition changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Apply this database definition in one transaction?"))
+      return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Definition change failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setDefinitionEditTarget(null);
+    notify("Definition applied and metadata refreshed");
   };
   const openMigrationHistory = () => setMigrationHistoryOpen(true);
   const openErd = () => {
@@ -4446,6 +4483,9 @@ function App() {
             setSql(definition);
             notify(`Opened ${label} DDL in a new SQL tab`);
           }}
+          onEditDefinitionForm={(definition, label, kind) =>
+            setDefinitionEditTarget({ definition, label, kind })
+          }
         />
       </div>
       {toast && <div className="toast">{toast}</div>}
@@ -4455,6 +4495,20 @@ function App() {
           onCancel={() => setPendingSafety(null)}
           onRunInTransaction={() => handleRun("transaction", pendingSafety.sql)}
           onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
+        />
+      )}
+      {definitionEditTarget && (
+        <DatabaseDefinitionDialog
+          driverKind={driverKind}
+          target={definitionEditTarget}
+          onClose={() => setDefinitionEditTarget(null)}
+          onApply={applyDatabaseDefinition}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setDefinitionEditTarget(null);
+            notify("Opened edited definition in a new SQL tab");
+          }}
         />
       )}
       {schemaDiffOpen && schemaDiff && (
@@ -9937,6 +9991,112 @@ function ConnectionDialog({
   );
 }
 
+function DatabaseDefinitionDialog({
+  driverKind,
+  target,
+  onClose,
+  onApply,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  target: DefinitionEditTarget;
+  onClose: () => void;
+  onApply: (plan: EditDatabaseDefinitionPlan) => Promise<void>;
+  onOpenSql: (plan: EditDatabaseDefinitionPlan) => void;
+}) {
+  const [definition, setDefinition] = useState(target.definition);
+  const plan = useMemo(
+    () =>
+      buildEditDatabaseDefinitionPlan(
+        { kind: target.kind, definition },
+        driverKind,
+      ),
+    [definition, driverKind, target.kind],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-view-modal"
+        aria-modal="true"
+        aria-labelledby="database-definition-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · {target.kind}</p>
+            <h2 id="database-definition-title">Edit definition</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close definition editor"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Edit <strong>{target.label}</strong> for{" "}
+          {driverDisplayName(driverKind)}. QueryX validates the DDL boundary,
+          then applies the database definition in one transaction.
+        </p>
+        <label className="create-view-definition" htmlFor="database-definition">
+          Definition
+          <textarea
+            id="database-definition"
+            value={definition}
+            onChange={(event) => setDefinition(event.target.value)}
+            spellCheck={false}
+            rows={14}
+          />
+        </label>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.warnings.map((warning) => (
+          <div className="create-index-warning" key={warning}>
+            ⚠ {warning}
+          </div>
+        ))}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onApply(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Apply definition
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
 function Inspector({
   table,
   view,
@@ -9952,6 +10112,7 @@ function Inspector({
   onBrowseTable,
   onCopyDefinition,
   onEditDefinition,
+  onEditDefinitionForm,
 }: {
   table?: TableMetadata;
   view?: ViewMetadata;
@@ -9967,6 +10128,11 @@ function Inspector({
   onBrowseTable: () => void;
   onCopyDefinition: (definition: string) => void;
   onEditDefinition: (definition: string, label: string) => void;
+  onEditDefinitionForm: (
+    definition: string,
+    label: string,
+    kind: DatabaseDefinitionKind,
+  ) => void;
 }) {
   const relation = table ?? view;
   const [activeTab, setActiveTab] = useState<
@@ -10041,6 +10207,19 @@ function Inspector({
                   }
                 >
                   Edit in SQL
+                </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() =>
+                    onEditDefinitionForm(
+                      definition,
+                      eventTrigger.name,
+                      "eventTrigger",
+                    )
+                  }
+                >
+                  Edit form
                 </button>
               </span>
             )}
@@ -10144,6 +10323,15 @@ function Inspector({
                 >
                   Edit in SQL
                 </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() =>
+                    onEditDefinitionForm(definition, trigger.name, "trigger")
+                  }
+                >
+                  Edit form
+                </button>
               </span>
             )}
           </div>
@@ -10232,6 +10420,15 @@ function Inspector({
                   onClick={() => onEditDefinition(definition, signature)}
                 >
                   Edit in SQL
+                </button>
+                <button
+                  type="button"
+                  className="copy-ddl-button edit-ddl-button"
+                  onClick={() =>
+                    onEditDefinitionForm(definition, signature, "routine")
+                  }
+                >
+                  Edit form
                 </button>
               </span>
             </div>

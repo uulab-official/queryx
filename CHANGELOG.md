@@ -118,3 +118,4 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added guarded column rename support to Edit Columns for PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle, with collision validation, vendor-specific SQL, and SQLite manual-rebuild review.
 - Added named UNIQUE/CHECK table-constraint form support for the initial native drivers, with safe expression validation, redundancy warnings, and SQLite manual-rebuild review.
 - Added guarded selected-table index rename forms with PostgreSQL/Oracle, MySQL/MariaDB, and SQL Server SQL generation plus primary-index and SQLite manual-review boundaries.
+- Added routine, relation-trigger, and event-trigger definition forms with DDL boundary validation, exact SQL preview, transactional apply, metadata refresh, and SQLite manual-review protection.
