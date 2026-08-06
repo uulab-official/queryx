@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Drop index on selected table**, **Add foreign key to selected table**, **Drop foreign key from selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
+QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Add table constraint**, **Drop index on selected table**, **Add foreign key to selected table**, **Drop foreign key from selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
 
 The form supports:
 
@@ -17,6 +17,8 @@ The edit-columns form supports column renames, type and nullability changes, plu
 
 The index form supports ordered single- and multi-column indexes, UNIQUE indexes, duplicate-name validation, missing-column validation, and redundancy warnings. It generates dialect-aware `CREATE INDEX` SQL and applies it only after confirmation.
 
+The table-constraint form supports named composite or single-column UNIQUE constraints and named CHECK constraints. It validates identifiers, duplicate/missing columns, redundant unique indexes, comments, delimiters, mutating/DDL keywords, and unbalanced CHECK parentheses. PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle receive executable `ALTER TABLE ... ADD CONSTRAINT` SQL; SQLite shows a manual table-rebuild review because it cannot add table constraints with the current safe form boundary.
+
 The drop-index form supports regular indexes and protects primary indexes. PostgreSQL/SQLite use schema-qualified `DROP INDEX`; MySQL/MariaDB uses `DROP INDEX ... ON table`. Primary-key removal remains a manual SQL operation.
 
 The foreign-key forms support named single- and composite-column relationships, visible referenced tables, `ON UPDATE`/`ON DELETE` actions, duplicate/missing-column validation, and dialect-aware SQL. PostgreSQL uses `DROP CONSTRAINT`, MySQL/MariaDB uses `DROP FOREIGN KEY`, and SQLite additions/removals remain manual table-rebuild operations.
@@ -27,4 +29,4 @@ The edit-view form validates the replacement definition against the current view
 
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Index alteration, CHECK/unique constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Index alteration, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

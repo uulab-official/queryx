@@ -62,6 +62,23 @@ export interface CreateIndexPlan {
   warnings: string[];
 }
 
+export type TableConstraintKind = "unique" | "check";
+
+export interface CreateTableConstraintInput {
+  kind: TableConstraintKind;
+  name: string;
+  columns: string[];
+  expression: string;
+}
+
+export interface CreateTableConstraintPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+  warnings: string[];
+}
+
 export interface DropIndexPlan {
   sql: string;
   errors: string[];
@@ -144,6 +161,37 @@ function identifierError(label: string, value: string): string | null {
   if (!value) return `${label} is required`;
   if (value.includes("\u0000")) return `${label} contains an invalid character`;
   return null;
+}
+
+function constraintExpressionError(expression: string): string | null {
+  if (expression.includes("\u0000")) {
+    return "CHECK expression contains an invalid character";
+  }
+  if (
+    expression.includes(";") ||
+    expression.includes("--") ||
+    expression.includes("/*")
+  ) {
+    return "CHECK expression cannot contain comments or statement delimiters";
+  }
+  const withoutQuotedText = expression.replace(
+    /'(?:''|[^'])*'|"(?:""|[^"])*"|`(?:``|[^`])*`/g,
+    " ",
+  );
+  if (
+    /\b(?:INSERT|UPDATE|DELETE|MERGE|DROP|ALTER|CREATE|TRUNCATE|EXEC|CALL|COPY|GRANT|REVOKE)\b/i.test(
+      withoutQuotedText,
+    )
+  ) {
+    return "CHECK expression contains a mutating or DDL keyword";
+  }
+  let depth = 0;
+  for (const character of withoutQuotedText) {
+    if (character === "(") depth += 1;
+    if (character === ")") depth -= 1;
+    if (depth < 0) return "CHECK expression has unbalanced parentheses";
+  }
+  return depth === 0 ? null : "CHECK expression has unbalanced parentheses";
 }
 
 function foreignKeyActionError(label: string, action: string): string | null {
@@ -505,6 +553,83 @@ export function buildCreateIndexPlan(
   return {
     sql: `CREATE ${input.unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${tableName} (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")});`,
     errors: [],
+    warnings,
+  };
+}
+
+export function buildCreateTableConstraintPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns" | "indexes">,
+  input: CreateTableConstraintInput,
+  driver: DriverKind,
+): CreateTableConstraintPlan {
+  const name = normalizeIdentifier(input.name);
+  const errors = [identifierError("Constraint name", name)].filter(
+    (error): error is string => Boolean(error),
+  );
+  const warnings: string[] = [];
+  const manual: string[] = [];
+  const columns = input.columns.map(normalizeIdentifier).filter(Boolean);
+  const seen = new Set<string>();
+  if (input.kind === "unique") {
+    if (columns.length === 0) errors.push("Select at least one column");
+    for (const column of columns) {
+      const normalized = column.toLocaleLowerCase();
+      if (seen.has(normalized)) {
+        errors.push(`Duplicate constraint column: ${column}`);
+      }
+      seen.add(normalized);
+      if (!table.columns.some((candidate) => candidate.name === column)) {
+        errors.push(`Column does not exist: ${column}`);
+      }
+    }
+    const duplicateUnique = table.indexes.some(
+      (index) =>
+        index.unique &&
+        index.columns.length === columns.length &&
+        index.columns.every((column, position) => column === columns[position]),
+    );
+    if (duplicateUnique) {
+      warnings.push("A unique index already covers the same column order");
+    }
+  } else if (input.kind === "check") {
+    const expression = input.expression.trim();
+    if (!expression) errors.push("CHECK expression is required");
+    const expressionError = constraintExpressionError(expression);
+    if (expressionError) errors.push(expressionError);
+  } else {
+    errors.push("Constraint type must be UNIQUE or CHECK");
+  }
+  if (
+    table.indexes.some(
+      (index) => index.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+    )
+  ) {
+    errors.push(`Constraint name conflicts with an existing index: ${name}`);
+  }
+  if (errors.length > 0) {
+    return { sql: "", statements: [], errors, manual, warnings };
+  }
+  if (driver === "sqlite") {
+    const message = `SQLite table constraints require a manual table rebuild: ${input.kind.toUpperCase()} ${name}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors: [],
+      manual: [message],
+      warnings,
+    };
+  }
+  const qualified = qualifiedName(table.schema, table.name, driver);
+  const constraint =
+    input.kind === "unique"
+      ? `UNIQUE (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")})`
+      : `CHECK (${input.expression.trim()})`;
+  const statement = `ALTER TABLE ${qualified} ADD CONSTRAINT ${quoteIdentifier(name, driver)} ${constraint};`;
+  return {
+    sql: statement,
+    statements: [statement],
+    errors: [],
+    manual,
     warnings,
   };
 }

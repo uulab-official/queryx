@@ -21,6 +21,7 @@ import {
   buildAddForeignKeyPlan,
   buildAlterViewPlan,
   buildCsvImportPlan,
+  buildCreateTableConstraintPlan,
   buildCreateTablePlan,
   buildCreateIndexPlan,
   buildCreateViewPlan,
@@ -76,6 +77,8 @@ import type {
   CsvImportPlan,
   DataCompareResult,
   CreateTableColumnInput,
+  CreateTableConstraintInput,
+  CreateTableConstraintPlan,
   CreateTablePlan,
   CreateIndexInput,
   CreateIndexPlan,
@@ -618,6 +621,7 @@ function App() {
     useState<ServerQueryPageState | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [createTableOpen, setCreateTableOpen] = useState(false);
+  const [createConstraintOpen, setCreateConstraintOpen] = useState(false);
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
@@ -1023,6 +1027,39 @@ function App() {
     await loadMetadata();
     setCreateIndexOpen(false);
     notify("Index created and metadata refreshed");
+  };
+  const openCreateConstraint = () => {
+    if (!currentTable) {
+      notify("Select a table before adding a constraint");
+      return;
+    }
+    setCreateConstraintOpen(true);
+  };
+  const createTableConstraint = async (plan: CreateTableConstraintPlan) => {
+    if (
+      !plan.sql ||
+      plan.errors.length > 0 ||
+      plan.manual.length > 0 ||
+      plan.statements.length === 0
+    )
+      return;
+    if (readOnlyConnection) {
+      notify("Constraint changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Add this table constraint in one transaction?"))
+      return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Constraint creation failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setCreateConstraintOpen(false);
+    notify("Constraint added and metadata refreshed");
   };
   const openDropIndex = () => {
     if (!currentTable) {
@@ -2975,6 +3012,15 @@ function App() {
       execute: openCreateIndex,
     },
     {
+      id: "create-constraint",
+      label: "Add table constraint",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name} · UNIQUE/CHECK`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openCreateConstraint,
+    },
+    {
       id: "drop-index",
       label: "Drop index on selected table",
       hint: currentTable
@@ -4602,6 +4648,20 @@ function App() {
             setSql(plan.sql);
             setCreateIndexOpen(false);
             notify("Opened CREATE INDEX preview in a new SQL tab");
+          }}
+        />
+      )}
+      {createConstraintOpen && currentTable && (
+        <CreateTableConstraintDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setCreateConstraintOpen(false)}
+          onCreate={createTableConstraint}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setCreateConstraintOpen(false);
+            notify("Opened table constraint preview in a new SQL tab");
           }}
         />
       )}
@@ -6861,6 +6921,219 @@ function DropForeignKeyDialog({
             }
           >
             Drop foreign key
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function CreateTableConstraintDialog({
+  driverKind,
+  table,
+  onClose,
+  onCreate,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onCreate: (plan: CreateTableConstraintPlan) => Promise<void>;
+  onOpenSql: (plan: CreateTableConstraintPlan) => void;
+}) {
+  const [input, setInput] = useState<CreateTableConstraintInput>({
+    kind: "unique",
+    name: "",
+    columns: [table.columns[0]?.name ?? ""],
+    expression: "",
+  });
+  const plan = useMemo(
+    () => buildCreateTableConstraintPlan(table, input, driverKind),
+    [driverKind, input, table],
+  );
+  const addColumn = () =>
+    setInput((current) => ({ ...current, columns: [...current.columns, ""] }));
+  const removeColumn = (index: number) =>
+    setInput((current) => ({
+      ...current,
+      columns: current.columns.filter(
+        (_, columnIndex) => columnIndex !== index,
+      ),
+    }));
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-index-modal"
+        aria-modal="true"
+        aria-labelledby="create-constraint-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · CONSTRAINT</p>
+            <h2 id="create-constraint-title">Add table constraint</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close table constraint form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Add a named UNIQUE or CHECK constraint to{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>
+          . SQLite requires a manual table rebuild; all other initial native
+          drivers receive dialect-quoted ALTER TABLE SQL.
+        </p>
+        <div className="create-index-fields">
+          <label htmlFor="create-constraint-kind">
+            Constraint type
+            <select
+              id="create-constraint-kind"
+              value={input.kind}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  kind: event.target
+                    .value as CreateTableConstraintInput["kind"],
+                }))
+              }
+            >
+              <option value="unique">UNIQUE</option>
+              <option value="check">CHECK</option>
+            </select>
+          </label>
+          <label htmlFor="create-constraint-name">
+            Constraint name
+            <input
+              id="create-constraint-name"
+              value={input.name}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  name: event.target.value,
+                }))
+              }
+              placeholder={`${table.name}_constraint`}
+            />
+          </label>
+        </div>
+        {input.kind === "unique" ? (
+          <>
+            <div className="create-table-columns-heading">
+              <strong>Unique columns (order matters)</strong>
+              <button type="button" className="mini-button" onClick={addColumn}>
+                + Add column
+              </button>
+            </div>
+            <div className="index-column-list" aria-label="Unique columns">
+              {input.columns.map((column, index) => (
+                <div className="index-column-row" key={`${index}-${column}`}>
+                  <span>{index + 1}</span>
+                  <select
+                    value={column}
+                    onChange={(event) =>
+                      setInput((current) => ({
+                        ...current,
+                        columns: current.columns.map((item, columnIndex) =>
+                          columnIndex === index ? event.target.value : item,
+                        ),
+                      }))
+                    }
+                    aria-label={`Unique column ${index + 1}`}
+                  >
+                    <option value="">Select column…</option>
+                    {table.columns.map((candidate) => (
+                      <option key={candidate.name} value={candidate.name}>
+                        {candidate.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="mini-button"
+                    onClick={() => removeColumn(index)}
+                    disabled={input.columns.length === 1}
+                    aria-label={`Remove unique column ${index + 1}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <label
+            className="schema-target-field"
+            htmlFor="create-check-expression"
+          >
+            CHECK expression
+            <textarea
+              id="create-check-expression"
+              value={input.expression}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  expression: event.target.value,
+                }))
+              }
+              placeholder="status IN ('active', 'suspended')"
+              rows={4}
+            />
+          </label>
+        )}
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.warnings.length > 0 && (
+          <output className="create-index-warning">
+            {plan.warnings.map((warning) => (
+              <div key={warning}>{warning}</div>
+            ))}
+          </output>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="edit-columns-manual">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {!plan.errors.length && (
+          <pre className="create-table-preview">{plan.sql}</pre>
+        )}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onCreate(plan)}
+            disabled={
+              plan.errors.length > 0 ||
+              plan.manual.length > 0 ||
+              plan.statements.length === 0
+            }
+          >
+            Add constraint
           </button>
         </div>
       </dialog>

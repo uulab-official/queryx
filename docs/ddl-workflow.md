@@ -23,7 +23,7 @@ Use a least-privilege account and confirm the target database supports transacti
 - **Edit in SQL** creates a regular tab, preserving normal undo, close-confirmation, query history, and editor behavior.
 - **Run in Transaction** is explicit and runs the complete document, not only a selected fragment. A statement error rolls back the transaction and leaves the SQL available for correction.
 - **Refresh metadata** asks the active driver for a new eager snapshot. It does not execute user SQL and does not alter database state.
-- Schema Compare now offers an explicit **Apply in transaction** action for executable, same-dialect changes. Manual-review changes and read-only sessions remain blocked. Object-specific table/column/index/foreign-key and view create/alter/drop forms are available from the command palette; column rename is supported for the initial native drivers, while CHECK/unique constraints, index alteration, routines, and triggers remain planned.
+- Schema Compare now offers an explicit **Apply in transaction** action for executable, same-dialect changes. Manual-review changes and read-only sessions remain blocked. Object-specific table/column/index/constraint/foreign-key and view create/alter/drop forms are available from the command palette; column rename and UNIQUE/CHECK constraints are supported for the initial native drivers, while index alteration, routines, and triggers remain planned.
 
 ## Safety and privacy
 
@@ -41,7 +41,7 @@ The native transaction path owns commit and rollback behavior. If execution fail
 
 ## Current limits and next gate
 
-This workflow is a safe editor handoff. [Schema Compare](schema-compare.md) provides a session-local baseline diff, metadata dependency ordering, forward migration preview, reverse/rollback preview, driver-specific privilege preflight, explicit transactional apply for executable changes, and applied history for tables, columns, indexes, foreign keys, and views. Applied entries are stored in the native app-local workspace snapshot on Tauri and in browser-local storage for preview builds. Table/column/index/foreign-key and view create/alter/drop forms, including column rename, are now available, while CHECK/unique constraints, index alteration, routines, triggers, and broader vendor capability declarations remain roadmap work. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
+This workflow is a safe editor handoff. [Schema Compare](schema-compare.md) provides a session-local baseline diff, metadata dependency ordering, forward migration preview, reverse/rollback preview, driver-specific privilege preflight, explicit transactional apply for executable changes, and applied history for tables, columns, indexes, foreign keys, and views. Applied entries are stored in the native app-local workspace snapshot on Tauri and in browser-local storage for preview builds. Table/column/index/constraint/foreign-key and view create/alter/drop forms, including column rename, are now available, while index alteration, routines, triggers, and broader vendor capability declarations remain roadmap work. See [ADR-0011](decisions/ADR-0011-safe-ddl-editor-handoff.md) and [Roadmap](../ROADMAP.md).
 
 ## Related
 
