@@ -1,52 +1,34 @@
 import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ClipboardEvent,
-  type ChangeEvent,
-  type FormEvent,
-  type KeyboardEvent as ReactKeyboardEvent,
-  type PointerEvent as ReactPointerEvent,
-  type ReactNode,
-} from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check } from "@tauri-apps/plugin-updater";
-import {
   buildAddColumnPlan,
   buildAddForeignKeyPlan,
   buildAlterIndexPlan,
   buildAlterViewPlan,
-  buildCsvImportPlan,
+  buildCreateIndexPlan,
   buildCreateTableConstraintPlan,
   buildCreateTablePlan,
-  buildCreateIndexPlan,
   buildCreateViewPlan,
-  buildEditDatabaseDefinitionPlan,
+  buildCsvImportPlan,
   buildDataCountSql,
   buildDataSelectSql,
   buildDataSyncSql,
   buildDataSyncStatements,
-  buildEditTableColumnsPlan,
-  buildDropIndexPlan,
+  buildDependencyIndex,
   buildDropForeignKeyPlan,
+  buildDropIndexPlan,
   buildDropViewPlan,
+  buildEditDatabaseDefinitionPlan,
+  buildEditTableColumnsPlan,
   buildErdDiagram,
   buildExplainAnalyzeQuery,
-  buildSchemaMigrationStatements,
-  buildRowsToSqlDeleteStatements,
-  buildRowsToSqlUpdateStatements,
-  buildDependencyIndex,
-  buildForeignKeyIndex,
   buildExplainQuery,
+  buildForeignKeyIndex,
   buildQueryPagePlan,
   buildQueryResultFilterPlan,
   buildRenameIndexPlan,
+  buildRowsToSqlDeleteStatements,
+  buildRowsToSqlUpdateStatements,
   buildSchemaMigrationSql,
+  buildSchemaMigrationStatements,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
   buildTableBrowsePlan,
@@ -55,22 +37,23 @@ import {
   compareTableData,
   dataCompareMaxRows,
   defaultCsvImportMappings,
+  findLongRunningSessions,
   findTable,
   formatSql,
-  findLongRunningSessions,
   inferImportType,
   inspectQuerySafety,
   parseCsv,
   parseExplainPlan,
   parseJsonRows,
   serializeRowsToCsv,
-  serializeRowsToXlsx,
   serializeRowsToJson,
   serializeRowsToMarkdown,
   serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
   serializeRowsToTsv,
+  serializeRowsToXlsx,
+  serializeTableSnapshot,
   xlsxContentType,
 } from "@queryx/core";
 import type {
@@ -81,72 +64,90 @@ import type {
   AlterIndexInput,
   AlterIndexPlan,
   AlterViewPlan,
-  CsvImportMapping,
-  CsvImportPlan,
-  DataCompareResult,
+  CreateIndexInput,
+  CreateIndexPlan,
   CreateTableColumnInput,
   CreateTableConstraintInput,
   CreateTableConstraintPlan,
   CreateTablePlan,
-  CreateIndexInput,
-  CreateIndexPlan,
   CreateViewPlan,
+  CsvImportMapping,
+  CsvImportPlan,
+  DataCompareResult,
   DatabaseDefinitionKind,
-  DropIndexPlan,
-  EditDatabaseDefinitionPlan,
-  RenameIndexPlan,
   DropForeignKeyPlan,
+  DropIndexPlan,
   DropViewPlan,
+  EditDatabaseDefinitionPlan,
   EditTableColumnInput,
   EditTableColumnsPlan,
-  ExplainPlanNode,
   ErdNode,
+  ExplainPlan,
+  ExplainPlanNode,
   ForeignKeyRelations,
   ImportConflictPolicy,
   ImportValueType,
   ObjectDependencies,
-  ExplainPlan,
   QuerySafetyReport,
+  RenameIndexPlan,
+  SchemaDiff,
   SqlRowDelete,
   SqlRowUpdate,
-  SchemaDiff,
+  TableBrowseSortDirection,
   TableRowInsertPlan,
   TableRowInsertValue,
-  TableBrowseSortDirection,
 } from "@queryx/core";
 import type {
-  DatabaseLock,
   ConnectionProfile,
-  DatabaseSession,
+  DatabaseLock,
+  DatabaseMetadata,
   DatabaseObjectRef,
+  DatabaseSession,
   DependencyKind,
   DriverConfig,
   DriverKind,
   EventTriggerMetadata,
-  DatabaseMetadata,
-  RelationRef,
   QueryResult,
+  RelationRef,
   RoutineMetadata,
   SessionAuditEntry,
   TableMetadata,
   TriggerMetadata,
   ViewMetadata,
 } from "@queryx/shared";
+import { isTauri } from "@tauri-apps/api/core";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check } from "@tauri-apps/plugin-updater";
+import {
+  type ChangeEvent,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
-import { saveBinaryFile, saveTextFile } from "./exportCsv";
 import {
   deleteConnectionPassword,
   loadConnectionPassword,
   saveConnectionPassword,
 } from "./connectionSecrets";
-import { getVirtualRowWindow } from "./resultGrid";
+import { saveBinaryFile, saveTextFile } from "./exportCsv";
 import { createRuntimeDriver } from "./nativeDriver";
+import { getVirtualRowWindow } from "./resultGrid";
 import {
-  useQueryStore,
-  sessionAuditRetentionOptions,
   type ConnectionProfileDraft,
   type MigrationHistoryEntry,
   type RunMode,
+  sessionAuditRetentionOptions,
+  useQueryStore,
 } from "./store";
 
 const MonacoSqlEditor = lazy(async () => {
@@ -2885,6 +2886,53 @@ function App() {
     }
   };
 
+  const exportCurrentTableSnapshot = async (): Promise<boolean> => {
+    if (
+      !currentTable ||
+      !tableBrowse ||
+      !result ||
+      result.columns.length === 0
+    ) {
+      notify("Browse a table and load rows before exporting a snapshot");
+      return false;
+    }
+    if (
+      tableBrowse.schema !== currentTable.schema ||
+      tableBrowse.name !== currentTable.name
+    ) {
+      notify("The active result is not the selected table");
+      return false;
+    }
+    const timestamp = new Date()
+      .toISOString()
+      .replaceAll(":", "-")
+      .slice(0, 19);
+    try {
+      const contents = serializeTableSnapshot(currentTable, result.rows, {
+        dialect: driverKind,
+        reportedRowCount: currentTable.rowCount,
+      });
+      const outcome = await saveTextFile(
+        contents,
+        `queryx-snapshot-${currentTable.schema}-${currentTable.name}-${timestamp}.sql`,
+        "SQL Snapshot",
+        "sql",
+        "application/sql;charset=utf-8",
+      );
+      if (outcome === "saved") {
+        notify(
+          `Exported ${result.rows.length.toLocaleString()} loaded rows as a reviewable SQL snapshot`,
+        );
+        return true;
+      }
+    } catch (error) {
+      notify(
+        `Snapshot export failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return false;
+  };
+
   const buildGridClipboard = (
     selection: GridSelection | null,
     includeHeaders: boolean,
@@ -4649,6 +4697,7 @@ function App() {
           onSelectTriggerRelation={selectTriggerRelation}
           onSelectDependency={selectDependencyObject}
           onBrowseTable={browseCurrentTable}
+          onExportSnapshot={exportCurrentTableSnapshot}
           onCopyDefinition={(definition) => {
             void navigator.clipboard
               .writeText(definition)
@@ -4673,6 +4722,10 @@ function App() {
           onCancel={() => setPendingSafety(null)}
           onRunInTransaction={() => handleRun("transaction", pendingSafety.sql)}
           onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
+          onExportSnapshot={exportCurrentTableSnapshot}
+          canExportSnapshot={Boolean(
+            currentTable && tableBrowse && result?.columns.length,
+          )}
         />
       )}
       {definitionEditTarget && (
@@ -9621,13 +9674,25 @@ function SafeModeDialog({
   onCancel,
   onRunInTransaction,
   onExecuteAnyway,
+  onExportSnapshot,
+  canExportSnapshot,
 }: {
   report: QuerySafetyReport;
   sql: string;
   onCancel: () => void;
   onRunInTransaction: () => void;
   onExecuteAnyway: () => void;
+  onExportSnapshot?: () => Promise<boolean>;
+  canExportSnapshot?: boolean;
 }) {
+  const [snapshotStatus, setSnapshotStatus] = useState<"idle" | "saved">(
+    "idle",
+  );
+  const highRiskSchema =
+    report.operation === "ALTER" ||
+    report.operation === "DROP" ||
+    report.operation === "TRUNCATE";
+
   return (
     <div className="modal-backdrop" role="presentation">
       <section
@@ -9656,6 +9721,37 @@ function SafeModeDialog({
               the statement or run it inside a transaction.
             </span>
           </div>
+          {highRiskSchema && (
+            <div className="safety-backup-note">
+              <strong>Before schema changes</strong>
+              <span>
+                Export the currently loaded table rows as a reviewable SQL
+                snapshot. It may be partial; verify row coverage before
+                restoring it.
+              </span>
+              {onExportSnapshot && (
+                <button
+                  type="button"
+                  className="modal-secondary"
+                  onClick={() =>
+                    void onExportSnapshot().then((saved) => {
+                      if (saved) setSnapshotStatus("saved");
+                    })
+                  }
+                  disabled={!canExportSnapshot}
+                >
+                  {snapshotStatus === "saved"
+                    ? "Snapshot exported"
+                    : "Export loaded snapshot"}
+                </button>
+              )}
+              {!canExportSnapshot && (
+                <small>
+                  Browse a table first to enable a loaded-row snapshot.
+                </small>
+              )}
+            </div>
+          )}
           <div className="modal-actions">
             <button
               type="button"
@@ -10499,6 +10595,7 @@ function Inspector({
   onSelectTriggerRelation,
   onSelectDependency,
   onBrowseTable,
+  onExportSnapshot,
   onCopyDefinition,
   onEditDefinition,
   onEditDefinitionForm,
@@ -10515,6 +10612,7 @@ function Inspector({
   onSelectTriggerRelation: (relation: TriggerMetadata["relation"]) => void;
   onSelectDependency: (object: DatabaseObjectRef) => void;
   onBrowseTable: () => void;
+  onExportSnapshot: () => Promise<boolean>;
   onCopyDefinition: (definition: string) => void;
   onEditDefinition: (definition: string, label: string) => void;
   onEditDefinitionForm: (
@@ -10860,14 +10958,24 @@ function Inspector({
               </small>
             </span>
             {table && (
-              <button
-                type="button"
-                className="inspector-action"
-                onClick={onBrowseTable}
-                title="Open the first 100 rows in a new query tab"
-              >
-                Browse data
-              </button>
+              <>
+                <button
+                  type="button"
+                  className="inspector-action"
+                  onClick={onBrowseTable}
+                  title="Open the first 100 rows in a new query tab"
+                >
+                  Browse data
+                </button>
+                <button
+                  type="button"
+                  className="inspector-action snapshot-action"
+                  onClick={() => void onExportSnapshot()}
+                  title="Export the currently loaded table rows as a reviewable SQL snapshot"
+                >
+                  Snapshot
+                </button>
+              </>
             )}
           </div>
           <div className="inspector-tabs">

@@ -158,6 +158,8 @@ export type {
 } from "./tableRowInsert";
 export { appendQueryChunk, limitQueryChunk } from "./queryStream";
 export type { LimitedQueryChunk } from "./queryStream";
+export { serializeTableSnapshot } from "./tableSnapshot";
+export type { TableSnapshotOptions } from "./tableSnapshot";
 export { buildExplainAnalyzeQuery, buildExplainQuery } from "./explain";
 export { parseExplainPlan } from "./planTree";
 export type {

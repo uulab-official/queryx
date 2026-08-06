@@ -3238,6 +3238,29 @@ button:disabled {
 .safety-note span {
   color: #b7a4a1;
 }
+.safety-backup-note {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 10px 11px;
+  border: 1px solid #3c4d38;
+  border-radius: 5px;
+  background: #182118;
+  color: #a7b99b;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.safety-backup-note strong {
+  color: #d5e9ad;
+  font-size: 10px;
+}
+.safety-backup-note button {
+  justify-self: start;
+}
+.safety-backup-note small {
+  color: #7f9380;
+  font: 9px var(--mono);
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;

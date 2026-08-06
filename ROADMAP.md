@@ -96,7 +96,7 @@ Goal: support production-oriented work without turning mistakes into incidents.
 - [x] Table creation, add-column, column rename, type/nullability/non-PK-drop, ordered UNIQUE/non-unique index-create, named UNIQUE/CHECK constraint create, regular index-drop, guarded index rename, index column/UNIQUE alteration, named foreign-key add/drop, view create/alter/drop, and routine/trigger definition forms with validation, SQL preview, explicit transaction apply, driver-aware manual review, dependency warnings, and metadata refresh; index storage options and multi-object routine/trigger forms remain planned
 - [x] Schema compare applied-migration confirmation and native durable migration history on top of the metadata dependency graph, privilege preflight, and forward/rollback preview; object-specific DDL forms remain planned
 - [x] Session audit trail stored locally with 0/1/7/30-day retention, 500-observation bound, literal/comment redaction, query-shape fingerprinting, workspace restore, and explicit clear
-- [ ] Backup/export warning flows before high-risk schema operations
+- [x] Reviewable SQL snapshot export for currently loaded table rows plus an explicit high-risk DDL backup warning; full database-native backups and all-row dump orchestration remain planned
 
 Release gates:
 

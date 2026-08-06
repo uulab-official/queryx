@@ -69,6 +69,8 @@ Editor models live in the local renderer process. SQL is sent only over the loca
 
 Safe Mode analyzes exactly the selected SQL when a selection is executed, so an unrelated safe statement elsewhere in the tab cannot bypass a destructive-query warning. Its shared structure-aware scanner ignores literals, comments, quoted identifiers, nested predicates, and CTE names, checks every statement in a document for an `UPDATE`/`DELETE` without a top-level `WHERE`, and warns for high-risk `TRUNCATE`/`DROP`/`ALTER` operations. QueryX does not run a preflight `COUNT` or claim an affected-row estimate; the warning clearly marks the impact as unknown until the statement is reviewed or executed inside a transaction.
 
+For high-risk schema changes, Safe Mode can export a reviewable snapshot of the currently loaded table-browser rows before execution. The file declares whether the loaded set is complete or partial; it is a safety aid, not a replacement for a full database-native backup.
+
 ## Performance
 
 The application shell and Monaco editor are separate build chunks. QueryX can render its navigation and connection state before loading the larger editor runtime. Only the SQL language contribution and the generic editor worker are included; TypeScript, HTML, CSS, and JSON language workers are excluded.

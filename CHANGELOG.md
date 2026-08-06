@@ -6,6 +6,7 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 
 ### Added
 
+- Added reviewable SQL snapshots from the selected table's loaded rows, with best-effort CREATE TABLE metadata, dialect-aware INSERTs, explicit complete/partial row coverage, and a Safe Mode backup warning before high-risk schema operations.
 - Added bounded native streaming with live rows-loaded telemetry, persisted 10k/100k/1m row caps, successful partial-result handling, and driver-aware cancellation when a cap is exceeded.
 - Added a structured execution-plan view for text-based Explain/Analyze results, with collapsible operator hierarchy, cost, estimated/actual row, and execution-time metrics while preserving raw Table/JSON output.
 - Replaced the Safe Mode regex check with a shared structure-aware SQL scanner that ignores literals, comments, quoted identifiers, nested predicates, dollar-quoted strings, and CTE names, checks every statement, warns for high-risk TRUNCATE/DROP/ALTER, and shows the exact pending SQL before a destructive action.

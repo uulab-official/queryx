@@ -46,6 +46,12 @@ Formula protection changes the exported representation of affected text cells in
 
 SQL INSERT export never executes the generated script. Review the target table, column order, constraints, and conflict behavior before running it in a query tab.
 
+## Table snapshots
+
+Select a table in Explorer and choose **Snapshot** in the Inspector to export the currently loaded table-browser rows as a reviewable `.sql` file. The snapshot includes a best-effort `CREATE TABLE`, dialect-aware `INSERT` statements, a transaction wrapper, and a row-coverage comment such as `Rows: 100 of 125 (partial)` or `Rows: 0 of 0 (complete)`. Unsafe or unrecognized catalog type labels omit the generated `CREATE TABLE` rather than copying untrusted type text into SQL.
+
+Snapshots are intentionally loaded-row exports, not full database backups. Load additional pages before exporting, confirm the coverage comment, and review constraints, generated columns, sequences, indexes, foreign keys, permissions, and vendor-specific types before restoring. High-risk `ALTER`, `DROP`, and `TRUNCATE` statements show the same loaded-row snapshot action in Safe Mode when a selected table result is available. Full native dump/restore orchestration remains planned.
+
 ## Staged row editing
 
 Row editing is available for SQLite, PostgreSQL, and MySQL/MariaDB tables with reported primary keys. Primary-key cells are locked and act as the update target. Enter `NULL` to stage a null value; numeric, boolean, and JSON columns receive basic value normalization before SQL generation. MySQL/MariaDB primary-key metadata is supported through `information_schema`; foreign-key-aware editor validation remains planned.
