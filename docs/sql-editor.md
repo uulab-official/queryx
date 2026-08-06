@@ -67,7 +67,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 
 Editor models live in the local renderer process. SQL is sent only over the local Tauri bridge to the selected database when explicitly executed. On native desktop, query text in tabs, history, and favorites is stored in the versioned local workspace snapshot; browser preview uses localStorage until the native storage migration is complete.
 
-Safe Mode analyzes exactly the selected SQL when a selection is executed, so an unrelated safe statement elsewhere in the tab cannot bypass a destructive-query warning. QueryX does not run a preflight `COUNT` or claim an affected-row estimate; the warning clearly marks the impact as unknown until the statement is reviewed or executed inside a transaction.
+Safe Mode analyzes exactly the selected SQL when a selection is executed, so an unrelated safe statement elsewhere in the tab cannot bypass a destructive-query warning. Its shared structure-aware scanner ignores literals, comments, quoted identifiers, nested predicates, and CTE names, checks every statement in a document for an `UPDATE`/`DELETE` without a top-level `WHERE`, and warns for high-risk `TRUNCATE`/`DROP`/`ALTER` operations. QueryX does not run a preflight `COUNT` or claim an affected-row estimate; the warning clearly marks the impact as unknown until the statement is reviewed or executed inside a transaction.
 
 ## Performance
 

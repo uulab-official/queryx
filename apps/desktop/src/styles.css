@@ -3090,6 +3090,19 @@ button:disabled {
   font-size: 10px;
   line-height: 1.4;
 }
+.safety-sql {
+  max-height: 150px;
+  margin: 0 0 12px;
+  padding: 10px 11px;
+  overflow: auto;
+  border: 1px solid #3b3030;
+  border-radius: 5px;
+  background: #171719;
+  color: #d8c9c4;
+  font: 10px / 1.55 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .safety-note strong {
   color: #ffaf85;
   font-size: 10px;

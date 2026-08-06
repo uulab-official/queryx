@@ -75,6 +75,6 @@ Every driver must test:
 
 ## Safety checks
 
-The query safety analyzer is intentionally conservative. It flags UPDATE and DELETE statements without a WHERE clause and does not attempt to estimate rows. The production Rust layer must use a parser or database-backed plan before showing an affected-row estimate.
+The query safety analyzer is intentionally conservative. It tokenizes SQL structure while skipping literals, comments, quoted identifiers, and dollar-quoted strings; it flags every UPDATE and DELETE whose own statement depth has no top-level WHERE, including destructive statements inside data-modifying CTEs, and flags high-risk TRUNCATE/DROP/ALTER operations. It does not attempt to estimate rows. Parser-backed or database-backed estimates remain a separate production gate.
 
 No test fixture may contain real credentials, production connection strings, or personal data. Use synthetic database names and deterministic rows.

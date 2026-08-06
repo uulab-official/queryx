@@ -4595,6 +4595,7 @@ function App() {
       {pendingSafety && (
         <SafeModeDialog
           report={pendingSafety.report}
+          sql={pendingSafety.sql}
           onCancel={() => setPendingSafety(null)}
           onRunInTransaction={() => handleRun("transaction", pendingSafety.sql)}
           onExecuteAnyway={() => handleRun("execute-anyway", pendingSafety.sql)}
@@ -9542,11 +9543,13 @@ function SchemaTargetDialog({
 
 function SafeModeDialog({
   report,
+  sql,
   onCancel,
   onRunInTransaction,
   onExecuteAnyway,
 }: {
   report: QuerySafetyReport;
+  sql: string;
   onCancel: () => void;
   onRunInTransaction: () => void;
   onExecuteAnyway: () => void;
@@ -9562,11 +9565,16 @@ function SafeModeDialog({
         <div className="danger-icon">!</div>
         <div>
           <p className="modal-kicker">SAFE MODE</p>
-          <h2 id="safe-mode-title">Dangerous query detected</h2>
+          <h2 id="safe-mode-title">Review potentially destructive query</h2>
           <p className="modal-copy">
-            {report.operation} has no WHERE clause. {report.reason}. This could
-            affect every matching row in the table.
+            {report.operation === "UPDATE" || report.operation === "DELETE" ? (
+              <>{report.operation} has no top-level WHERE clause.</>
+            ) : (
+              <>{report.operation} is a high-risk schema operation.</>
+            )}{" "}
+            {report.reason}. Review the statement before continuing.
           </p>
+          <pre className="safety-sql">{sql}</pre>
           <div className="safety-note">
             <strong>Impact estimate unavailable</strong>
             <span>

@@ -39,7 +39,7 @@ Known alpha limitations:
 - Native desktop now restores tabs, history, favorites, redacted session audit observations, and secret-free connection profiles from versioned SQLite workspace storage; browser preview remains localStorage-backed. Settings namespaces, named workspaces, and crash-recovery journals remain pending.
 - Native desktop passwords can be saved in the platform OS keychain; profile files retain only a `passwordStored` marker. Browser preview remains session-only.
 - Result rows are loaded into memory by page or stream; the desktop grid virtualizes large loaded sets, server-pages safe SELECT/WITH queries with database-side filter/sort, and all native drivers can stream 256-row chunks. Disk spill/backpressure and deterministic tie-breakers for arbitrary projections remain pending.
-- Safety analysis is lexical, not yet parser/plan backed.
+- Safety analysis uses a structure-aware lexical scanner that ignores literals, comments, quoted identifiers, nested predicates, CTE names, checks every statement, and warns for high-risk `TRUNCATE`/`DROP`/`ALTER` operations; parser/plan-backed analysis and affected-row estimates remain pending.
 - GitHub Release packaging and signed OTA verification are wired; the first production release still requires repository updater secrets and platform signing/notarization credentials.
 
 ## v0.2 — Daily query workflow

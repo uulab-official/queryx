@@ -28,7 +28,7 @@ Rust core
   └─ OS keychain
 ```
 
-The UI must never branch on database vendor details to render a result. Driver-specific behavior belongs behind `DatabaseDriver`, `DatabaseMetadata`, and `QueryResult` contracts. Safe Mode currently uses a shared conservative analyzer in the preview; the native layer must replace it with parser-backed analysis before production execution.
+The UI must never branch on database vendor details to render a result. Driver-specific behavior belongs behind `DatabaseDriver`, `DatabaseMetadata`, and `QueryResult` contracts. Safe Mode uses the shared structure-aware analyzer in `packages/core`: it preserves token boundaries and nesting across common dialects, warns for broad UPDATE/DELETE and high-risk TRUNCATE/DROP/ALTER operations, while parser-backed analysis and database-backed row estimates remain future gates.
 
 ## State boundaries
 

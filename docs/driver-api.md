@@ -132,4 +132,4 @@ Dependencies preserve normalized direction (`dependent → referenced`) and expl
 
 ## Safety
 
-Before an UPDATE or DELETE with no WHERE clause is executed, the query orchestration layer must produce a warning for Safe Mode. The UI can then choose Cancel, Run in Transaction, or Execute Anyway based on the user's explicit action.
+Before an UPDATE or DELETE whose own statement depth has no top-level WHERE clause, or a high-risk TRUNCATE/DROP/ALTER operation, is executed, the query orchestration layer produces a warning for Safe Mode. The shared analyzer ignores comments, literals, quoted identifiers, nested predicates, CTE names, and checks each statement in a document. The UI shows the exact pending SQL and can choose Cancel, Run in Transaction, or Execute Anyway based on the user's explicit action. It never fabricates an affected-row estimate.
