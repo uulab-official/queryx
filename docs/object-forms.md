@@ -13,7 +13,7 @@ The form supports:
 
 The add-column form additionally checks the selected table for duplicate names and generates a dialect-aware `ALTER TABLE ... ADD COLUMN` statement. It supports required/nullability and leaves defaults, generated values, and constraints in the editable SQL preview.
 
-The edit-columns form supports type and nullability changes plus non-primary-key column removal. PostgreSQL and MySQL/MariaDB receive dialect-aware executable statements. SQLite rebuild-required changes are shown as manual review and cannot be applied from the form. Primary-key changes remain manual across drivers.
+The edit-columns form supports column renames, type and nullability changes, plus non-primary-key column removal. PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle receive dialect-aware executable statements; SQL Server uses `sys.sp_rename` and MySQL/MariaDB uses `CHANGE COLUMN` when a rename is combined with type/nullability changes. SQLite rebuild-required renames and alterations are shown as manual review and cannot be applied from the form. Primary-key changes remain manual across drivers.
 
 The index form supports ordered single- and multi-column indexes, UNIQUE indexes, duplicate-name validation, missing-column validation, and redundancy warnings. It generates dialect-aware `CREATE INDEX` SQL and applies it only after confirmation.
 
@@ -27,4 +27,4 @@ The edit-view form validates the replacement definition against the current view
 
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Column renames, index alteration, CHECK/unique constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Index alteration, CHECK/unique constraint, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

@@ -7065,6 +7065,7 @@ function EditTableColumnsDialog({
 }) {
   const [columns, setColumns] = useState<EditTableColumnInput[]>(
     table.columns.map((column) => ({
+      originalName: column.name,
       name: column.name,
       type: column.type,
       nullable: column.nullable,
@@ -7109,8 +7110,8 @@ function EditTableColumnsDialog({
           </button>
         </div>
         <p className="modal-copy">
-          Edit type and nullability or mark a non-primary-key column for removal
-          on{" "}
+          Rename, edit type and nullability, or mark a non-primary-key column
+          for removal on{" "}
           <strong>
             {table.schema}.{table.name}
           </strong>
@@ -7120,12 +7121,15 @@ function EditTableColumnsDialog({
           {columns.map((column, index) => (
             <div
               className={`edit-column-row ${column.remove ? "marked-remove" : ""}`}
-              key={column.name}
+              key={column.originalName ?? `${column.name}-${index}`}
             >
               <input
                 value={column.name}
-                readOnly
                 aria-label={`Column ${index + 1} name`}
+                disabled={column.remove}
+                onChange={(event) =>
+                  updateColumn(index, { name: event.target.value })
+                }
               />
               <input
                 value={column.type}

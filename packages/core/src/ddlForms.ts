@@ -35,6 +35,7 @@ export interface AddColumnPlan {
 }
 
 export interface EditTableColumnInput {
+  originalName?: string;
   name: string;
   type: string;
   nullable: boolean;
@@ -129,6 +130,10 @@ function qualifiedName(
   driver: DriverKind,
 ): string {
   return `${quoteIdentifier(schema, driver)}.${quoteIdentifier(name, driver)}`;
+}
+
+function quoteSqlString(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function normalizeIdentifier(value: string): string {
@@ -337,12 +342,18 @@ export function buildEditTableColumnsPlan(
   const seen = new Set<string>();
   for (const column of input) {
     const name = normalizeIdentifier(column.name);
+    const originalName = normalizeIdentifier(
+      column.originalName ?? column.name,
+    );
     const normalizedName = name.toLocaleLowerCase();
+    const normalizedOriginalName = originalName.toLocaleLowerCase();
+    const nameError = identifierError("Column name", name);
+    if (nameError) errors.push(nameError);
     if (seen.has(normalizedName)) errors.push(`Duplicate column name: ${name}`);
     seen.add(normalizedName);
-    const current = existing.get(normalizedName);
+    const current = existing.get(normalizedOriginalName);
     if (!current) {
-      errors.push(`Unknown column: ${name}`);
+      errors.push(`Unknown column: ${originalName}`);
       continue;
     }
     const type = column.type.trim();
@@ -352,25 +363,36 @@ export function buildEditTableColumnsPlan(
       manual.push(`Primary-key change requires manual review: ${name}`);
       continue;
     }
+    const renamed = originalName !== name;
+    if (renamed && column.remove) {
+      errors.push(`Cannot rename and remove the same column: ${originalName}`);
+      continue;
+    }
     if (column.remove) {
       if (column.primaryKey) {
         manual.push(
-          `Cannot automatically remove a primary-key column: ${name}`,
+          `Cannot automatically remove a primary-key column: ${originalName}`,
         );
       } else if (driver === "sqlite") {
         manual.push(
-          `SQLite column drop requires manual table rebuild: ${name}`,
+          `SQLite column drop requires manual table rebuild: ${originalName}`,
         );
       } else {
         statements.push(
-          `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} DROP COLUMN ${quoteIdentifier(name, driver)};`,
+          `ALTER TABLE ${qualifiedName(table.schema, table.name, driver)} DROP COLUMN ${quoteIdentifier(originalName, driver)};`,
         );
       }
       continue;
     }
+    if (renamed && driver === "sqlite") {
+      manual.push(
+        `SQLite column rename requires manual table rebuild: ${originalName} → ${name}`,
+      );
+      continue;
+    }
     const typeChanged = type !== current.type;
     const nullabilityChanged = column.nullable !== current.nullable;
-    if (!typeChanged && !nullabilityChanged) continue;
+    if (!renamed && !typeChanged && !nullabilityChanged) continue;
     if (driver === "sqlite") {
       manual.push(
         `SQLite column alteration requires manual table rebuild: ${name}`,
@@ -381,10 +403,22 @@ export function buildEditTableColumnsPlan(
     const identifier = quoteIdentifier(name, driver);
     if (driver === "mysql") {
       statements.push(
-        `ALTER TABLE ${qualified} MODIFY COLUMN ${identifier} ${type}${column.nullable ? "" : " NOT NULL"};`,
+        renamed
+          ? `ALTER TABLE ${qualified} CHANGE COLUMN ${quoteIdentifier(originalName, driver)} ${identifier} ${type}${column.nullable ? "" : " NOT NULL"};`
+          : `ALTER TABLE ${qualified} MODIFY COLUMN ${identifier} ${type}${column.nullable ? "" : " NOT NULL"};`,
       );
       continue;
     }
+    if (renamed && driver === "sqlserver") {
+      statements.push(
+        `EXEC sys.sp_rename N${quoteSqlString(`${qualified}.${quoteIdentifier(originalName, driver)}`)}, N${quoteSqlString(name)}, 'COLUMN';`,
+      );
+    } else if (renamed) {
+      statements.push(
+        `ALTER TABLE ${qualified} RENAME COLUMN ${quoteIdentifier(originalName, driver)} TO ${identifier};`,
+      );
+    }
+    if (!typeChanged && !nullabilityChanged) continue;
     if (driver === "sqlserver") {
       statements.push(
         `ALTER TABLE ${qualified} ALTER COLUMN ${identifier} ${type}${column.nullable ? " NULL" : " NOT NULL"};`,

@@ -115,3 +115,4 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 
 - Added Markdown table and typed Excel-compatible SpreadsheetML exports to the result grid, with local save flows, escaping, formula-safe string cells, and serializer regression coverage.
 - Added database-side literal filter and selected-column sort for pageable single SELECT/WITH results, preserving the original editor SQL/history and carrying the applied plan across subsequent pages.
+- Added guarded column rename support to Edit Columns for PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle, with collision validation, vendor-specific SQL, and SQLite manual-rebuild review.

@@ -65,4 +65,85 @@ describe("buildEditTableColumnsPlan", () => {
     ]);
     expect(plan.sql).toContain("MANUAL REVIEW REQUIRED");
   });
+
+  it("generates a PostgreSQL rename before type and nullability changes", () => {
+    const plan = buildEditTableColumnsPlan(
+      table,
+      [
+        {
+          originalName: "id",
+          name: "user_id",
+          type: "bigint",
+          nullable: false,
+          primaryKey: true,
+          remove: false,
+        },
+        ...table.columns.slice(1).map((column) => ({
+          originalName: column.name,
+          ...column,
+          remove: false,
+        })),
+      ],
+      "postgres",
+    );
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.statements).toEqual([
+      'ALTER TABLE "public"."users" RENAME COLUMN "id" TO "user_id";',
+      'ALTER TABLE "public"."users" ALTER COLUMN "user_id" TYPE bigint;',
+    ]);
+  });
+
+  it("uses vendor-safe rename statements and blocks SQLite rename", () => {
+    const input = table.columns.map((column) => ({
+      originalName: column.name,
+      ...column,
+      name: column.name === "email" ? "email_address" : column.name,
+      remove: false,
+    }));
+    const mysql = buildEditTableColumnsPlan(table, input, "mysql");
+    expect(mysql.errors).toEqual([]);
+    expect(mysql.statements).toEqual([
+      "ALTER TABLE `public`.`users` CHANGE COLUMN `email` `email_address` text;",
+    ]);
+
+    const sqlserver = buildEditTableColumnsPlan(table, input, "sqlserver");
+    expect(sqlserver.errors).toEqual([]);
+    expect(sqlserver.statements[0]).toContain("sys.sp_rename");
+    expect(sqlserver.statements[0]).toContain("email_address");
+
+    const sqlite = buildEditTableColumnsPlan(table, input, "sqlite");
+    expect(sqlite.statements).toEqual([]);
+    expect(sqlite.manual).toEqual([
+      "SQLite column rename requires manual table rebuild: email → email_address",
+    ]);
+  });
+
+  it("rejects renamed columns that collide or are also marked for removal", () => {
+    const collision = buildEditTableColumnsPlan(
+      table,
+      table.columns.map((column) => ({
+        originalName: column.name,
+        ...column,
+        name: column.name === "email" ? "id" : column.name,
+        remove: false,
+      })),
+      "postgres",
+    );
+    expect(collision.errors).toContain("Duplicate column name: id");
+
+    const removeRename = buildEditTableColumnsPlan(
+      table,
+      table.columns.map((column) => ({
+        originalName: column.name,
+        ...column,
+        name: column.name === "legacy" ? "archived" : column.name,
+        remove: column.name === "legacy",
+      })),
+      "postgres",
+    );
+    expect(removeRename.errors).toContain(
+      "Cannot rename and remove the same column: legacy",
+    );
+  });
 });
