@@ -62,6 +62,19 @@ export interface CreateIndexPlan {
   warnings: string[];
 }
 
+export interface AlterIndexInput {
+  columns: string[];
+  unique: boolean;
+}
+
+export interface AlterIndexPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+  warnings: string[];
+}
+
 export type TableConstraintKind = "unique" | "check";
 
 export interface CreateTableConstraintInput {
@@ -578,6 +591,88 @@ export function buildCreateIndexPlan(
   return {
     sql: `CREATE ${input.unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${tableName} (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")});`,
     errors: [],
+    warnings,
+  };
+}
+
+export function buildAlterIndexPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "columns" | "indexes">,
+  indexName: string,
+  input: AlterIndexInput,
+  driver: DriverKind,
+): AlterIndexPlan {
+  const name = normalizeIdentifier(indexName);
+  const errors = [identifierError("Index name", name)].filter(
+    (error): error is string => Boolean(error),
+  );
+  const index = table.indexes.find((candidate) => candidate.name === name);
+  if (!index && name) errors.push(`Index does not exist: ${name}`);
+  const columns = input.columns.map(normalizeIdentifier).filter(Boolean);
+  if (columns.length === 0) errors.push("Select at least one column");
+  const seen = new Set<string>();
+  for (const column of columns) {
+    const normalized = column.toLocaleLowerCase();
+    if (seen.has(normalized)) errors.push(`Duplicate index column: ${column}`);
+    seen.add(normalized);
+    if (!table.columns.some((candidate) => candidate.name === column)) {
+      errors.push(`Column does not exist: ${column}`);
+    }
+  }
+  if (index?.primary) {
+    const message = `Primary index cannot be altered from the index form: ${name}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors,
+      manual: errors.length > 0 ? [] : [message],
+      warnings: [],
+    };
+  }
+  if (
+    index &&
+    index.unique === input.unique &&
+    index.columns.length === columns.length &&
+    index.columns.every((column, position) => column === columns[position])
+  ) {
+    errors.push("Change at least one index property before continuing");
+  }
+  if (errors.length > 0 || !index) {
+    return { sql: "", statements: [], errors, manual: [], warnings: [] };
+  }
+  if (driver === "sqlite") {
+    const message = `SQLite index alteration requires manual review: ${name}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors: [],
+      manual: [message],
+      warnings: [],
+    };
+  }
+  const qualifiedTable = qualifiedName(table.schema, table.name, driver);
+  const quotedIndex = quoteIdentifier(name, driver);
+  const create = `CREATE ${input.unique ? "UNIQUE " : ""}INDEX ${driver === "mysql" || driver === "sqlserver" ? quotedIndex : qualifiedName(table.schema, name, driver)} ON ${qualifiedTable} (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")});`;
+  const warnings = ["This operation drops and recreates the selected index"];
+  if (driver === "mysql") {
+    const statement = `ALTER TABLE ${qualifiedTable} DROP INDEX ${quotedIndex}, ADD ${input.unique ? "UNIQUE " : ""}INDEX ${quotedIndex} (${columns.map((column) => quoteIdentifier(column, driver)).join(", ")});`;
+    return {
+      sql: statement,
+      statements: [statement],
+      errors: [],
+      manual: [],
+      warnings,
+    };
+  }
+  const drop =
+    driver === "sqlserver"
+      ? `DROP INDEX ${quotedIndex} ON ${qualifiedTable};`
+      : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
+  const statements = [drop, create];
+  return {
+    sql: statements.join("\n"),
+    statements,
+    errors: [],
+    manual: [],
     warnings,
   };
 }

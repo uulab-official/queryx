@@ -23,6 +23,8 @@ The drop-index form supports regular indexes and protects primary indexes. Postg
 
 The rename-index form validates the current index, new-name collisions, and no-op renames. PostgreSQL/Oracle use `ALTER INDEX ... RENAME TO`, MySQL/MariaDB uses `ALTER TABLE ... RENAME INDEX`, and SQL Server uses `sys.sp_rename`. Primary indexes and SQLite renames are shown as manual review and cannot be applied from the form.
 
+The alter-index form changes ordered columns and UNIQUE state for a regular index. PostgreSQL/Oracle/SQL Server preview a DROP plus CREATE batch, while MySQL/MariaDB uses one `ALTER TABLE ... DROP INDEX ..., ADD INDEX ...` statement. The operation warns that the index is rebuilt, rejects no-op or invalid changes, and protects primary indexes and SQLite with manual review.
+
 The foreign-key forms support named single- and composite-column relationships, visible referenced tables, `ON UPDATE`/`ON DELETE` actions, duplicate/missing-column validation, and dialect-aware SQL. PostgreSQL uses `DROP CONSTRAINT`, MySQL/MariaDB uses `DROP FOREIGN KEY`, and SQLite additions/removals remain manual table-rebuild operations.
 
 The create-view form accepts one read-only `SELECT` or `WITH` definition, checks schema/name collisions against the current metadata snapshot, rejects comments, delimiters, and mutating DML/DDL keywords, and applies the generated dialect-aware `CREATE VIEW` statement only after confirmation. The SQL preview can also be opened in a normal query tab for review or vendor-specific edits.
@@ -33,4 +35,4 @@ Routine, relation-trigger, and PostgreSQL event-trigger inspectors provide **Edi
 
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Broader index alteration and multi-object routine/trigger migration forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Index storage options, expression/include/partial indexes, and multi-object routine/trigger migration forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

@@ -19,6 +19,7 @@ import { check } from "@tauri-apps/plugin-updater";
 import {
   buildAddColumnPlan,
   buildAddForeignKeyPlan,
+  buildAlterIndexPlan,
   buildAlterViewPlan,
   buildCsvImportPlan,
   buildCreateTableConstraintPlan,
@@ -74,6 +75,8 @@ import type {
   AddColumnPlan,
   AddForeignKeyInput,
   AddForeignKeyPlan,
+  AlterIndexInput,
+  AlterIndexPlan,
   AlterViewPlan,
   CsvImportMapping,
   CsvImportPlan,
@@ -636,6 +639,7 @@ function App() {
   const [addColumnOpen, setAddColumnOpen] = useState(false);
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
+  const [alterIndexOpen, setAlterIndexOpen] = useState(false);
   const [dropIndexOpen, setDropIndexOpen] = useState(false);
   const [renameIndexOpen, setRenameIndexOpen] = useState(false);
   const [addForeignKeyOpen, setAddForeignKeyOpen] = useState(false);
@@ -1067,6 +1071,39 @@ function App() {
     await loadMetadata();
     setCreateIndexOpen(false);
     notify("Index created and metadata refreshed");
+  };
+  const openAlterIndex = () => {
+    if (!currentTable) {
+      notify("Select a table before altering an index");
+      return;
+    }
+    setAlterIndexOpen(true);
+  };
+  const alterIndex = async (plan: AlterIndexPlan) => {
+    if (
+      !plan.sql ||
+      plan.errors.length > 0 ||
+      plan.manual.length > 0 ||
+      plan.statements.length === 0
+    )
+      return;
+    if (readOnlyConnection) {
+      notify("Index changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Apply these index changes in one transaction?"))
+      return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Index alteration failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setAlterIndexOpen(false);
+    notify("Index altered and metadata refreshed");
   };
   const openCreateConstraint = () => {
     if (!currentTable) {
@@ -3111,6 +3148,15 @@ function App() {
       execute: openRenameIndex,
     },
     {
+      id: "alter-index",
+      label: "Alter index columns on selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openAlterIndex,
+    },
+    {
       id: "add-foreign-key",
       label: "Add foreign key to selected table",
       hint: currentTable
@@ -4746,6 +4792,20 @@ function App() {
             setSql(plan.sql);
             setCreateIndexOpen(false);
             notify("Opened CREATE INDEX preview in a new SQL tab");
+          }}
+        />
+      )}
+      {alterIndexOpen && currentTable && (
+        <AlterIndexDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setAlterIndexOpen(false)}
+          onApply={alterIndex}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setAlterIndexOpen(false);
+            notify("Opened index alteration preview in a new SQL tab");
           }}
         />
       )}
@@ -7367,6 +7427,196 @@ function CreateTableConstraintDialog({
             }
           >
             Add constraint
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function AlterIndexDialog({
+  driverKind,
+  table,
+  onClose,
+  onApply,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onApply: (plan: AlterIndexPlan) => Promise<void>;
+  onOpenSql: (plan: AlterIndexPlan) => void;
+}) {
+  const initialIndex =
+    table.indexes.find((index) => !index.primary) ?? table.indexes[0];
+  const [indexName, setIndexName] = useState(initialIndex?.name ?? "");
+  const [input, setInput] = useState<AlterIndexInput>({
+    columns: initialIndex?.columns ?? [table.columns[0]?.name ?? ""],
+    unique: initialIndex?.unique ?? false,
+  });
+  const plan = useMemo(
+    () => buildAlterIndexPlan(table, indexName, input, driverKind),
+    [driverKind, indexName, input, table],
+  );
+  const selectIndex = (name: string) => {
+    const index = table.indexes.find((candidate) => candidate.name === name);
+    setIndexName(name);
+    setInput({
+      columns: index?.columns ?? [],
+      unique: index?.unique ?? false,
+    });
+  };
+  const updateColumn = (index: number, value: string) => {
+    setInput((current) => ({
+      ...current,
+      columns: current.columns.map((column, columnIndex) =>
+        columnIndex === index ? value : column,
+      ),
+    }));
+  };
+  const addColumn = () =>
+    setInput((current) => ({ ...current, columns: [...current.columns, ""] }));
+  const removeColumn = (index: number) =>
+    setInput((current) => ({
+      ...current,
+      columns: current.columns.filter(
+        (_, columnIndex) => columnIndex !== index,
+      ),
+    }));
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="create-index-modal"
+        aria-modal="true"
+        aria-labelledby="alter-index-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · INDEX</p>
+            <h2 id="alter-index-title">Alter index</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close alter index form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Change the ordered columns or UNIQUE property of an index on{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>
+          . QueryX previews a guarded drop/recreate operation; primary indexes
+          and SQLite remain manual review.
+        </p>
+        <div className="create-index-fields">
+          <label className="drop-index-select" htmlFor="alter-index-name">
+            Index
+            <select
+              id="alter-index-name"
+              value={indexName}
+              onChange={(event) => selectIndex(event.target.value)}
+            >
+              {table.indexes.map((index) => (
+                <option key={index.name} value={index.name}>
+                  {index.name} {index.primary ? "(primary)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="create-table-check create-index-unique">
+            <input
+              type="checkbox"
+              checked={input.unique}
+              onChange={(event) =>
+                setInput((current) => ({
+                  ...current,
+                  unique: event.target.checked,
+                }))
+              }
+            />
+            UNIQUE
+          </label>
+        </div>
+        <div className="create-table-columns-heading">
+          <strong>Indexed columns (order matters)</strong>
+          <button type="button" className="mini-button" onClick={addColumn}>
+            + Add column
+          </button>
+        </div>
+        <div className="index-column-list" aria-label="Altered index columns">
+          {input.columns.map((column, index) => (
+            <div className="index-column-row" key={`${index}-${column}`}>
+              <span>{index + 1}</span>
+              <select
+                value={column}
+                onChange={(event) => updateColumn(index, event.target.value)}
+                aria-label={`Alter index column ${index + 1}`}
+              >
+                <option value="">Select column…</option>
+                {table.columns.map((candidate) => (
+                  <option key={candidate.name} value={candidate.name}>
+                    {candidate.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="mini-button"
+                onClick={() => removeColumn(index)}
+                disabled={input.columns.length === 1}
+                aria-label={`Remove altered index column ${index + 1}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.warnings.map((warning) => (
+          <div className="create-index-warning" key={warning}>
+            ⚠ {warning}
+          </div>
+        ))}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {plan.sql && <pre className="create-table-preview">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onApply(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Apply index
           </button>
         </div>
       </dialog>
