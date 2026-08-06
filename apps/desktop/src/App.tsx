@@ -63,13 +63,14 @@ import {
   parseCsv,
   parseJsonRows,
   serializeRowsToCsv,
-  serializeRowsToExcelXml,
+  serializeRowsToXlsx,
   serializeRowsToJson,
   serializeRowsToMarkdown,
   serializeRowsToSqlDelete,
   serializeRowsToSqlInsert,
   serializeRowsToSqlUpdate,
   serializeRowsToTsv,
+  xlsxContentType,
 } from "@queryx/core";
 import type {
   AddColumnInput,
@@ -129,7 +130,7 @@ import type {
   ViewMetadata,
 } from "@queryx/shared";
 import type { SqlCompletion, SqlEditorHandle } from "./SqlEditor";
-import { saveTextFile } from "./exportCsv";
+import { saveBinaryFile, saveTextFile } from "./exportCsv";
 import {
   deleteConnectionPassword,
   loadConnectionPassword,
@@ -2779,7 +2780,7 @@ function App() {
       .replaceAll(":", "-")
       .slice(0, 19);
     try {
-      let contents: string;
+      let contents: string | Uint8Array;
       let extension: string;
       let filterName: string;
       let mimeType: string;
@@ -2803,11 +2804,11 @@ function App() {
         mimeType = "text/markdown;charset=utf-8";
         suggestedName = `queryx-results-${timestamp}.md`;
       } else if (format === "excel") {
-        contents = serializeRowsToExcelXml(result.columns, filteredRows);
-        extension = "xml";
-        filterName = "Excel XML";
-        mimeType = "application/xml;charset=utf-8";
-        suggestedName = `queryx-results-${timestamp}.xml`;
+        contents = serializeRowsToXlsx(result.columns, filteredRows);
+        extension = "xlsx";
+        filterName = "Excel Workbook";
+        mimeType = xlsxContentType;
+        suggestedName = `queryx-results-${timestamp}.xlsx`;
       } else {
         const tableName = window.prompt(
           "Target table for generated SQL INSERT statements",
@@ -2826,13 +2827,22 @@ function App() {
         mimeType = "application/sql;charset=utf-8";
         suggestedName = `queryx-results-${timestamp}.sql`;
       }
-      const outcome = await saveTextFile(
-        contents,
-        suggestedName,
-        filterName,
-        extension,
-        mimeType,
-      );
+      const outcome =
+        typeof contents === "string"
+          ? await saveTextFile(
+              contents,
+              suggestedName,
+              filterName,
+              extension,
+              mimeType,
+            )
+          : await saveBinaryFile(
+              contents,
+              suggestedName,
+              filterName,
+              extension,
+              mimeType,
+            );
       if (outcome === "saved")
         notify(
           `Exported ${filteredRows.length.toLocaleString()} rows as ${format.toUpperCase()} locally`,
@@ -4154,8 +4164,8 @@ function App() {
                         role="menuitem"
                         onClick={() => void exportResults("excel")}
                       >
-                        <strong>Excel XML</strong>
-                        <small>Open in Excel</small>
+                        <strong>Excel Workbook</strong>
+                        <small>Standard .xlsx</small>
                       </button>
                     </div>
                   )}

@@ -27,7 +27,7 @@ Choose **Export** after a query returns columns and choose a format. QueryX expo
 - **JSON** emits an ordered array of row objects and converts BigInt/date values into portable JSON values.
 - **SQL INSERT** asks for a target table name, quotes identifiers for the active dialect, escapes values, and wraps replayable statements in `BEGIN`/`COMMIT`. It is generated text, never an automatic database write.
 - **Markdown** emits a pipe table with escaped pipes, HTML-sensitive characters, and line breaks, making a filtered result easy to paste into an issue, pull request, or design document.
-- **Excel XML** emits typed SpreadsheetML (`.xml`) with String, Number, Boolean, and DateTime cells. Microsoft Excel opens the file directly; values are serialized as cells rather than formulas, so result text is not evaluated as spreadsheet code.
+- **Excel Workbook** emits a standard OpenXML `.xlsx` package with typed Number, Boolean, and inline String cells. It opens in Excel, LibreOffice, and compatible spreadsheet tools; result text is never serialized as a formula.
 
 In the native app, a save dialog asks for an explicit path with the selected extension. The browser development mode uses the browser download mechanism. Export is performed locally and does not use a QueryX service.
 

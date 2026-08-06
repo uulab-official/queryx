@@ -21,6 +21,7 @@ export type {
 } from "./csvExport";
 export { serializeRowsToTsv } from "./clipboard";
 export type { ClipboardExportOptions } from "./clipboard";
+export { serializeRowsToXlsx, xlsxContentType } from "./xlsxExport";
 export {
   buildDependencyIndex,
   databaseObjectRefKey,
