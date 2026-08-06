@@ -4,7 +4,7 @@
 
 The native PostgreSQL driver uses SQLx and implements the shared QueryX `DatabaseDriver` contract. It supports pooled connections, direct and single-statement transactional execution, server-side cancellation, common PostgreSQL value normalization, and Explorer metadata for accessible databases, schemas, tables, views, columns, estimated row counts, primary keys, indexes, composite foreign keys, functions, procedures, aggregates, window functions, relation triggers, event triggers, and direct object dependencies.
 
-PostgreSQL advertises `explain`. QueryX sends a single `EXPLAIN` statement through the existing execution and cancellation path, so PostgreSQL returns its text plan as normal result rows. The baseline action does not add `ANALYZE` and therefore does not execute the target statement.
+PostgreSQL advertises `explain`. QueryX sends a single `EXPLAIN` statement through the existing execution and cancellation path, so PostgreSQL returns its text plan as normal result rows. The **Explain** action does not add `ANALYZE` and therefore does not execute the target statement. The separate **Analyze** action sends `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` only after explicit confirmation and executes the target statement.
 
 ## Routine catalog
 

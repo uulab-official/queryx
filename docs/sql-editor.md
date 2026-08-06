@@ -18,6 +18,8 @@ Choose **Format** or press Cmd/Ctrl+L to apply a conservative SQL layout. Common
 
 Choose **Explain** to run a non-executing `EXPLAIN` wrapper for the active SQL document. The plan appears in the normal result grid, is cancellable where the driver supports cancellation, and is recorded in local query history. QueryX explains one statement at a time and never generates `EXPLAIN ANALYZE` from this button.
 
+Choose **Analyze** to run `EXPLAIN ANALYZE` after an explicit confirmation. PostgreSQL uses `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)` and MySQL/MariaDB uses `EXPLAIN ANALYZE`; both execute the target statement, so functions, writes, locks, and production resource usage are possible. SQLite, SQL Server, and Oracle remain disabled until their database-specific execution-plan contracts are implemented.
+
 Use **Begin** to switch the connection from **Auto-commit** to an explicit native transaction session. Queries, streamed results, and table-editor batches keep using the same database connection until **Commit** or **Rollback** is chosen. The status bar shows the current state; disconnecting an unfinished session rolls it back. **Run in Transaction** remains the one-shot rollback-on-error workflow for a complete SQL document.
 
 Click the ♡ toolbar button to save the active SQL to local **Favorites**. Press Cmd/Ctrl+P or click the Explorer search icon to open **Quick Open**, which searches favorites and recent queries by label or SQL. Selecting a result only loads it into the active tab; it never executes during recall. Favorites are deduplicated by SQL text and capped at 50 entries; see [Workspaces](workspaces.md) for the persistence boundary.
@@ -58,6 +60,7 @@ From a relation, trigger, event-trigger, or function/procedure Inspector, choose
 - Commit — commit the active transaction session
 - Rollback — discard the active transaction session
 - Explain — show a non-executing plan for the active document
+- Analyze — execute PostgreSQL/MySQL/MariaDB `EXPLAIN ANALYZE` after confirmation
 - Monaco standard undo, redo, multi-cursor, and line movement shortcuts remain available
 
 ## Safety and privacy
@@ -77,7 +80,7 @@ The application shell and Monaco editor are separate build chunks. QueryX can re
 - Completion is metadata-based; aliases, joins, CTE scope, functions, and dialect-aware ranking are not parsed yet.
 - Tabs, active-tab selection, dirty SQL, history, and favorites are restored from the native workspace snapshot or browser preview fallback; settings, cross-profile recovery, and SQLite migration remain planned.
 - SQLite does not yet support native cancellation; the Cancel control is capability-driven and currently available for PostgreSQL/MySQL/MariaDB. SQLite streaming remains available without cancellation.
-- Explain currently uses the database's text/row plan result in the shared result grid. Visual plan graphs and `EXPLAIN ANALYZE` controls remain planned.
+- Explain and Analyze currently use the database's text/row plan result in the shared result grid. Visual plan graphs, cost limits, and SQL Server/Oracle/SQLite analyze contracts remain planned.
 - Result-grid copy operates on the currently visible filtered/sorted page; CSV export includes all loaded filtered/sorted rows. Single safe SELECT/WITH results support **Apply to query** for database-side literal filtering and selected-column ordering before loading another page. Binary viewers and spill-to-disk remain planned.
 
 ## Related

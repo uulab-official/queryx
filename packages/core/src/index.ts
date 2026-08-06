@@ -156,8 +156,10 @@ export type {
   TableRowInsertValue,
 } from "./tableRowInsert";
 export { appendQueryChunk } from "./queryStream";
-export { buildExplainQuery } from "./explain";
+export { buildExplainAnalyzeQuery, buildExplainQuery } from "./explain";
 export type {
+  ExplainAnalyzeQuery,
+  ExplainAnalyzeQueryResult,
   ExplainQuery,
   ExplainQueryError,
   ExplainQueryResult,

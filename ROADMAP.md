@@ -59,7 +59,7 @@ Goal: make SQLite and PostgreSQL reliable for sustained everyday query work.
 - [x] PostgreSQL/MySQL/MariaDB SSL modes with CA, client certificate, and client key file paths plus native OpenSSH local tunnels
 - [x] Conservative SQL formatter with literal/comment preservation; dialect-aware parser and diagnostics remain planned
 - [x] Non-executing EXPLAIN plan result viewer with capability gating and cancellation/history reuse
-- [ ] EXPLAIN ANALYZE with explicit execution warning and database-specific cost controls
+- [x] PostgreSQL/MySQL EXPLAIN ANALYZE with explicit execution warning and one-statement validation; database-specific cost controls and SQL Server/Oracle/SQLite contracts remain planned
 - [x] Virtualized result grid for large loaded sets with bounded DOM rows, overscan, global selection indices, scroll spacers, 100-row server paging with database-side filter/sort for safe SELECT/WITH queries and table browsing, and all native drivers' cursor-backed 256-row result streaming; progress telemetry and disk spill/backpressure remain planned
 - [x] Result-grid column resizing with mouse and keyboard controls; incremental fetch, server paging, reorder, and freeze remain planned
 - [x] Keyed table browser incremental fetch in 100-row pages with deterministic primary-key ordering, dialect-aware server filtering/sorting, literal wildcard escaping, and unapplied-order protection; safe arbitrary SELECT/WITH server paging and filter/sort are also available

@@ -1,5 +1,12 @@
+import type { DriverKind } from "@queryx/shared";
+
 export interface ExplainQuery {
   sql: string;
+}
+
+export interface ExplainAnalyzeQuery {
+  sql: string;
+  warning: string;
 }
 
 export interface ExplainQueryError {
@@ -8,6 +15,10 @@ export interface ExplainQueryError {
 
 export type ExplainQueryResult =
   | { ok: true; query: ExplainQuery }
+  | { ok: false; error: ExplainQueryError };
+
+export type ExplainAnalyzeQueryResult =
+  | { ok: true; query: ExplainAnalyzeQuery }
   | { ok: false; error: ExplainQueryError };
 
 /**
@@ -41,6 +52,52 @@ export function buildExplainQuery(sql: string): ExplainQueryResult {
   }
 
   return { ok: true, query: { sql: `EXPLAIN ${statement}` } };
+}
+
+export function buildExplainAnalyzeQuery(
+  sql: string,
+  driver: DriverKind,
+): ExplainAnalyzeQueryResult {
+  const statement = sql.trim();
+  const executableStatement = withoutLeadingComments(statement).trim();
+  if (!statement) {
+    return { ok: false, error: { message: "Enter SQL before explaining it" } };
+  }
+  if (/^EXPLAIN\b/i.test(executableStatement)) {
+    return {
+      ok: false,
+      error: {
+        message:
+          "Remove the existing EXPLAIN prefix; QueryX adds the ANALYZE wrapper",
+      },
+    };
+  }
+  if (hasMultipleStatements(statement)) {
+    return {
+      ok: false,
+      error: { message: "Explain one SQL statement at a time" },
+    };
+  }
+  if (driver !== "postgres" && driver !== "mysql") {
+    return {
+      ok: false,
+      error: {
+        message: `EXPLAIN ANALYZE is not supported for ${driver === "sqlite" ? "SQLite" : driver === "sqlserver" ? "SQL Server" : "Oracle"}`,
+      },
+    };
+  }
+  const wrappedSql =
+    driver === "postgres"
+      ? `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${statement}`
+      : `EXPLAIN ANALYZE ${statement}`;
+  return {
+    ok: true,
+    query: {
+      sql: wrappedSql,
+      warning:
+        "EXPLAIN ANALYZE executes the statement and may change database state",
+    },
+  };
 }
 
 function withoutLeadingComments(sql: string): string {

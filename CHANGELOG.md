@@ -120,3 +120,4 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added guarded selected-table index rename forms with PostgreSQL/Oracle, MySQL/MariaDB, and SQL Server SQL generation plus primary-index and SQLite manual-review boundaries.
 - Added routine, relation-trigger, and event-trigger definition forms with DDL boundary validation, exact SQL preview, transactional apply, metadata refresh, and SQLite manual-review protection.
 - Added selected-table index alteration forms for ordered columns and UNIQUE state, with vendor-specific rebuild SQL, no-op validation, rebuild warnings, and primary/SQLite manual-review protection.
+- Added explicit-confirmation EXPLAIN ANALYZE for PostgreSQL and MySQL/MariaDB with single-statement validation; unsupported SQLite, SQL Server, and Oracle execution-analysis paths remain clearly gated.

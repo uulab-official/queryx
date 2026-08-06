@@ -10,6 +10,8 @@ QueryX includes an initial native MySQL/MariaDB driver for the common connect â†
 - information_schema metadata for tables, views, columns, approximate table row counts, indexes, foreign keys, routines, triggers, and direct relation dependencies;
 - read-only sessions: the pool requests read-only transactions and the native driver rejects non-read statements before execution;
 - capability reporting for transactions, explain, streaming, cancellation, and editing;
+
+The **Analyze** action uses MySQL/MariaDB `EXPLAIN ANALYZE` only after explicit confirmation. It executes the target statement and depends on the server version supporting that syntax; the non-executing **Explain** action remains available through the shared capability path.
 - explicit sessions reserve one pooled MySQL/MariaDB connection until commit or rollback; disconnect rolls back unfinished work.
 - 256-row native result chunks for single row-returning statements, with incremental Tauri delivery and the same result contract as PostgreSQL;
 - active-query cancellation through a separate local control connection using `KILL QUERY` against the execution connection ID.

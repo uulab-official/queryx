@@ -36,6 +36,7 @@ import {
   buildDropForeignKeyPlan,
   buildDropViewPlan,
   buildErdDiagram,
+  buildExplainAnalyzeQuery,
   buildSchemaMigrationStatements,
   buildRowsToSqlDeleteStatements,
   buildRowsToSqlUpdateStatements,
@@ -1712,6 +1713,32 @@ function App() {
     setServerQueryPage(null);
     void runQuery("explain", explain.query.sql);
   };
+  const handleExplainAnalyze = () => {
+    if (pendingEditCount > 0) {
+      notify(
+        "Review or discard staged row edits before analyzing another query",
+      );
+      return;
+    }
+    if (!canExplain) {
+      notify("Explain plans are not supported by this connection");
+      return;
+    }
+    const analyze = buildExplainAnalyzeQuery(sql, driverKind);
+    if (!analyze.ok) {
+      notify(analyze.error.message);
+      return;
+    }
+    if (!window.confirm(`${analyze.query.warning}. Continue?`)) return;
+    setPendingSafety(null);
+    setGridSelection(null);
+    setTableBrowse(null);
+    setServerQueryPage(null);
+    setResultView("table");
+    void runQuery("normal", analyze.query.sql, {
+      historySql: sql.trim(),
+    });
+  };
   const openCommandPalette = () => {
     setQuickOpenOpen(false);
     setCommandQuery("");
@@ -2920,6 +2947,13 @@ function App() {
       execute: handleExplain,
     },
     {
+      id: "explain-analyze",
+      label: "Explain analyze query",
+      hint: "executes query · confirmation required",
+      disabled: isRunning || !canExplain,
+      execute: handleExplainAnalyze,
+    },
+    {
       id: "stream",
       label: "Stream query results",
       hint: "Native drivers · chunked",
@@ -3791,6 +3825,19 @@ function App() {
                   }
                 >
                   Explain
+                </button>
+                <button
+                  type="button"
+                  className="toolbar-button transaction-button"
+                  onClick={handleExplainAnalyze}
+                  disabled={isRunning || !canExplain}
+                  title={
+                    canExplain
+                      ? "Execute the active statement with EXPLAIN ANALYZE after confirmation"
+                      : "EXPLAIN ANALYZE is not supported by this connection"
+                  }
+                >
+                  Analyze
                 </button>
                 <button
                   type="button"
