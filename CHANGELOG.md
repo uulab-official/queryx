@@ -117,3 +117,4 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 - Added database-side literal filter and selected-column sort for pageable single SELECT/WITH results, preserving the original editor SQL/history and carrying the applied plan across subsequent pages.
 - Added guarded column rename support to Edit Columns for PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle, with collision validation, vendor-specific SQL, and SQLite manual-rebuild review.
 - Added named UNIQUE/CHECK table-constraint form support for the initial native drivers, with safe expression validation, redundancy warnings, and SQLite manual-rebuild review.
+- Added guarded selected-table index rename forms with PostgreSQL/Oracle, MySQL/MariaDB, and SQL Server SQL generation plus primary-index and SQLite manual-review boundaries.

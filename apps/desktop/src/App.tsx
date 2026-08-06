@@ -42,6 +42,7 @@ import {
   buildExplainQuery,
   buildQueryPagePlan,
   buildQueryResultFilterPlan,
+  buildRenameIndexPlan,
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
@@ -84,6 +85,7 @@ import type {
   CreateIndexPlan,
   CreateViewPlan,
   DropIndexPlan,
+  RenameIndexPlan,
   DropForeignKeyPlan,
   DropViewPlan,
   EditTableColumnInput,
@@ -626,6 +628,7 @@ function App() {
   const [editColumnsOpen, setEditColumnsOpen] = useState(false);
   const [createIndexOpen, setCreateIndexOpen] = useState(false);
   const [dropIndexOpen, setDropIndexOpen] = useState(false);
+  const [renameIndexOpen, setRenameIndexOpen] = useState(false);
   const [addForeignKeyOpen, setAddForeignKeyOpen] = useState(false);
   const [dropForeignKeyOpen, setDropForeignKeyOpen] = useState(false);
   const [createViewOpen, setCreateViewOpen] = useState(false);
@@ -1085,6 +1088,38 @@ function App() {
     await loadMetadata();
     setDropIndexOpen(false);
     notify("Index dropped and metadata refreshed");
+  };
+  const openRenameIndex = () => {
+    if (!currentTable) {
+      notify("Select a table before renaming an index");
+      return;
+    }
+    setRenameIndexOpen(true);
+  };
+  const renameIndex = async (plan: RenameIndexPlan) => {
+    if (
+      !plan.sql ||
+      plan.errors.length > 0 ||
+      plan.manual.length > 0 ||
+      plan.statements.length === 0
+    )
+      return;
+    if (readOnlyConnection) {
+      notify("Index changes are disabled for a read-only connection");
+      return;
+    }
+    if (!window.confirm("Rename this index in one transaction?")) return;
+    const result = await runQuery("transaction", plan.sql, {
+      preserveResult: true,
+      batch: { statements: plan.statements, expectedRows: 0 },
+    });
+    if (!result) {
+      notify("Index rename failed; the transaction was rolled back");
+      return;
+    }
+    await loadMetadata();
+    setRenameIndexOpen(false);
+    notify("Index renamed and metadata refreshed");
   };
   const openAddForeignKey = () => {
     if (!currentTable) {
@@ -3030,6 +3065,15 @@ function App() {
       execute: openDropIndex,
     },
     {
+      id: "rename-index",
+      label: "Rename index on selected table",
+      hint: currentTable
+        ? `${currentTable.schema}.${currentTable.name}`
+        : "table required",
+      disabled: !currentTable || readOnlyConnection,
+      execute: openRenameIndex,
+    },
+    {
       id: "add-foreign-key",
       label: "Add foreign key to selected table",
       hint: currentTable
@@ -4676,6 +4720,20 @@ function App() {
             setSql(plan.sql);
             setDropIndexOpen(false);
             notify("Opened DROP INDEX preview in a new SQL tab");
+          }}
+        />
+      )}
+      {renameIndexOpen && currentTable && (
+        <RenameIndexDialog
+          driverKind={driverKind}
+          table={currentTable}
+          onClose={() => setRenameIndexOpen(false)}
+          onRename={renameIndex}
+          onOpenSql={(plan) => {
+            newQuery();
+            setSql(plan.sql);
+            setRenameIndexOpen(false);
+            notify("Opened ALTER INDEX preview in a new SQL tab");
           }}
         />
       )}
@@ -6401,6 +6459,127 @@ function DropViewDialog({
             disabled={plan.errors.length > 0}
           >
             Drop view
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function RenameIndexDialog({
+  driverKind,
+  table,
+  onClose,
+  onRename,
+  onOpenSql,
+}: {
+  driverKind: DriverKind;
+  table: TableMetadata;
+  onClose: () => void;
+  onRename: (plan: RenameIndexPlan) => Promise<void>;
+  onOpenSql: (plan: RenameIndexPlan) => void;
+}) {
+  const [currentName, setCurrentName] = useState(
+    table.indexes.find((index) => !index.primary)?.name ??
+      table.indexes[0]?.name ??
+      "",
+  );
+  const [nextName, setNextName] = useState("");
+  const plan = useMemo(
+    () => buildRenameIndexPlan(table, currentName, nextName, driverKind),
+    [currentName, driverKind, nextName, table],
+  );
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <dialog
+        open
+        className="drop-index-modal"
+        aria-modal="true"
+        aria-labelledby="rename-index-title"
+      >
+        <div className="edit-preview-heading">
+          <div>
+            <p className="modal-kicker">OBJECT FORM · INDEX</p>
+            <h2 id="rename-index-title">Rename index</h2>
+          </div>
+          <button
+            type="button"
+            className="mini-button"
+            aria-label="Close rename index form"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <p className="modal-copy">
+          Rename a non-primary index on{" "}
+          <strong>
+            {table.schema}.{table.name}
+          </strong>{" "}
+          with {driverDisplayName(driverKind)}-specific SQL. Primary indexes and
+          SQLite renames remain manual-review operations.
+        </p>
+        <div className="create-index-fields">
+          <label className="drop-index-select" htmlFor="rename-index-current">
+            Current index
+            <select
+              id="rename-index-current"
+              value={currentName}
+              onChange={(event) => setCurrentName(event.target.value)}
+            >
+              {table.indexes.map((index) => (
+                <option key={index.name} value={index.name}>
+                  {index.name} {index.primary ? "(primary)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor="rename-index-next">
+            New index name
+            <input
+              id="rename-index-next"
+              value={nextName}
+              onChange={(event) => setNextName(event.target.value)}
+              placeholder="users_email_lookup_idx"
+            />
+          </label>
+        </div>
+        {plan.errors.length > 0 && (
+          <div className="create-table-errors" role="alert">
+            {plan.errors.map((error) => (
+              <div key={error}>{error}</div>
+            ))}
+          </div>
+        )}
+        {plan.manual.length > 0 && (
+          <output className="create-index-warning">
+            {plan.manual.map((message) => (
+              <div key={message}>{message}</div>
+            ))}
+          </output>
+        )}
+        {plan.sql && <pre className="create-table-preview">{plan.sql}</pre>}
+        <div className="modal-actions">
+          <button type="button" className="modal-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="modal-secondary"
+            onClick={() => onOpenSql(plan)}
+            disabled={plan.errors.length > 0 || !plan.sql}
+          >
+            Open SQL preview
+          </button>
+          <button
+            type="button"
+            className="modal-transaction"
+            onClick={() => void onRename(plan)}
+            disabled={
+              plan.errors.length > 0 || plan.manual.length > 0 || !plan.sql
+            }
+          >
+            Rename index
           </button>
         </div>
       </dialog>

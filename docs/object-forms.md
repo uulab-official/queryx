@@ -1,6 +1,6 @@
 # Object Forms
 
-QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Add table constraint**, **Drop index on selected table**, **Add foreign key to selected table**, **Drop foreign key from selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
+QueryX now provides object-specific DDL forms from the command palette: **Create table from form**, **Add column to selected table**, **Edit columns in selected table**, **Create index on selected table**, **Add table constraint**, **Drop index on selected table**, **Rename index on selected table**, **Add foreign key to selected table**, **Drop foreign key from selected table**, **Create view from form**, **Edit definition of selected view**, and **Drop selected view**.
 
 The form supports:
 
@@ -21,6 +21,8 @@ The table-constraint form supports named composite or single-column UNIQUE const
 
 The drop-index form supports regular indexes and protects primary indexes. PostgreSQL/SQLite use schema-qualified `DROP INDEX`; MySQL/MariaDB uses `DROP INDEX ... ON table`. Primary-key removal remains a manual SQL operation.
 
+The rename-index form validates the current index, new-name collisions, and no-op renames. PostgreSQL/Oracle use `ALTER INDEX ... RENAME TO`, MySQL/MariaDB uses `ALTER TABLE ... RENAME INDEX`, and SQL Server uses `sys.sp_rename`. Primary indexes and SQLite renames are shown as manual review and cannot be applied from the form.
+
 The foreign-key forms support named single- and composite-column relationships, visible referenced tables, `ON UPDATE`/`ON DELETE` actions, duplicate/missing-column validation, and dialect-aware SQL. PostgreSQL uses `DROP CONSTRAINT`, MySQL/MariaDB uses `DROP FOREIGN KEY`, and SQLite additions/removals remain manual table-rebuild operations.
 
 The create-view form accepts one read-only `SELECT` or `WITH` definition, checks schema/name collisions against the current metadata snapshot, rejects comments, delimiters, and mutating DML/DDL keywords, and applies the generated dialect-aware `CREATE VIEW` statement only after confirmation. The SQL preview can also be opened in a normal query tab for review or vendor-specific edits.
@@ -29,4 +31,4 @@ The edit-view form validates the replacement definition against the current view
 
 The form never creates a table merely because a field changes. **Create table** asks for confirmation and is disabled for read-only connections or invalid input. The SQL preview remains editable for defaults, foreign keys, indexes, generated columns, partitions, and vendor-specific clauses.
 
-Index alteration, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.
+Broader index alteration, routine, and trigger forms remain planned. Use [schema compare](schema-compare.md) for reviewed multi-object changes and [DDL workflow](ddl-workflow.md) for catalog-rendered definitions.

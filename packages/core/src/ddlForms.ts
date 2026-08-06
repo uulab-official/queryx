@@ -85,6 +85,13 @@ export interface DropIndexPlan {
   manual: string[];
 }
 
+export interface RenameIndexPlan {
+  sql: string;
+  statements: string[];
+  errors: string[];
+  manual: string[];
+}
+
 export interface AddForeignKeyInput {
   name: string;
   columns: string[];
@@ -662,6 +669,68 @@ export function buildDropIndexPlan(
       ? `DROP INDEX ${quoteIdentifier(name, driver)} ON ${qualifiedTable};`
       : `DROP INDEX ${qualifiedName(table.schema, name, driver)};`;
   return { sql, errors: [], manual: [] };
+}
+
+export function buildRenameIndexPlan(
+  table: Pick<TableMetadata, "schema" | "name" | "indexes">,
+  currentName: string,
+  nextName: string,
+  driver: DriverKind,
+): RenameIndexPlan {
+  const current = normalizeIdentifier(currentName);
+  const next = normalizeIdentifier(nextName);
+  const errors = [
+    identifierError("Current index name", current),
+    identifierError("New index name", next),
+  ].filter((error): error is string => Boolean(error));
+  const index = table.indexes.find((candidate) => candidate.name === current);
+  if (!index && current) errors.push(`Index does not exist: ${current}`);
+  if (
+    current &&
+    next &&
+    current.toLocaleLowerCase() === next.toLocaleLowerCase()
+  ) {
+    errors.push("New index name must differ from the current name");
+  }
+  if (
+    next &&
+    table.indexes.some(
+      (candidate) =>
+        candidate.name.toLocaleLowerCase() === next.toLocaleLowerCase() &&
+        candidate.name !== current,
+    )
+  ) {
+    errors.push(`New index name conflicts with an existing index: ${next}`);
+  }
+  if (errors.length > 0 || !index) {
+    return { sql: "", statements: [], errors, manual: [] };
+  }
+  if (index.primary) {
+    const message = `Primary index cannot be renamed from the index form: ${current}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors: [],
+      manual: [message],
+    };
+  }
+  if (driver === "sqlite") {
+    const message = `SQLite index rename requires manual review: ${current} → ${next}`;
+    return {
+      sql: `-- MANUAL REVIEW REQUIRED: ${message}`,
+      statements: [],
+      errors: [],
+      manual: [message],
+    };
+  }
+  const qualifiedTable = qualifiedName(table.schema, table.name, driver);
+  const statement =
+    driver === "mysql"
+      ? `ALTER TABLE ${qualifiedTable} RENAME INDEX ${quoteIdentifier(current, driver)} TO ${quoteIdentifier(next, driver)};`
+      : driver === "sqlserver"
+        ? `EXEC sys.sp_rename ${quoteSqlString(`${qualifiedTable}.${quoteIdentifier(current, driver)}`)}, ${quoteSqlString(next)}, 'INDEX';`
+        : `ALTER INDEX ${qualifiedName(table.schema, current, driver)} RENAME TO ${quoteIdentifier(next, driver)};`;
+  return { sql: statement, statements: [statement], errors: [], manual: [] };
 }
 
 export function buildAddForeignKeyPlan(
