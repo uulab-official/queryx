@@ -22,7 +22,7 @@ QueryX is an open-source, local-first database IDE for developers who want a fas
 | --- | --- | --- |
 | Connections | Native SQLite, PostgreSQL, MySQL/MariaDB, SQL Server, and Oracle basics, TLS modes, CA/client certificate paths, OpenSSH local tunnels, saved profiles with optional OS-keychain passwords, read-only sessions, connection testing | Advanced vendor metadata |
 | SQL editor | Monaco, multi-tab, metadata completion, selection execution | Dialect-aware parser, formatter, snippets |
-| Results | Dynamic table/JSON view, virtualized loaded results, copy/export, 100-row server paging, table-browser filter/sort, all native drivers chunked streaming | Spill-to-disk, arbitrary-query server filtering |
+| Results | Dynamic table/JSON view, virtualized loaded results, copy/export, 100-row server paging with database-side filter/sort for safe SELECT/WITH queries and table browsing, all native drivers chunked streaming | Spill-to-disk, deterministic arbitrary-result tie-breakers, true `.xlsx` packaging |
 | Safety | Destructive-query warning, native read-only sessions, explicit transaction sessions, transaction execution path | Parser-backed analysis, affected-row estimate |
 | Metadata | Schemas, relations, keys, indexes, FK navigation, functions/procedures/aggregates/window functions, relation/event triggers, direct Depends on / Used by navigation, and safe DDL-to-SQL handoff | Object-specific DDL breadth and vendor parity |
 | Data workflow | Table browsing/editing, CSV/JSON/SQL/Markdown/Excel XML export/import, schema compare, and bounded same-driver Data Compare with transactional synchronization | Multi-million-row, LOB-aware, multi-table data compare and true `.xlsx` workbooks |

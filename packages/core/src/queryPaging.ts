@@ -1,10 +1,19 @@
-import type { DriverKind } from "@queryx/shared";
+import type { DriverKind, QueryColumn } from "@queryx/shared";
 
 export interface QueryPagePlan {
   sql: string;
   limit: number;
   offset: number;
   errors: string[];
+}
+
+export type QueryResultSortDirection = "asc" | "desc";
+
+export interface QueryResultFilterPlan extends QueryPagePlan {
+  filter: string;
+  sortBy: string | null;
+  sortDirection: QueryResultSortDirection;
+  warnings: string[];
 }
 
 interface StatementAnalysis {
@@ -120,12 +129,33 @@ function hasMutationOrLockingClause(sql: string): boolean {
   );
 }
 
-export function buildQueryPagePlan(
+function quoteString(value: string, driver: DriverKind): string {
+  const escapedQuotes = value.replaceAll("'", "''");
+  if (driver === "mysql" && value.includes("\\")) {
+    return `'${escapedQuotes.replaceAll("\\", "\\\\")}'`;
+  }
+  if (driver === "postgres" && value.includes("\\")) {
+    return `E'${escapedQuotes.replaceAll("\\", "\\\\")}'`;
+  }
+  return `'${escapedQuotes}'`;
+}
+
+function escapeLikePattern(value: string): string {
+  return value
+    .replaceAll("!", "!!")
+    .replaceAll("%", "!%")
+    .replaceAll("_", "!_");
+}
+
+function castAsText(identifier: string, driver: DriverKind): string {
+  return `CAST(${identifier} AS ${driver === "mysql" ? "CHAR" : driver === "sqlserver" ? "NVARCHAR(MAX)" : driver === "oracle" ? "VARCHAR2(4000)" : "TEXT"})`;
+}
+
+function validatePageRequest(
   sql: string,
-  driver: DriverKind,
   limit: number,
   offset: number,
-): QueryPagePlan {
+): { analysis: StatementAnalysis; errors: string[] } {
   const errors: string[] = [];
   if (!Number.isInteger(limit) || limit < 1 || limit > 10_000) {
     errors.push("Page size must be an integer between 1 and 10000");
@@ -148,6 +178,27 @@ export function buildQueryPagePlan(
   if (hasMutationOrLockingClause(analysis.statement)) {
     errors.push("Server paging excludes mutating or locking query clauses");
   }
+  return { analysis, errors };
+}
+
+function paginationSuffix(
+  driver: DriverKind,
+  limit: number,
+  offset: number,
+  orderBy: string,
+): string {
+  return driver === "sqlserver" || driver === "oracle"
+    ? `ORDER BY ${orderBy} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
+    : `${orderBy ? `ORDER BY ${orderBy} ` : ""}LIMIT ${limit} OFFSET ${offset};`;
+}
+
+export function buildQueryPagePlan(
+  sql: string,
+  driver: DriverKind,
+  limit: number,
+  offset: number,
+): QueryPagePlan {
+  const { analysis, errors } = validatePageRequest(sql, limit, offset);
   if (errors.length > 0) {
     return { sql: "", limit, offset, errors };
   }
@@ -157,10 +208,80 @@ export function buildQueryPagePlan(
   return {
     sql:
       driver === "sqlserver" || driver === "oracle"
-        ? `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} ORDER BY ${driver === "oracle" ? "1" : "(SELECT 1)"} OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY;`
-        : `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} LIMIT ${limit} OFFSET ${offset};`,
+        ? `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} ${paginationSuffix(driver, limit, offset, driver === "oracle" ? "1" : "(SELECT 1)")}`
+        : `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause} ${paginationSuffix(driver, limit, offset, "")}`,
     limit,
     offset,
     errors: [],
+  };
+}
+
+export function buildQueryResultFilterPlan(
+  sql: string,
+  columns: readonly Pick<QueryColumn, "name">[],
+  driver: DriverKind,
+  limit: number,
+  offset: number,
+  filter = "",
+  sortBy: string | null = null,
+  sortDirection: QueryResultSortDirection = "asc",
+): QueryResultFilterPlan {
+  const warnings: string[] = [];
+  const normalizedFilter = filter.trim();
+  const normalizedSortBy = sortBy?.trim() || null;
+  const { analysis, errors } = validatePageRequest(sql, limit, offset);
+  if (columns.length === 0) errors.push("The result has no columns to filter");
+  if (
+    normalizedSortBy &&
+    !columns.some((column) => column.name === normalizedSortBy)
+  ) {
+    errors.push(`Sort column does not exist: ${normalizedSortBy}`);
+  }
+  if (sortDirection !== "asc" && sortDirection !== "desc") {
+    errors.push("Result sort direction must be asc or desc");
+  }
+  if (errors.length > 0) {
+    return {
+      sql: "",
+      limit,
+      offset,
+      filter: normalizedFilter,
+      sortBy: normalizedSortBy,
+      sortDirection,
+      errors,
+      warnings,
+    };
+  }
+
+  const alias = quoteIdentifier("__queryx_result", driver);
+  const aliasClause = driver === "oracle" ? alias : `AS ${alias}`;
+  const qualifiedColumns = columns.map(
+    (column) => `${alias}.${quoteIdentifier(column.name, driver)}`,
+  );
+  const where = normalizedFilter
+    ? `WHERE (${qualifiedColumns
+        .map(
+          (column) =>
+            `LOWER(${castAsText(column, driver)}) LIKE LOWER(${quoteString(`%${escapeLikePattern(normalizedFilter)}%`, driver)}) ESCAPE '!'`,
+        )
+        .join(" OR ")})`
+    : "";
+  const orderBy = normalizedSortBy
+    ? `${alias}.${quoteIdentifier(normalizedSortBy, driver)} ${sortDirection.toUpperCase()}`
+    : driver === "oracle"
+      ? "1"
+      : driver === "sqlserver"
+        ? "(SELECT 1)"
+        : "";
+  const pageSql = paginationSuffix(driver, limit, offset, orderBy);
+  return {
+    sql: `SELECT * FROM (\n${analysis.statement}\n) ${aliasClause}${where ? `\n${where}` : ""} ${pageSql}`,
+    limit,
+    offset,
+    filter: normalizedFilter,
+    sortBy: normalizedSortBy,
+    sortDirection,
+    errors: [],
+    warnings,
   };
 }

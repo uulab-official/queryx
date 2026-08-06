@@ -40,6 +40,7 @@ import {
   buildForeignKeyIndex,
   buildExplainQuery,
   buildQueryPagePlan,
+  buildQueryResultFilterPlan,
   buildSchemaMigrationSql,
   buildSchemaPrivilegePreflightSql,
   buildSchemaRollbackSql,
@@ -222,6 +223,9 @@ interface ServerQueryPageState {
   sql: string;
   offset: number;
   hasMore: boolean;
+  filter: string;
+  sortBy: string | null;
+  sortDirection: "asc" | "desc";
 }
 
 interface PaletteCommand {
@@ -690,6 +694,12 @@ function App() {
       (tableBrowse.filter !== filter ||
         tableBrowse.sortBy !== sortBy ||
         tableBrowse.sortDirection !== sortDirection),
+  );
+  const serverQueryDirty = Boolean(
+    serverQueryPage &&
+      (serverQueryPage.filter !== filter ||
+        serverQueryPage.sortBy !== sortBy ||
+        serverQueryPage.sortDirection !== sortDirection),
   );
   const schemaDiff = useMemo<SchemaDiff | null>(
     () =>
@@ -1439,6 +1449,11 @@ function App() {
     setEditingCell(null);
     setStagedEdits({});
     setTableBrowse(null);
+    if (mode === "normal") {
+      setFilter("");
+      setSortBy(null);
+      setSortDirection("desc");
+    }
     const firstPage =
       mode === "normal"
         ? buildQueryPagePlan(executableSql, driverKind, resultPageSize, 0)
@@ -1446,7 +1461,16 @@ function App() {
     const paging =
       firstPage && firstPage.errors.length === 0 ? firstPage : null;
     setServerQueryPage(
-      paging ? { sql: executableSql, offset: 0, hasMore: true } : null,
+      paging
+        ? {
+            sql: executableSql,
+            offset: 0,
+            hasMore: true,
+            filter: "",
+            sortBy: null,
+            sortDirection: "desc",
+          }
+        : null,
     );
     void runQuery(
       mode,
@@ -2457,13 +2481,24 @@ function App() {
   };
 
   const loadNextServerPage = async () => {
-    if (!serverQueryPage || isRunning || !serverQueryPage.hasMore) return;
+    if (
+      !serverQueryPage ||
+      !result ||
+      isRunning ||
+      !serverQueryPage.hasMore ||
+      serverQueryDirty
+    )
+      return;
     const nextOffset = serverQueryPage.offset + resultPageSize;
-    const nextPlan = buildQueryPagePlan(
+    const nextPlan = buildQueryResultFilterPlan(
       serverQueryPage.sql,
+      result.columns,
       driverKind,
       resultPageSize,
       nextOffset,
+      serverQueryPage.filter,
+      serverQueryPage.sortBy,
+      serverQueryPage.sortDirection,
     );
     if (nextPlan.errors.length > 0) {
       notify(nextPlan.errors[0] ?? "Unable to load the next result page");
@@ -2487,6 +2522,42 @@ function App() {
     );
     setResultPage(0);
     notify(`Loaded ${nextResult.rows.length.toLocaleString()} more rows`);
+  };
+
+  const applyServerQuery = async () => {
+    if (!serverQueryPage || !result || isRunning || !serverQueryDirty) return;
+    const plan = buildQueryResultFilterPlan(
+      serverQueryPage.sql,
+      result.columns,
+      driverKind,
+      resultPageSize,
+      0,
+      filter,
+      sortBy,
+      sortDirection,
+    );
+    if (plan.errors.length > 0) {
+      notify(plan.errors[0] ?? "Unable to build the filtered result query");
+      return;
+    }
+    setGridSelection(null);
+    setEditingCell(null);
+    setStagedEdits({});
+    setResultPage(0);
+    setGridScrollTop(0);
+    const nextResult = await runQuery("normal", plan.sql, {
+      historySql: serverQueryPage.sql,
+    });
+    if (!nextResult) return;
+    setServerQueryPage({
+      sql: serverQueryPage.sql,
+      offset: 0,
+      hasMore: nextResult.rows.length === resultPageSize,
+      filter: plan.filter,
+      sortBy: plan.sortBy,
+      sortDirection: plan.sortDirection,
+    });
+    notify("Applied server-side filter and sort to the query");
   };
 
   const importCsv = async (plan: CsvImportPlan) => {
@@ -3903,7 +3974,9 @@ function App() {
                   placeholder={
                     tableBrowse
                       ? "Filter loaded rows or apply to table..."
-                      : "Filter results..."
+                      : serverQueryPage
+                        ? "Filter loaded rows or apply to query..."
+                        : "Filter results..."
                   }
                 />
                 <kbd>⌘F</kbd>
@@ -3917,6 +3990,17 @@ function App() {
                   title="Run the current filter and sort on the database"
                 >
                   {isRunning ? "Applying…" : "Apply to table"}
+                </button>
+              )}
+              {serverQueryPage && !tableBrowse && (
+                <button
+                  type="button"
+                  className="table-filter-apply"
+                  onClick={() => void applyServerQuery()}
+                  disabled={isRunning || !serverQueryDirty}
+                  title="Run the current filter and sort on the database"
+                >
+                  {isRunning ? "Applying…" : "Apply to query"}
                 </button>
               )}
             </div>
@@ -4183,19 +4267,27 @@ function App() {
                 <div className="table-browse-actions">
                   <span>
                     Server paging · {result?.rows.length.toLocaleString() ?? 0}{" "}
-                    loaded
+                    loaded{serverQueryDirty ? " · unapplied filter/order" : ""}
                   </span>
                   <button
                     type="button"
                     onClick={() => void loadNextServerPage()}
-                    disabled={isRunning || !serverQueryPage.hasMore}
-                    title="Fetch the next 100 rows from the current SELECT result"
+                    disabled={
+                      isRunning || !serverQueryPage.hasMore || serverQueryDirty
+                    }
+                    title={
+                      serverQueryDirty
+                        ? "Apply the current filter and sort before loading another page"
+                        : "Fetch the next 100 rows from the current SELECT result"
+                    }
                   >
                     {isRunning
                       ? "Loading…"
-                      : serverQueryPage.hasMore
-                        ? "Load next 100"
-                        : "All loaded"}
+                      : serverQueryDirty
+                        ? "Apply filter/order"
+                        : serverQueryPage.hasMore
+                          ? "Load next 100"
+                          : "All loaded"}
                   </button>
                 </div>
               )}

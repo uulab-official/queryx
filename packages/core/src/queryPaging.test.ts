@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQueryPagePlan } from "./queryPaging";
+import { buildQueryPagePlan, buildQueryResultFilterPlan } from "./queryPaging";
 
 describe("buildQueryPagePlan", () => {
   it("wraps a single SELECT and quotes the derived-table alias per dialect", () => {
@@ -75,6 +75,73 @@ describe("buildQueryPagePlan", () => {
     expect(plan.errors).toEqual(
       expect.arrayContaining([
         "Server paging accepts one SQL statement at a time",
+        "Server paging excludes mutating or locking query clauses",
+      ]),
+    );
+  });
+});
+
+describe("buildQueryResultFilterPlan", () => {
+  const columns = [{ name: "id" }, { name: "display name" }, { name: "note" }];
+
+  it("pushes literal filtering and selected ordering into the derived query", () => {
+    const plan = buildQueryResultFilterPlan(
+      'SELECT id, display_name AS "display name", note FROM users',
+      columns,
+      "postgres",
+      100,
+      0,
+      "50%_ready",
+      "display name",
+      "desc",
+    );
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toContain('AS "__queryx_result"');
+    expect(plan.sql).toContain(
+      "LOWER(CAST(\"__queryx_result\".\"id\" AS TEXT)) LIKE LOWER('%50!%!_ready%') ESCAPE '!'",
+    );
+    expect(plan.sql).toContain(
+      'ORDER BY "__queryx_result"."display name" DESC LIMIT 100 OFFSET 0;',
+    );
+  });
+
+  it("uses vendor casts and OFFSET/FETCH for SQL Server", () => {
+    const plan = buildQueryResultFilterPlan(
+      "SELECT id, status FROM dbo.users",
+      [{ name: "id" }, { name: "status" }],
+      "sqlserver",
+      25,
+      50,
+      "paid",
+      "status",
+      "asc",
+    );
+
+    expect(plan.errors).toEqual([]);
+    expect(plan.sql).toContain(
+      "LOWER(CAST([__queryx_result].[id] AS NVARCHAR(MAX))) LIKE LOWER('%paid%') ESCAPE '!'",
+    );
+    expect(plan.sql).toContain(
+      "ORDER BY [__queryx_result].[status] ASC OFFSET 50 ROWS FETCH NEXT 25 ROWS ONLY;",
+    );
+  });
+
+  it("rejects unknown sort columns and unsafe statements", () => {
+    const plan = buildQueryResultFilterPlan(
+      "SELECT id FROM users FOR UPDATE",
+      [{ name: "id" }],
+      "postgres",
+      100,
+      0,
+      "",
+      "missing",
+    );
+
+    expect(plan.sql).toBe("");
+    expect(plan.errors).toEqual(
+      expect.arrayContaining([
+        "Sort column does not exist: missing",
         "Server paging excludes mutating or locking query clauses",
       ]),
     );

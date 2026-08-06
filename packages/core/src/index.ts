@@ -126,8 +126,15 @@ export type {
   DataCompareChangeKind,
   DataCompareResult,
 } from "./dataCompare";
-export { buildQueryPagePlan } from "./queryPaging";
-export type { QueryPagePlan } from "./queryPaging";
+export {
+  buildQueryPagePlan,
+  buildQueryResultFilterPlan,
+} from "./queryPaging";
+export type {
+  QueryPagePlan,
+  QueryResultFilterPlan,
+  QueryResultSortDirection,
+} from "./queryPaging";
 export { buildTableBrowsePlan } from "./tableBrowse";
 export type { TableBrowsePlan, TableBrowseSortDirection } from "./tableBrowse";
 export { buildTableRowInsertPlan } from "./tableRowInsert";

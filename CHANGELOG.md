@@ -114,3 +114,4 @@ All notable QueryX changes are documented here. The project follows [Semantic Ve
 ### Added
 
 - Added Markdown table and typed Excel-compatible SpreadsheetML exports to the result grid, with local save flows, escaping, formula-safe string cells, and serializer regression coverage.
+- Added database-side literal filter and selected-column sort for pageable single SELECT/WITH results, preserving the original editor SQL/history and carrying the applied plan across subsequent pages.
